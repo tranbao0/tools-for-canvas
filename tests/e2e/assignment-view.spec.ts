@@ -2744,3 +2744,20 @@ test('identity cover: restored focus keeps Escape in full view', async ({
   await page.keyboard.press('Escape');
   await expect(host).not.toHaveAttribute('data-full');
 });
+
+test('identity cover: a fullscreen frame exits before content can show', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').click();
+  await frame.evaluate(() => document.documentElement.requestFullscreen());
+  await expect
+    .poll(() => page.evaluate(() => document.fullscreenElement?.id))
+    .toBe('tools-turn-in');
+  await holdPaneIdentity(page);
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+});

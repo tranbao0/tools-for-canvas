@@ -86,6 +86,8 @@ export function createCardDock(
       dock.host.setAttribute('data-identity', yes ? 'yes' : 'unknown');
       const restoreFocus = yes && cover.contains(dock.root.activeElement);
       cover.hidden = yes;
+      if (!yes && doc.fullscreenElement === dock.host)
+        void doc.exitFullscreen().catch(() => undefined);
       if (!yes && doc.activeElement === dock.host && !cover.contains(dock.root.activeElement))
         retry.focus({ preventScroll: true });
       sync();
