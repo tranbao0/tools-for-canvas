@@ -340,12 +340,7 @@ test('first failed dashboard load offers minimize', async ({ context, page, back
   await openCanvasPage(page, canvas.origin);
   const list = inpageList(page);
   await expect(list.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
-  for (const width of [1280, 800]) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.screenshot({
-      path: `${process.env['HOME']}/.cache/tools-for-canvas-review/settings-without-courses/cant-load-${width}.png`,
-    });
-  }
+
   await list.getByRole('button', { name: 'Minimize list', exact: true }).click();
   await expect(page.locator('#tools-weekly-tab')).toBeVisible();
 });
@@ -365,10 +360,5 @@ test('signed out settings screen shows fields', async ({
   await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.wr-settings')).toBeVisible();
-  for (const width of [1280, 800]) {
-    await page.setViewportSize({ width, height: 900 });
-    await page.screenshot({
-      path: `${process.env['HOME']}/.cache/tools-for-canvas-review/settings-without-courses/signed-out-${width}.png`,
-    });
-  }
+
 });
