@@ -171,6 +171,7 @@
 }
 
 .wr[data-surface='inpage'] > .wr-task-panel > :is(.wr-scroll, .wr-group-area) {
+  box-shadow: 0 -1px var(--wr-line);
   flex: 1 1 0;
   /* In a low window the list keeps room for about one row, and the whole card scrolls instead. */
   min-height: 128px;

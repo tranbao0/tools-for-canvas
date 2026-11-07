@@ -1678,3 +1678,35 @@ test.describe('while the list loads', () => {
     await expect(list.locator('.wr-pinned [data-group="todo"] .wr-count')).toHaveText(/^\d+$/);
   });
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const [name, layout, query] of [
+    ['slot', LAYOUTS[0]!, undefined],
+    ['band', LAYOUTS[0]!, NO_COURSE_WORK],
+    ['dock', LAYOUTS[1]!, undefined],
+  ] as const) {
+    test(`list top edge stays marked in ${name}, ${theme}`, async ({
+      context,
+      page,
+      background,
+    }, testInfo) => {
+      await openBottomLayout(context, page, background, layout, 800, query, theme);
+      const list = inpageList(page);
+      const scroll = list.locator('.wr-scroll');
+      const bar = list.locator('.wr-pinned');
+      await expect(scroll).toHaveCSS(
+        'box-shadow',
+        `${await bar.evaluate((node) => getComputedStyle(node).borderTopColor)} 0px -1px 0px 0px`,
+      );
+      const height = await list.evaluate((node) => node.getBoundingClientRect().height);
+      await scroll.hover();
+      await page.mouse.wheel(0, 140);
+      await expect(scroll).toHaveCSS(
+        'box-shadow',
+        `${await bar.evaluate((node) => getComputedStyle(node).borderTopColor)} 0px -1px 0px 0px`,
+      );
+      expect(await list.evaluate((node) => node.getBoundingClientRect().height)).toBe(height);
+      await list.screenshot({ path: testInfo.outputPath(`top-line-${name}-${theme}.png`) });
+    });
+  }
+}
