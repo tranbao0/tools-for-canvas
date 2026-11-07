@@ -37,8 +37,9 @@ export interface SurfaceRequest {
 }
 
 /**
- * The reply to a state request. A ready reply also names the signed-in Canvas user, so a surface
- * can tell that the user changed under its Undo notice.
+ * The reply to a state request. A ready reply also names the signed-in Canvas user. The surface
+ * sends that user and the `origin` of the reply with every write from its rows, and can tell that
+ * the user changed under its Undo notice.
  */
 export type StateReply = SurfaceState & { userId?: string; retryAt?: number };
 

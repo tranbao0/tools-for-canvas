@@ -44,12 +44,15 @@ test('the background refuses data messages from a content script on another Canv
   const other = await context.newPage();
   await openCanvasPage(other, OTHER);
   const intruder = await contentScriptWorld(other);
+  // The identity is the one of the saved Canvas and its student, so only the sender check refuses.
+  const identity = { userId: IDS.user, origin: SCHOOL };
   const messages = [
     { type: 'weekrow:get-state', request: IN_PAGE_REQUEST },
     { type: 'weekrow:refresh', reason: 'retry', surface: 'inpage' },
     {
       type: 'weekrow:action',
       action: {
+        ...identity,
         kind: 'setDone',
         keys: [`assignment:${IDS.assignments.bioQuiz3Today}`],
         done: true,
@@ -58,8 +61,8 @@ test('the background refuses data messages from a content script on another Canv
     {
       type: 'weekrow:action',
       action: {
+        ...identity,
         kind: 'restore',
-        userId: IDS.user,
         entries: [
           {
             key: `assignment:${IDS.assignments.bioQuiz3Today}`,
@@ -68,8 +71,14 @@ test('the background refuses data messages from a content script on another Canv
         ],
       },
     },
-    { type: 'weekrow:action', action: { kind: 'sendDelete', noteId: IDS.notes.bioStudyGroup } },
-    { type: 'weekrow:action', action: { kind: 'cancelDelete', noteId: IDS.notes.bioStudyGroup } },
+    {
+      type: 'weekrow:action',
+      action: { ...identity, kind: 'sendDelete', noteId: IDS.notes.bioStudyGroup },
+    },
+    {
+      type: 'weekrow:action',
+      action: { ...identity, kind: 'cancelDelete', noteId: IDS.notes.bioStudyGroup },
+    },
     { type: 'weekrow:open-page', page: 'settings' },
     // Only the panel may accept an offer, and the typed-address messages no longer exist.
     { type: 'weekrow:accept-offer', origin: OTHER },

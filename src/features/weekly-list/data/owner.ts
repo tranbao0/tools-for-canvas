@@ -1750,13 +1750,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * is no student to compare. A write needs the session to go on, and every later check compares.
    */
   function actionIdentityHolds(stamp: WriteStamp): boolean {
-    if (!identityHolds(stamp)) return false;
     const identity = stamp.actionIdentity;
-    if (identity === undefined) return true;
     const session = cache?.session;
     return (
-      identity.origin === stamp.origin &&
-      (session == null || sameCanvasId(identity.userId, session.profile.id))
+      identityHolds(stamp) &&
+      (identity === undefined ||
+        (identity.origin === stamp.origin &&
+          (session == null || sameCanvasId(identity.userId, session.profile.id))))
     );
   }
 
@@ -2423,11 +2423,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * every write.
    */
   async function restoreOverrides(
+    userId: string,
+    origin: string,
     entries: readonly PreviousOverride[],
     stamp: WriteStamp,
   ): Promise<ActionReply> {
     const write = await writeContext(stamp);
-    if (!identityHolds(stamp) || write === null) {
+    if (
+      !identityHolds(stamp) ||
+      write === null ||
+      write.session.profile.id !== userId ||
+      write.origin !== origin
+    ) {
       return NOT_RESTORED;
     }
     stamp = writeStamp();
@@ -2447,15 +2454,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const shown = shownFlags(item);
       if (sameFlags(shown, previous)) continue;
       saved.push(
-        addOverridePatch(
-          key,
-          target,
-          previous,
-          shown,
-          item.override?.id ?? '',
-          write.session.profile.id,
-          stamp,
-        ),
+        addOverridePatch(key, target, previous, shown, item.override?.id ?? '', userId, stamp),
       );
     }
     if (saved.length > 0) {
@@ -2558,7 +2557,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         // cache still belongs to the student of the Undo.
         if (!(await signedInStudentOwnsCache(true))) return refusedUndo(action.userId);
         if (!identityHolds(stamp)) return refusedUndo(action.userId);
-        return restoreOverrides(action.entries, stamp);
+        return restoreOverrides(action.userId, action.origin, action.entries, stamp);
       case 'createTask':
         return createTask(action.input, stamp);
       case 'updateTask':
@@ -3750,6 +3749,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       return undoing === null ? NO_UNDO : NOT_RESTORED;
     }
     const userId = session.profile.id;
+    if (undoing !== null && (undoing.userId !== userId || undoing.origin !== origin)) {
+      return NOT_RESTORED;
+    }
     // Only an announcement that the list shows can get a mark.
     const topic = cache.announcements?.topics?.find(
       (candidate) => candidate.courseId === courseId && candidate.id === topicId,
@@ -3855,7 +3857,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       return identityHolds(stamp) ? { kind: 'no_access', origin, offer } : { kind: 'loading' };
     const cantLoad = (offline: boolean): StateReply => ({
       kind: 'cant_load',
-      userId: cache?.session?.profile.id,
       cacheCheckFailed: true,
       origin,
       offline,
@@ -3897,8 +3898,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         retryAt: cache.limits.lastRoundAt + REFRESH_LIMIT_MS,
       };
     }
-    if (session.courses.length === 0)
-      return { kind: 'no_courses', userId: session.profile.id, origin, offer, allCourses: [] };
+    if (session.courses.length === 0) return { kind: 'no_courses', origin, offer, allCourses: [] };
 
     stamp = writeStamp();
     const context = await viewContext(origin);
@@ -3915,8 +3915,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const pastDueParts = plan.backward ? subtractIntervals(beforeNow, [plan.near]) : [beforeNow];
     const pastDuePending = pastDueParts.some(loadingIn);
     const result = viewFor(cache, session, request, context, { show: !failed, pastDuePending });
-    if (failed && !result.hasData)
-      return { kind: 'cant_load', userId: session.profile.id, origin, offline, offer };
+    if (failed && !result.hasData) return { kind: 'cant_load', origin, offline, offer };
     if (result.exact) loadAround(session, request.spanOffset, context);
 
     const seenNotes = await store.seenNotes.getValue();
@@ -4075,7 +4074,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
             : NO_UNDO;
       if (origin !== knownOrigin) return refused;
       const stamp = writeStamp(action);
-      if (!actionIdentityHolds(stamp) || stamp.origin !== origin) return refused;
+      if (stamp.origin !== origin) return refused;
       // A tab in another cookie store gets nothing, as for the routes that read.
       if (!(await surfaceMayRead(tabId))) return refused;
       if (!actionIdentityHolds(stamp)) return refused;

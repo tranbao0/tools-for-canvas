@@ -610,6 +610,7 @@ export function readyState(
   return {
     kind: 'ready',
     origin: ORIGIN,
+    userId: '5501',
     view: mkView(),
     stale: null,
     refreshing: false,

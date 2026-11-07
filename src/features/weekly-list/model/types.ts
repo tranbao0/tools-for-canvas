@@ -401,6 +401,8 @@ export type SurfaceState = { undo?: UndoInfo | null } & (
   | {
       kind: 'ready';
       origin: string;
+      /** The signed-in Canvas user of the rows. */
+      userId: string;
       view: WeekView;
       /** Set when the last refresh failed. `since` is the instant of the shown data. */
       stale: { since: string; offline: boolean } | null;

@@ -289,6 +289,9 @@ export function App(props: AppProps) {
     showDock = false;
     body = (
       <ReadyView
+        // The view belongs to one student on one Canvas. Another student or Canvas mounts it again,
+        // so no open form, draft or notice crosses over.
+        key={`${state.origin}\n${state.userId}`}
         surface={surface}
         state={state}
         actions={actions}
