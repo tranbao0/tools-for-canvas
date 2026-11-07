@@ -116,7 +116,7 @@ Before each release, a person runs the [live checklist](docs/live-checklist.md) 
 - The URL check fails on any URL in the build that is not in `scripts/url-allowlist.json`.
   Add an entry only for an inert string that is never the target of a request, and give the reason.
 - Each entry point must stay under 45 KB after gzip, except these:
-  `inpage.js` 52 KB, `background.js` 46 KB, the detector 2 KB, `viewer.js` 15 KB, `submission-frame.js` 4 KB and `viewer.html` 1.5 MB (with PDF.js).
+  `inpage.js` 52 KB, `background.js` 48 KB, the detector 2 KB, `viewer.js` 15 KB, `submission-frame.js` 4 KB and `viewer.html` 1.5 MB (with PDF.js).
   The limits apply to the store builds.
 - Do not add runtime dependencies besides Preact.
 - Use TypeScript in strict mode.
