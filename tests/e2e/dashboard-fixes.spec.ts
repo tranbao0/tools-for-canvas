@@ -2062,7 +2062,8 @@ for (const saved of [false, true])
     await expect(grade).toHaveText('•••');
     releaseRead();
     await expect(grade).toHaveText(saved ? '•••' : '95%');
-    await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
+    await expect(eye).toBeFocused();
+    await expect(page.locator('[data-wr-card="107"] .fx-card-body [role="status"]')).toHaveText(
       'Could not save grade visibility. Try again.',
     );
   });

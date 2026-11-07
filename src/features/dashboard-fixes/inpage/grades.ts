@@ -66,6 +66,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
   let nativeChangedAt = -Infinity;
   let lifetime = 0;
   const failures = new Set<string>();
+  let focusCourse: string | undefined;
 
   function blockWhileSaving(event: Event): void {
     if (
@@ -131,6 +132,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         const started = lifetime;
         saving = true;
         failures.delete(course.id);
+        card.querySelector('[data-wr-grade-note]')?.remove();
         eye.disabled = true;
         card.setAttribute('aria-busy', 'true');
         // Showing waits for the saved preference; hiding conceals the text immediately.
@@ -159,6 +161,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         if (started !== lifetime) return;
         saving = false;
         failures.add(course.id);
+        focusCourse = course.id;
         context.refreshGrades();
         card.remove();
         context.again();
@@ -167,8 +170,9 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     if (failures.has(course.id)) {
       const note = context.doc.createElement('span');
       note.setAttribute('role', 'status');
+      note.setAttribute('data-wr-grade-note', '');
       note.textContent = 'Could not save grade visibility. Try again.';
-      card.append(note);
+      card.querySelector(`[data-testid="course-${course.id}-name"]`)?.parentElement?.append(note);
     }
     card.setAttribute('data-wr-own', 'card');
     card.setAttribute('data-wr-card', course.id);
@@ -287,11 +291,19 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     ) {
       return;
     }
+    const focused =
+      focusCourse ??
+      copies.find((copy) => copy.contains(context.doc.activeElement))?.getAttribute('data-wr-card');
     for (const copy of copies) copy.remove();
     signatures.set(found.grid, signature);
     if (template === undefined) return;
     for (const course of missing)
       found.grid.append(copyFor(template, course, hidden(course.id), context, widgetId));
+    if (focused)
+      found.grid
+        .querySelector<HTMLButtonElement>(`[data-wr-card="${focused}"] button`)
+        ?.focus({ preventScroll: true });
+    focusCourse = undefined;
   }
 
   return {
