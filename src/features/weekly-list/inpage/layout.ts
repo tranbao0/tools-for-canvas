@@ -153,8 +153,12 @@ export function claimDashboardLayout(
   // A minimized card leaves the overlay and closes the column up, so a change of the state in the
   // card places it again.
   let minimizedSeen = false;
+  let revealCard = false;
   const minimizeObserver = new MutationObserver(() => {
-    if (isMinimized() !== minimizedSeen) schedule(false);
+    if (isMinimized() !== minimizedSeen) {
+      revealCard = true;
+      schedule(false);
+    }
   });
 
   function trackCard(): void {
@@ -317,6 +321,13 @@ export function claimDashboardLayout(
     keepCardScroll(container, () => arrangeWidget(grid, slot, pageWidth()));
     trackCard();
     restoreScroll();
+    if (revealCard) {
+      revealCard = false;
+      const card = cardRoot()?.querySelector<HTMLElement>('.wr');
+      const top = card?.getBoundingClientRect().top;
+      if (top !== undefined && (top < 0 || top >= view.innerHeight))
+        card?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
   }
 
   /** Canvas has overflow ancestors, so the card follows page scroll within its own slot. */

@@ -789,3 +789,25 @@ test('puts the card back first in the wrapper when the page removes it or insert
   expectOverSection(await slotBoxes(page));
   await expect.poll(() => region.evaluate((element) => element.scrollTop)).toBe(250);
 });
+
+for (const reducedMotion of ['reduce', 'no-preference'] as const)
+  test(`minimize and expand stay in view after page scroll, ${reducedMotion}`, async ({
+    context,
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion });
+    await openFixture(context, page, 'default');
+    await page.locator(SECTION).evaluate((widget) => {
+      (widget as HTMLElement).style.minHeight = '1800px';
+    });
+    await frames(page);
+    await page.evaluate(() => window.scrollTo(0, 450));
+    await frames(page);
+    const minimize = inpageList(page).getByRole('button', { name: 'Minimize list' });
+    await expect(minimize).toBeInViewport();
+    await minimize.click();
+    const bar = inpageList(page).getByRole('button', { name: /^Weekly list/ });
+    await expect(bar).toBeInViewport();
+    await bar.click();
+    await expect(minimize).toBeInViewport();
+  });
