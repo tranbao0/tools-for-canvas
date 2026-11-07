@@ -651,7 +651,7 @@ export async function startViewer(): Promise<void> {
       // The catcher clicks the link again on `false`, and only a failed open wants that.
       const result =
         live && enabled ? await openTarget({ fileId }, `/files/${fileId}`, taken) : null;
-      respond({ opened: live && (result === 'opened' || result === 'timeout') });
+      respond({ opened: live && result !== null && result !== 'failed' });
     })().catch(() => respond({ opened: false }));
     return true;
   };

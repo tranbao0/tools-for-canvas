@@ -730,6 +730,25 @@ describe('the page script', () => {
       }
     });
 
+    it('treats a close during connection as handled', async () => {
+      prepare();
+      let root: ShadowRoot;
+      const attach = Element.prototype.attachShadow;
+      vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (
+        this: Element,
+        init,
+      ) {
+        const made = attach.call(this, init);
+        if (this.id === 'tools-file-viewer') root = made;
+        return made;
+      });
+      await startViewer();
+      const { respond } = ask(open, fromBackground);
+      await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+      root!.querySelector<HTMLButtonElement>('button[aria-label]')!.click();
+      await vi.waitFor(() => expect(respond).toHaveBeenCalledWith({ opened: true }));
+    });
+
     it.each([
       [
         'a sender with a tab, which is a content script or a page',
