@@ -2116,3 +2116,56 @@ test('an added Course grades widget saves its own filter', async ({ context, pag
       filters: { showGrades: true, gradeVisibilities: { '101': false, '107': false } },
     });
 });
+
+test('a copied eye waits for a native eye write to settle', async ({ context, page }) => {
+  let filters = { gradeVisibilities: {} as Record<string, boolean> };
+  let written: unknown;
+  const served = await serveScenario(
+    context,
+    [
+      ...PAGE,
+      {
+        method: 'POST',
+        path: '/api/graphql',
+        respond: (request): FakeReply => {
+          const body = JSON.parse(request.postData ?? '{}');
+          if (body.query?.includes('updateWidgetDashboardConfig')) {
+            written = body.variables.filters;
+            return { body: { errors: [{ message: 'Refused' }] } };
+          }
+          return {
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: { 'course-grades-widget': filters },
+                  }),
+                },
+              },
+            },
+          };
+        },
+      },
+    ],
+    EIGHT_COURSES,
+  );
+  await addCsrfCookie(context, served.canvas.origin);
+  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page.exposeFunction('nativeEyeWrite', () => {
+    setTimeout(() => {
+      filters = { gradeVisibilities: { '101': false } };
+    }, 200);
+  });
+  const nativeEye = page.locator(
+    '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
+  );
+  await nativeEye.evaluate((button) =>
+    button.addEventListener('click', () => {
+      void (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
+    }),
+  );
+  await nativeEye.click();
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
+});

@@ -256,33 +256,39 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
           .then(() =>
             limit(async () => {
               // The whole widget filter is replaced, so each write reads it inside its queue slot.
-              const response = await attempt({
-                method: 'POST',
-                url: GRAPHQL_PATH,
-                body: {
-                  query:
-                    'query($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
-                  variables: { id: userId },
-                },
-              });
-              const body = response.data as {
-                errors?: unknown;
-                data?: { legacyNode?: { widgetDashboardConfig?: string | null } };
+              const read = async () => {
+                const response = await attempt({
+                  method: 'POST',
+                  url: GRAPHQL_PATH,
+                  body: {
+                    query:
+                      'query($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
+                    variables: { id: userId },
+                  },
+                });
+                const body = response.data as {
+                  errors?: unknown;
+                  data?: { legacyNode?: { widgetDashboardConfig?: string | null } };
+                };
+                if (body.errors || !body.data?.legacyNode)
+                  throw new Error('Invalid widget preferences');
+                const saved = body.data.legacyNode.widgetDashboardConfig;
+                const config: unknown = saved == null ? {} : JSON.parse(saved);
+                if (!isJsonObject(config)) throw new Error('Invalid widget preferences');
+                const filters = config['filters'] ?? {};
+                if (!isJsonObject(filters)) throw new Error('Invalid widget preferences');
+                const widget = filters[widgetId] ?? {};
+                if (!isJsonObject(widget)) throw new Error('Invalid widget preferences');
+                return widget;
               };
-              if (body.errors || !body.data?.legacyNode) throw new Error('No widget preferences');
-              const saved = body.data.legacyNode.widgetDashboardConfig;
-              const config: unknown = saved == null ? {} : JSON.parse(saved);
-              if (!isJsonObject(config)) throw new Error('Invalid widget preferences');
-              const filters = config['filters'] ?? {};
-              if (!isJsonObject(filters)) throw new Error('Invalid widget filters');
-              const widget = filters[widgetId] ?? {};
-              if (!isJsonObject(widget)) throw new Error('Invalid grade filters');
+              const widget = await read();
               const values = widget['gradeVisibilities'] ?? {};
               if (
                 !isJsonObject(values) ||
                 Object.values(values).some((value) => typeof value !== 'boolean')
               )
-                throw new Error('Invalid grade visibility');
+                throw new Error('Invalid widget preferences');
+              const wanted = { ...widget, gradeVisibilities: { ...values, [courseId]: visible } };
               const written = await attempt({
                 beforeFetch: guard,
                 method: 'POST',
@@ -292,7 +298,7 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
                     'mutation($widgetId: String!, $filters: JSON) { updateWidgetDashboardConfig(input: {widgetId: $widgetId, filters: $filters}) { filters errors { message } } }',
                   variables: {
                     widgetId,
-                    filters: { ...widget, gradeVisibilities: { ...values, [courseId]: visible } },
+                    filters: wanted,
                   },
                 },
               });
@@ -306,11 +312,21 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
                 };
               };
               const update = reply.data?.updateWidgetDashboardConfig;
-              return (
-                !reply.errors &&
-                !update?.errors?.length &&
-                update?.filters?.gradeVisibilities?.[courseId] === visible
-              );
+              if (
+                reply.errors ||
+                update?.errors?.length ||
+                update?.filters?.gradeVisibilities?.[courseId] !== visible
+              )
+                return false;
+              const stable = (value: unknown) =>
+                JSON.stringify(value, (_key, item: unknown) =>
+                  isJsonObject(item)
+                    ? Object.fromEntries(
+                        Object.entries(item).sort(([a], [b]) => a.localeCompare(b)),
+                      )
+                    : item,
+                );
+              return stable(await read()) === stable(wanted);
             }, 'high'),
           );
         // No retry reuses a filter object that another tab may have changed.

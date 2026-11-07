@@ -63,10 +63,18 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
   const nativeStates = new WeakMap<Element, { hidden: boolean; values: Map<string, boolean> }>();
   const { observed } = store;
   let saving = false;
+  let nativeChangedAt = -Infinity;
   let lifetime = 0;
   const failures = new Set<string>();
 
   function blockWhileSaving(event: Event): void {
+    if (
+      event.isTrusted &&
+      event.target instanceof Element &&
+      event.target.closest('[data-wr-grades]') &&
+      !event.target.closest('[data-wr-card]')
+    )
+      nativeChangedAt = Date.now();
     if (saving && event.target instanceof Element && event.target.closest('[data-wr-grades]')) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -128,6 +136,11 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         // Showing waits for the saved preference; hiding conceals the text immediately.
         fill(card, course.id, 'grade', HIDDEN_GRADE);
         try {
+          while (Date.now() - nativeChangedAt < 500)
+            await new Promise((resolve) =>
+              setTimeout(resolve, 500 - (Date.now() - nativeChangedAt)),
+            );
+          if (started !== lifetime) return;
           const reply = await context.send({
             type: 'weekrow:grade-visibility',
             widgetId,

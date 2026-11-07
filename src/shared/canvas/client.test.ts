@@ -1616,7 +1616,7 @@ describe('grade visibility writes', () => {
       fromAnotherTab: 'fresh',
       gradeVisibilities: { '101': false, '107': false, '108': true },
     });
-    expect(guard).toHaveBeenCalledTimes(6);
+    expect(guard).toHaveBeenCalledTimes(8);
     expect(seen.every((request) => request.csrf === CSRF_TOKEN)).toBe(true);
   });
 
@@ -1663,4 +1663,36 @@ it('refuses a grade mutation when the cookie changes during the CSRF read', asyn
     client.setWidgetGradeVisibility!('5', '107', false, 'course-grades-widget'),
   ).rejects.toMatchObject({ kind: 'refused' });
   expect(seen).toHaveLength(1);
+});
+
+it('does not confirm a grade write when another choice differs on the final read', async () => {
+  let mutated = false;
+  recordAll((request) => {
+    if ((request.body as { query: string }).query.startsWith('query'))
+      return {
+        data: {
+          legacyNode: {
+            widgetDashboardConfig: JSON.stringify({
+              filters: {
+                'course-grades-widget': {
+                  gradeVisibilities: mutated ? { '101': false, '107': false } : {},
+                },
+              },
+            }),
+          },
+        },
+      };
+    mutated = true;
+    return {
+      data: {
+        updateWidgetDashboardConfig: {
+          filters: { gradeVisibilities: { '107': false } },
+          errors: [],
+        },
+      },
+    };
+  });
+  await expect(
+    testClient().setWidgetGradeVisibility!('5', '107', false, 'course-grades-widget'),
+  ).resolves.toBe(false);
 });
