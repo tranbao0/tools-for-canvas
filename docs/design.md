@@ -472,6 +472,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     Its inset is the section's computed margin, copied and not fixed, and its own `visibility` is visible.
     The wrapper gets `position: relative`.
     The card is as tall as the section's box through CSS, with no measurement: it follows the box of the widget when Canvas changes it, for example when the summary counts arrive or a web font loads.
+    It is never taller than the card in the band (the window height minus 48 px, at most 760 px and at least 420 px): a widget that is much taller, such as one that a narrow window stacks (about 5,997 px at 1000 px), would make a card as tall as the page, and its day list would not scroll inside it.
+    The card sits at the top of the box, and its day list scrolls inside it.
     It never changes its box because of its own content.
     The card is 420 px high at least: a section that is lower gets a wrapper `min-height` of 420 px plus the two vertical margins, so the column makes room.
     The hidden widget is out of the tab order and the accessibility tree, and takes no pointer events.
@@ -588,7 +590,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     "N older" and "Mark all older done" work as in the side panel.
   - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
     These are gone.
-  - Outside the Course work slot, the card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
+  - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
+    In the Course work slot it has this height as its most, and it is lower only over a widget that is lower than this.
     A short list leaves empty room at the bottom, so the card keeps its size from span to span.
   - A view switch and the footer stay in a bottom bar outside the day scroll region, with a thin border in the card line color.
     The switch has three equal parts: "To do", "No due date" and "Done".
