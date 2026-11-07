@@ -143,3 +143,41 @@ it.each(['tap', 'state', 'feed', 'announcementPage'] as const)(
     else expect(reply).toMatchObject({ userId: IDS.user });
   },
 );
+
+it('reads the cookie again when the queue ends during the read', async () => {
+  const h = await createHarness();
+  await loadReady(h);
+  const held = gate();
+  vi.mocked(h.deps.sessionFingerprint).mockImplementationOnce(async () => {
+    await held.hold();
+    return 'session-a';
+  });
+  const pending = h.owner.getState(PANEL, undefined, ORIGIN);
+  await held.entered;
+  h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+  await h.owner.act({ kind: 'createTask', input }, undefined, ORIGIN);
+  signInOtherUser(h);
+  held.release();
+  expect(await pending).not.toMatchObject({ kind: 'ready' });
+});
+
+it('keeps a late signed-out cookie read away from the new site', async () => {
+  const h = await createHarness();
+  await loadReady(h);
+  const other = 'https://other.instructure.com';
+  const held = gate();
+  vi.mocked(h.deps.sessionFingerprint).mockImplementationOnce(async () => {
+    await held.hold();
+    return null;
+  });
+  const pending = h.owner.getState(PANEL, undefined, ORIGIN);
+  await held.entered;
+  await h.deps.store.origin.setValue(other);
+  await h.owner.originChanged(other);
+  await h.owner.settled();
+  held.release();
+  await pending;
+  expect(await h.owner.getState(PANEL, undefined, other)).not.toMatchObject({
+    kind: 'signed_out',
+  });
+});

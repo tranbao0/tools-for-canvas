@@ -130,6 +130,7 @@ it('keeps a refused Undo after its queue is abandoned', async () => {
   const held = gate();
   vi.mocked(h.deps.sessionFingerprint).mockImplementationOnce(async () => {
     await held.hold();
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('unconfirmed');
     return 'unconfirmed';
   });
   const pending = h.owner.act({
