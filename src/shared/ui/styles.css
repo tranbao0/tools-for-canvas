@@ -188,6 +188,10 @@
   scrollbar-width: thin;
 }
 
+.wr[data-surface='inpage'] > .wr-tabs + .wr-task-panel > :is(.wr-scroll, .wr-group-area) {
+  box-shadow: none;
+}
+
 /*
  * At the end of a list the wheel pulls the rows a little (see pull.ts), and they spring back. In
  * the side panel the page scrolls, so the task panel is the list, and its notice stays.

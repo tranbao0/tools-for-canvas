@@ -1694,19 +1694,32 @@ for (const theme of ['light', 'dark'] as const) {
       const list = inpageList(page);
       const scroll = list.locator('.wr-scroll');
       const bar = list.locator('.wr-pinned');
-      await expect(scroll).toHaveCSS(
-        'box-shadow',
-        `${await bar.evaluate((node) => getComputedStyle(node).borderTopColor)} 0px -1px 0px 0px`,
-      );
+      const shadow =
+        name === 'dock'
+          ? 'none'
+          : `${await bar.evaluate((node) => getComputedStyle(node).borderTopColor)} 0px -1px 0px 0px`;
+      if (name === 'dock')
+        await expect(list.locator('.wr-tabs')).toHaveCSS('border-bottom-width', '1px');
+      await expect(scroll).toHaveCSS('box-shadow', shadow);
       const height = await list.evaluate((node) => node.getBoundingClientRect().height);
       await scroll.hover();
       await page.mouse.wheel(0, 140);
-      await expect(scroll).toHaveCSS(
-        'box-shadow',
-        `${await bar.evaluate((node) => getComputedStyle(node).borderTopColor)} 0px -1px 0px 0px`,
-      );
+      await expect(scroll).toHaveCSS('box-shadow', shadow);
       expect(await list.evaluate((node) => node.getBoundingClientRect().height)).toBe(height);
       await list.screenshot({ path: testInfo.outputPath(`top-line-${name}-${theme}.png`) });
     });
   }
 }
+
+for (const fixture of ['dashboard-card-view', 'course-home', 'dashboard-widgets'])
+  test(`the list has one top rule on ${fixture}`, async ({ context, page, background }) => {
+    await open(context, page, background, {
+      page: fixture,
+      path: fixture === 'course-home' ? '/courses/101' : '/',
+      query: fixture === 'course-home' ? '/courses/101' : '/?fixture_course_work=second',
+    });
+    const list = inpageList(page).locator('.wr-task-panel > .wr-scroll');
+    await expect(list).toBeVisible();
+    if (fixture === 'dashboard-widgets') await expect(list).not.toHaveCSS('box-shadow', 'none');
+    else await expect(list).toHaveCSS('box-shadow', 'none');
+  });
