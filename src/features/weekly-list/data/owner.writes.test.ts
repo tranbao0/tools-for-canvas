@@ -426,6 +426,28 @@ describe('done marks', () => {
     expect((await item(h, QUIZ_3))?.state).toBe('open');
   });
 
+  it('unchecks work that is done only because Canvas counts it as submitted', async () => {
+    const h = await createHarness();
+    for (const row of h.canvas.scenario.plannerItems) {
+      if (row.plannable.title === 'Quiz 3: Cell membranes' && row.submissions !== false) {
+        row.submissions.submitted = true;
+      }
+    }
+    await loadReady(h);
+    h.canvas.resetCalls();
+    expect((await item(h, QUIZ_3))?.state).toBe('done');
+
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: false });
+    await h.owner.settled();
+
+    expect(h.canvas.callsOf('createOverride')).toEqual([[expect.objectContaining(NOT_DONE)]]);
+    expect((await item(h, QUIZ_3))?.state).toBe('open');
+    // A second uncheck shows the target flags already, so it writes nothing.
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: false });
+    await h.owner.settled();
+    expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
+  });
+
   it('writes a new change marker after a write', async () => {
     const h = await loaded();
     const before = await changeMarkerItem.getValue();
