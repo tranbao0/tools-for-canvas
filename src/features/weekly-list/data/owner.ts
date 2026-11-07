@@ -2047,13 +2047,19 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     stamp: WriteStamp,
   ): Promise<NoteValue | null> {
     const at = Date.parse(note.todoDate);
-    const items = await apiFor(origin)
-      .withGuard(writeGuard(stamp))
-      .listPlannerItems(toRange({ start: at - DAY_MS, end: at + DAY_MS }));
+    // The answer can enter the cache, so the read runs under the cookie rule, and a task of another
+    // account never counts. It does not need the write queue, which a failed write can end.
+    const items = await cookieBound(() =>
+      apiFor(origin).listPlannerItems(toRange({ start: at - DAY_MS, end: at + DAY_MS })),
+    );
+    if (items === DROPPED || !identityHolds(stamp)) return null;
     for (const item of items) {
       const { plannable } = item;
-      if (item.plannable_type !== 'planner_note' || !isCurrent(stamp)) continue;
+      if (item.plannable_type !== 'planner_note') continue;
       if (before.has(noteKey(item.plannable_id))) continue;
+      if (plannable.user_id !== undefined && !sameCanvasId(plannable.user_id, stamp.userId)) {
+        continue;
+      }
       const found: NoteValue = {
         id: item.plannable_id,
         title: plannable.title,
@@ -2096,6 +2102,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         await new Promise<void>((resolve) =>
           timers.setTimeout(() => resolve(), SAVED_NOTE_RETRY_MS),
         );
+        if (!identityHolds(stamp)) return null;
       }
     }
     return null;
