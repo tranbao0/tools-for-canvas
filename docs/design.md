@@ -853,6 +853,8 @@ A span that ended before today has one exception: open work dated inside it stay
   Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows, also over a state that is not the list, such as the signed-out page.
   A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
 - Every Undo says whether it restored the item: the reply to an Undo of a done mark, of a task delete or of a read mark has `restored`, true or false.
+  The reply to an Undo of a done mark or of a read mark comes after Canvas answered the write, and it says `restored: true` only when Canvas saved every write.
+  A write that Canvas refuses or that times out gives `restored: false`.
   An Undo that restored nothing ends its notice and shows one short line in the notice area: "Couldn't undo that".
   The line has no Undo button and no timer, and it stays until the student acts again or closes it.
   An Undo of a done mark restores every item or says that it did not: an item that the cache no longer holds (its week was dropped after 10 minutes unused) cannot be written.

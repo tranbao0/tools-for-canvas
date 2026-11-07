@@ -448,6 +448,19 @@ describe('done marks', () => {
     expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
   });
 
+  it('says an Undo restored nothing when Canvas refuses its write', async () => {
+    const h = await loaded();
+    const marked = await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
+    await h.owner.settled();
+    h.canvas.fail('updateOverride', canvasError('server', 500), { times: 1 });
+
+    const reply = await h.owner.act(restoreOf(marked));
+    await h.owner.settled();
+
+    expect(reply).toEqual({ undo: null, restored: false });
+    expect((await item(h, QUIZ_3))?.state).toBe('done');
+  });
+
   it('writes a new change marker after a write', async () => {
     const h = await loaded();
     const before = await changeMarkerItem.getValue();

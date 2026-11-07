@@ -6,7 +6,8 @@
  */
 import type { BrowserContext, Locator, Page, Worker } from '@playwright/test';
 import { IDS } from '../fixtures/scenario';
-import { overrideWrites, writesTo } from './support/canvas-state';
+import { errorReply, overrideWrites, writesTo } from './support/canvas-state';
+import { CANVAS_ERRORS } from '../fixtures/errors';
 import { saveAddress } from './support/scenario-api';
 import { advanceBackgroundClock, shortenTimer } from './support/clock';
 import { requestsQuiet } from './support/settle';
@@ -120,6 +121,38 @@ test.describe('the Undo notice', () => {
     expect(overrideWrites(canvas)).toHaveLength(1);
     // The mark stands, and no notice offers an Undo that would leave the item done.
     await expect(toast).toHaveCount(0);
+  });
+
+  test('says so in one line when Canvas refuses the write of an Undo', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const served = await serveScenario(context, [
+      {
+        method: 'PUT',
+        path: /^\/api\/v1\/planner\/overrides\/\d+$/,
+        respond: () => errorReply(CANVAS_ERRORS.serverError),
+      },
+    ]);
+    await addCsrfCookie(context, served.canvas.origin);
+    await saveAddress(background, served.canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    await expect(doneBox(page, QUIZ_3)).toBeVisible();
+    await settledList(page);
+    const toast = page.locator('.wr-toast');
+
+    await doneBox(page, QUIZ_3).click();
+    await expect(toast).toContainText('Marked done');
+    await expect.poll(() => overrideWrites(served.canvas)).toHaveLength(1);
+
+    await toast.getByRole('button', { name: 'Undo' }).click();
+
+    await expect(toast).toHaveText("Couldn't undo that");
+    await expect(toast.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+    // The item stays done, because Canvas kept the mark.
+    await expect(doneBox(group(page, 'today'), QUIZ_3)).toHaveCount(0);
   });
 
   test('sends a task DELETE only when the notice ends, and never after Ctrl+Z', async ({
