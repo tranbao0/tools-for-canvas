@@ -893,7 +893,9 @@ A span that ended before today has one exception: open work dated inside it stay
   So after "Mark all older done", every marked item is in Done or under this line, in the span that shows.
   - The line looks like the "N older" line of Past due: it is closed at the start, its open state is kept by the same memory (by its place in the list), and the open state stays across the views that replace the list.
   - Its rows are the rows of Done, newest first, each with a check that can be unchecked.
-    An item that is unchecked is open again and goes back to Past due.
+    An item that is unchecked is open again and follows its date and the shown span.
+    Overdue work can return to Past due; work that is not yet due returns to its day when that day is shown.
+    An open reminder shows only on its day.
   - The line has its own count.
     The Done count in the heading and on the view switch counts the done work of the shown span only, so it stays small, and a Done group with only older work shows the count 0, "Nothing done in this span." and the line.
   - It has no "Mark all older done" action, because its items are done.
