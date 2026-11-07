@@ -1724,7 +1724,7 @@ These sizes come from one test build of the same small app [19].
   The limit was 30 KB until 2026-10-29, when the span feature and the dashboard column filled it.
   The limit was 40 KB until 2026-11-03, when the Course work slot filled it.
   The limit of `inpage.js` alone is 50 KB since 2026-11-06: the page script now holds the weekly dock, its tab and the shared room lease, which the card did not need.
-  The owner chose 50 KB over moving the Announcements tab to its own script, which saves about 2 KB but adds a second load path for a change a student does not see.
+  The owner chose this limit over moving the Announcements tab to its own script, which saves about 2 KB but adds a second load path for a change a student does not see.
   The limit of `background.js` alone is 46 KB since 2026-11-06: the data owner now checks the Canvas and the student of every page request.
   The owner chose 46 KB over a refactor of those checks that saves about 60 bytes.
   The other entry points keep 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
