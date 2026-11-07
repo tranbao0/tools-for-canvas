@@ -99,7 +99,7 @@ test.describe('the Undo notice', () => {
     expect(overrideWrites(canvas)).toHaveLength(2);
   });
 
-  test('a second click before the row redraws writes nothing more and leaves no Undo that cannot restore', async ({
+  test('a second click before the row redraws writes nothing more and keeps the Undo of the first', async ({
     context,
     page,
     background,
@@ -119,8 +119,15 @@ test.describe('the Undo notice', () => {
     await requestsQuiet(page, canvas.requests, background);
 
     expect(overrideWrites(canvas)).toHaveLength(1);
-    // The mark stands, and no notice offers an Undo that would leave the item done.
-    await expect(toast).toHaveCount(0);
+    // The mark stands, and the notice of the first click still offers the Undo.
+    await expect(toast).toContainText('Marked done');
+    await toast.getByRole('button', { name: 'Undo' }).click();
+    await expect(quiz).not.toBeChecked();
+    await expect.poll(() => overrideWrites(canvas)).toHaveLength(2);
+    expect(overrideWrites(canvas)[1]).toMatchObject({
+      method: 'PUT',
+      body: { marked_complete: false, dismissed: false },
+    });
   });
 
   test('says so in one line when Canvas refuses the write of an Undo', async ({
