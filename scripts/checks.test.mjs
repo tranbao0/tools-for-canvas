@@ -226,10 +226,10 @@ describe('check-size', () => {
     assert.ok(background && background.gzipBytes < 100);
   });
 
-  test('the detector has a budget of 2,000 bytes, the list script 50,000, the background script 46,000, and other entry points 45,000', () => {
+  test('the detector has a budget of 2,000 bytes, the list script 52,000, the background script 46,000, and other entry points 45,000', () => {
     assert.equal(budgetFor('detector.js'), DETECTOR_BUDGET_BYTES);
     assert.equal(DETECTOR_BUDGET_BYTES, 2000);
-    assert.equal(budgetFor('inpage.js'), 50_000);
+    assert.equal(budgetFor('inpage.js'), 52_000);
     assert.equal(budgetFor('background.js'), 46_000);
     assert.equal(budgetFor('sidepanel.html'), BUDGET_BYTES);
     assert.equal(BUDGET_BYTES, 45000);
