@@ -108,7 +108,7 @@ export async function startViewer(): Promise<void> {
   // tabs pause their media and keep their place while the pane is hidden.
   const sendCovered = () =>
     port?.postMessage({ type: 'covered', covered: dock !== undefined && !dock.shown });
-  let width = normalizeWidth(undefined, innerWidth);
+  let width = normalizeWidth(undefined);
   let dock: Dock | undefined;
   // The port of the pane once it proved the secret, and a port that waits for that proof.
   let port: MessagePort | undefined;
@@ -512,7 +512,7 @@ export async function startViewer(): Promise<void> {
     }
     if (!context?.tools.fileViewer) return;
     themeChoice = context.settings?.theme ?? 'auto';
-    width = normalizeWidth(context.tools.fileViewerWidth, innerWidth);
+    width = normalizeWidth(context.tools.fileViewerWidth);
     const stored = await readTabs().catch(() => null);
     if (!live) return;
     // A reset during the read drops the answer: those tabs belong to the earlier student.
@@ -550,7 +550,7 @@ export async function startViewer(): Promise<void> {
           }
           // The turn-in pane shares the width, and it may have saved a new one.
           if (latest?.tools.fileViewerWidth !== undefined) {
-            width = normalizeWidth(latest.tools.fileViewerWidth, innerWidth);
+            width = normalizeWidth(latest.tools.fileViewerWidth);
             dock?.setWidth(width);
           }
         },

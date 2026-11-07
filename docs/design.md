@@ -320,7 +320,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     With a page scroll bar of 15 px it narrows by 28 px.
   - An account with the full-width layout (`full-width` on the body) has no width cap, so its content narrows by the width of the dock.
   On a narrower window the content narrows, as it does for the PDF pane.
-  Below 900 px the dock covers the page, as the other panes do.
+  Below 900 px the weekly dock covers the page.
 - **Canvas reads the window and not the room.**
   The media queries of Canvas see the width of the window, so a dock that takes room leaves a page that thinks it is wider than it is.
   A dock of 360 px in a window of 1000 px left Canvas's two column layout in 556 px: the right column pushed the main column down to 268 px, the "Switch to new dashboard view" button lay over the title, and "Recent Feedback" lay over the header (the visual test on the local Canvas, student dana, 2026-11-06).
@@ -330,8 +330,10 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The weekly dock or its tab that would leave less than 768 px lies over the page at its own width and leaves the padding of the page alone.
     This adds to the rule for a window below 900 px, which stretches the pane over the whole window.
     So the default dock of 360 px takes room from a window of 1128 px, and a tab of 38 px from 900 px.
-    A file pane and an assignment pane have no such rule.
-    They take their room from a window of 900 px, and the one column rule below gives the narrow room a layout that fits.
+    A file pane and an assignment pane leave at least 420 px beside the 84 px global navigation.
+    Their width, including the 12 px gap, is clamped on open, drag and window resize.
+    The stored width keeps the student's wider choice, so a wider window restores it.
+    Below 876 px, the 360 px minimum pane cannot leave that room, so it covers the page.
     So the card and the rows of the Assignments list stay beside the pane, and the mouse can switch the pane to another row.
   - **A room below the width of the two column layout gets one column.**
     Canvas puts the right column beside the main content from 992 px (`desktop`), or from 1140 px on a page with the course menu open (`body.course-menu-expanded`, `desktop--nav-open`).
@@ -472,6 +474,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     Its inset is the section's computed margin, copied and not fixed, and its own `visibility` is visible.
     The wrapper gets `position: relative`.
     The card is as tall as the section's box through CSS, with no measurement: it follows the box of the widget when Canvas changes it, for example when the summary counts arrive or a web font loads.
+    The card follows the page scroll with a 12 px top offset, bounded by the bottom of its slot.
+    Canvas's boxes stay unchanged; the extension sets the card offset because Canvas's overflow ancestors prevent CSS sticky positioning from following the page.
     It is never taller than the card in the band (the window height minus 48 px, at most 760 px and at least 420 px): a widget that is much taller, such as one that a narrow window stacks (about 5,997 px at 1000 px), would make a card as tall as the page, and its day list would not scroll inside it.
     The card sits at the top of the box, and its day list scrolls inside it.
     It never changes its box because of its own content.
@@ -3076,7 +3080,8 @@ With the pane read alone, the default run of the test failed before the fix.
    - A file opens in a pane docked to the right edge of the window, at full window height.
    - The page shrinks to make room, the same as with a browser side panel, so nothing in Canvas is hidden.
      The pane exists only while the student has a file open.
-   - A handle on its left edge resizes it, from 360 px to 70 percent of the window, and the width is saved.
+   - A handle on its left edge resizes it from 360 px to at most 70 percent of the window, while leaving 420 px beside the 84 px global navigation and the 12 px pane gap.
+     The chosen width is saved; a clamp for the current window does not replace it.
    - The pane uses a fixed host and a closed shadow root, with an extension iframe inside.
      A script of the Canvas page cannot reach the frame element or the address in its `src`.
      This is no protection for the channel, because the hello gives the script the window of the pane (`event.source`) and the origin of the pane page.
@@ -3093,8 +3098,8 @@ With the pane read alone, the default run of the test failed before the fix.
      The weekly list dock is no card and keeps the look that the owner approved.
    - The pane has a close button, and Escape closes it when focus is inside.
      In full view, Escape leaves full view first (see "Full view" below).
-   - Below 900 px of window width, the pane covers the page instead, with the same close button, with no gap, no round corners and no Full view button.
-   - A pane takes room from a window of 900 px, however narrow the room is, and the page gets the one column layout when the room is narrow (see "Canvas reads the window and not the room" under decision 4).
+   - Below 876 px of window width, the pane covers the page instead, with the same close button, with no gap, no round corners and no Full view button.
+   - A pane takes room from a window of 876 px, with at least 420 px beside the global navigation, and the page gets the one column layout when the room is narrow (see "Canvas reads the window and not the room" under decision 4).
    - The weekly list dock of the classic dashboard (decision 4) uses the same dock module, with the role `weekly`, so the file pane and the dock sit in the same place.
      Only one of them shows at a time: while a file pane is open, the weekly dock and its tab are hidden, and they come back in the state they had when the pane closes.
      The two scripts share the room lease, and the weekly dock opens only when no file pane is open.
@@ -3117,7 +3122,7 @@ With the pane read alone, the default run of the test failed before the fix.
      One exception keeps both rules: a file pane that closes while an assignment pane waits under it leaves that pane in full view.
      A pane that a file pane covers can close without the student (a change of student, or a page that removes its host), and then full view stays as the file pane has it.
      The weekly list dock and its tab stay behind a pane in full view, and the Preview row state stays.
-     Below 900 px the dock already covers the page, so the button is hidden and the narrow layout wins.
+     Below 876 px the pane already covers the page, so the button is hidden and the narrow layout wins.
      The state is kept, so full view comes back when the window gets wide again.
      Escape with the focus in the pane leaves full view first, and a second Escape does what it did before.
      The file pane page sends `escape` (the key) and `full-view` (the button) over the port, and the page script answers with the state.

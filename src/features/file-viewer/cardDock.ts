@@ -10,7 +10,7 @@ const CARD_CSS = `:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX
 :host([data-card][data-theme='dark']) section{box-shadow:0 2px 14px rgba(0,0,0,.55)}
 :host([data-card]) .handle{z-index:1;top:${CARD_GAP_PX}px;height:calc(100% - ${2 * CARD_GAP_PX}px);pointer-events:auto}
 :host([data-card][data-full]) .handle{display:none}
-@media(max-width:899px){:host([data-card]){padding:0}:host([data-card]) section{border:0;border-left:1px solid var(--edge);border-radius:0;box-shadow:none}}
+@media(max-width:875px){:host([data-card]){padding:0}:host([data-card]) section{border:0;border-left:1px solid var(--edge);border-radius:0;box-shadow:none}}
 `;
 
 /** Makes the dock of a pane, with the rules of a card. */

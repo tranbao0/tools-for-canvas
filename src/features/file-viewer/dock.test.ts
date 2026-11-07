@@ -109,6 +109,23 @@ describe('the room that Canvas gets beside a dock', () => {
     }
   }
 
+  it('keeps 420 px beside the navigation and restores the chosen width after a resize', () => {
+    inWindow(1000, () => {
+      const file = dock('file', 900, true);
+      file.open();
+      expect(padding()).toBe('496px');
+      expect(file.width).toBe(900);
+      window.innerWidth = 1600;
+      window.dispatchEvent(new Event('resize'));
+      expect(padding()).toBe('912px');
+      file.setWidth(1000);
+      window.innerWidth = 900;
+      window.dispatchEvent(new Event('resize'));
+      expect(padding()).toBe('396px');
+      expect(file.width).toBe(1000);
+    });
+  });
+
   it('lies over the page at its own width when the weekly dock would leave less than 768 px, on a window of 900 px or more', () => {
     inWindow(1000, () => {
       const weekly = dock('weekly', 360);

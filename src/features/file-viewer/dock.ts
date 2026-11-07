@@ -10,16 +10,16 @@
  */
 import { normalizeWidth } from './width';
 
-/** Below this window width the dock covers the page instead of making room beside it. */
-const NARROW_PX = 900;
+/** Below this window width a pane covers the page instead of making room beside it. */
+const NARROW_PX = 876;
 
 /**
  * The least room that the weekly dock and its tab leave beside them. Canvas starts its mobile
  * layout below 768 px (`tablet` in `app/stylesheets/base/mixins/_breakpoints.scss`), but its media
  * queries read the window and not the room, so a room that small cannot get that layout. The list
  * is a side column, so it lies over the page at its own width and leaves the padding of the page
- * alone when it would leave less. A file pane or an assignment pane keeps taking room, because the
- * card and the rows of the page must stay beside it: the one column layout below handles the room.
+ * alone when it would leave less. A file pane or an assignment pane reserves 420 px beside the global
+ * navigation, and the one column layout below handles that room.
  */
 const MIN_ROOM_PX = 768;
 
@@ -38,7 +38,10 @@ const STACK_CSS = `html[${STACK_ATTRIBUTE}] .ic-app-main-content{display:block!i
 
 /** Whether a dock that would take `px` of room leaves the page alone: the window is narrow, or the room of the weekly dock would be. */
 function covers(win: Window, px: number, role: DockRole): boolean {
-  return win.innerWidth < NARROW_PX || (role === 'weekly' && win.innerWidth - px < MIN_ROOM_PX);
+  return (
+    win.innerWidth < NARROW_PX ||
+    (role === 'weekly' && (win.innerWidth < 900 || win.innerWidth - px < MIN_ROOM_PX))
+  );
 }
 
 /**
@@ -475,13 +478,14 @@ section{outline:0;box-sizing:border-box;height:100%;background:var(--bg);border-
 iframe{border:0;width:100%;flex:1;min-height:0;background:transparent}
 .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}
 .handle:hover,.handle:focus-visible{background:var(--focus)}
-@media(max-width:899px){.handle{display:none}}
+@media(max-width:899px){:host(:not([data-card])) .handle{display:none}}
+@media(max-width:875px){.handle{display:none}}
 `;
 
 export function createDock(options: DockOptions): Dock {
   const doc = options.doc ?? document;
   const win = doc.defaultView ?? window;
-  let width = normalizeWidth(options.width, win.innerWidth);
+  let width = normalizeWidth(options.width);
   let hidden = false;
   let opened = false;
   let full = false;
@@ -523,8 +527,8 @@ export function createDock(options: DockOptions): Dock {
 
   const layout = (): void => {
     if (!opened) return;
-    const taken = normalizeWidth(width, win.innerWidth) + gap;
-    const narrow = win.innerWidth < NARROW_PX;
+    const taken = normalizeWidth(width, win.innerWidth, options.role === 'weekly' ? 0 : 516) + gap;
+    const narrow = win.innerWidth < (options.role === 'weekly' ? 900 : NARROW_PX);
     full = card && !narrow && shared().fullView === true;
     host.toggleAttribute('data-full', full);
     // Full view and a narrow window stretch the host from the left edge to the right edge of the
@@ -538,7 +542,7 @@ export function createDock(options: DockOptions): Dock {
     writePadding(page, taken, covers(win, taken, options.role));
   };
   const setWidth = (next: number): void => {
-    width = normalizeWidth(next, win.innerWidth);
+    width = normalizeWidth(next);
     layout();
   };
 
@@ -559,7 +563,10 @@ export function createDock(options: DockOptions): Dock {
   handle.addEventListener('keydown', (event) => {
     if (!event.isTrusted || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
-    setWidth(width + (event.key === 'ArrowLeft' ? 20 : -20));
+    setWidth(
+      normalizeWidth(width, win.innerWidth, options.role === 'weekly' ? 0 : 516) +
+        (event.key === 'ArrowLeft' ? 20 : -20),
+    );
     options.onResized(width);
   });
   // In full view, Escape leaves it first. A frame of the Canvas page can reach this root, so only
