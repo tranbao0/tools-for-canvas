@@ -790,6 +790,31 @@ for (const mismatch of ['student', 'origin'] as const) {
         noteId: IDS.notes.libraryBooksToday,
       });
     }
+    if (action.kind === 'markAnnouncement' || action.kind === 'restoreAnnouncement') {
+      // The topic is in the cache, so only the identity can refuse the write.
+      h.canvas.setAnnouncements(IDS.courses.biology, [
+        {
+          id: '11',
+          title: 'Notice',
+          message: 'Body',
+          posted_at: new Date(Date.now() - 3600000).toISOString(),
+          read_state: 'unread',
+        },
+      ]);
+      const feed = { surface: 'inpage' as const, scopeCourseId: null, tab: null, force: true };
+      await h.owner.announcementFeed(feed);
+      await h.owner.settled();
+      // An Undo has a mark to take back.
+      if (action.kind === 'restoreAnnouncement') {
+        await h.owner.act({
+          userId: '5501',
+          origin: ORIGIN,
+          kind: 'markAnnouncement',
+          courseId: IDS.courses.biology,
+          topicId: '11',
+        });
+      }
+    }
     await h.owner.settled();
     await settleAll();
     const before = await sessionCacheItem.getValue();

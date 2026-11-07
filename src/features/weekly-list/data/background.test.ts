@@ -128,3 +128,42 @@ it('limits disconnect to its delete token and maintains the alarm', async () => 
   expect(resume).toHaveBeenCalledOnce();
   stop();
 });
+
+it.each([
+  [
+    'a valid action of another kind',
+    { kind: 'setDone', keys: ['assignment:1'], done: true, userId: IDS.user, origin: ORIGIN },
+  ],
+  ['a delete without a task', { kind: 'deleteTask', userId: IDS.user, origin: ORIGIN }],
+  ['a delete without a student', { kind: 'deleteTask', noteId: '8', origin: ORIGIN }],
+  ['text that is not JSON', 'not an action'],
+])('runs nothing for a delete port that holds %s', async (_name, held) => {
+  const h = await createHarness();
+  await loadReady(h);
+  let connect!: (port: import('wxt/browser').Browser.runtime.Port) => void;
+  vi.spyOn(browser.runtime.onConnect, 'addListener').mockImplementation((fn) => {
+    connect = fn;
+  });
+  vi.spyOn(browser.runtime.onConnect, 'removeListener').mockImplementation(() => undefined);
+  vi.spyOn(browser.alarms.onAlarm, 'addListener').mockImplementation(() => undefined);
+  vi.spyOn(browser.alarms.onAlarm, 'removeListener').mockImplementation(() => undefined);
+  vi.spyOn(browser.alarms, 'create').mockResolvedValue(undefined);
+  vi.spyOn(browser.alarms, 'get').mockResolvedValue(undefined);
+  const act = vi.spyOn(h.owner, 'act');
+  const stop = wireDataTriggers(h.owner);
+  const postMessage = vi.fn();
+  const addListener = vi.fn();
+  connect({
+    name: `weekrow-delete:${typeof held === 'string' ? held : JSON.stringify(held)}`,
+    sender: { url: browser.runtime.getURL('/sidepanel.html') },
+    postMessage,
+    onDisconnect: { addListener },
+  } as unknown as import('wxt/browser').Browser.runtime.Port);
+  await h.owner.settled();
+  await settleAll();
+  expect(act).not.toHaveBeenCalled();
+  expect(addListener).not.toHaveBeenCalled();
+  expect(postMessage).not.toHaveBeenCalled();
+  expect(h.canvas.callsOf('deleteNote')).toEqual([]);
+  stop();
+});
