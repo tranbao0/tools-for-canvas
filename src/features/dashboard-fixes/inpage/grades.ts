@@ -37,6 +37,15 @@ function cardCourseId(card: HTMLElement): string {
   return (card.getAttribute('data-testid') ?? '').replace('course-grade-card-', '');
 }
 
+/**
+ * The classes of a card and of everything in it. A copy is a clone, so it keeps the classes that
+ * the card had when it was cloned. React gives the nodes of the card other classes when the theme
+ * changes, so a change of this value tells that the copies show the old theme.
+ */
+function looksOf(card: HTMLElement): string {
+  return [card, ...card.querySelectorAll('*')].map((node) => node.getAttribute('class')).join('|');
+}
+
 export interface GradeVisibilityStore {
   userId?: string;
   observed: Map<string, Map<string, boolean>>;
@@ -169,6 +178,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
       overrides?.get(id) === false ||
       visibility[widgetId]?.[id] === false;
     const signature = JSON.stringify([
+      template === undefined ? null : looksOf(template),
       missing.map((course) => [course.id, course.name, course.color, course.score, course.grade]),
       missing.map((course) => hidden(course.id)),
     ]);
