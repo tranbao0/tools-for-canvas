@@ -43,6 +43,7 @@ function setup() {
     }),
     permission: vi.fn(async () => true),
     tabUrl: vi.fn(async () => 'https://school.edu/courses/2/assignments/3/submissions/4'),
+    frameUrl: vi.fn(async () => null),
     injectFrames: vi.fn(async () => undefined),
     openInTop: vi.fn(async () => true),
   };
@@ -468,6 +469,19 @@ describe('pane session', () => {
   });
 });
 
+/**
+ * Sends a message as a child frame whose page is `url`: the host reads that address from the frame,
+ * as the browser host does.
+ */
+function frameOpen(
+  message: unknown,
+  sender: Parameters<typeof routeViewerMessage>[1],
+  host: ViewerHost,
+) {
+  vi.mocked(host.frameUrl).mockResolvedValue(sender.url ?? null);
+  return routeViewerMessage(message, sender, host);
+}
+
 describe('files list frame', () => {
   const frame = {
     url: 'https://school.edu/courses/2/assignments/3/submissions/4?preview=1&rand=5',
@@ -479,7 +493,7 @@ describe('files list frame', () => {
   it('passes the address of the clicked link on only under the check of a top frame click', async () => {
     const { host } = setup();
     const kept = 'https://school.edu/courses/9/files/42?verifier=x';
-    await routeViewerMessage({ ...open, address: kept }, frame, host);
+    await frameOpen({ ...open, address: kept }, frame, host);
     expect(host.openInTop).toHaveBeenLastCalledWith(7, '42', kept);
     for (const address of [
       'https://evil.example/files/42?verifier=x',
@@ -487,17 +501,30 @@ describe('files list frame', () => {
       'javascript:alert(1)',
       7,
     ]) {
-      await routeViewerMessage({ ...open, address }, frame, host);
+      await frameOpen({ ...open, address }, frame, host);
       expect(host.openInTop).toHaveBeenLastCalledWith(7, '42');
     }
   });
 
   it('passes the file of a child frame of the saved Canvas to the top frame of its tab', async () => {
     const { host } = setup();
-    expect(await routeViewerMessage(open, frame, host)).toEqual({ opened: true });
+    expect(await frameOpen(open, frame, host)).toEqual({ opened: true });
     expect(host.openInTop).toHaveBeenCalledWith(7, '42');
     vi.mocked(host.openInTop).mockResolvedValue(false);
-    expect(await routeViewerMessage(open, frame, host)).toEqual({ opened: false });
+    expect(await frameOpen(open, frame, host)).toEqual({ opened: false });
+  });
+  it('reads the page of the frame from the frame, and not from the url of the sender', async () => {
+    const { host } = setup();
+    vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/courses/2/assignments');
+    const stale = { url: 'about:blank', frameId: 5, documentId: 'doc-1', tab: { id: 7 } };
+    vi.mocked(host.frameUrl).mockResolvedValue(
+      'https://school.edu/courses/2/assignments/3?content_only=1',
+    );
+    expect(await routeViewerMessage(open, stale, host)).toEqual({ opened: true });
+    expect(host.frameUrl).toHaveBeenCalledWith(7, 5, 'doc-1');
+    // A frame that cannot be read opens nothing.
+    vi.mocked(host.frameUrl).mockResolvedValue(null);
+    await expect(routeViewerMessage(open, stale, host)).rejects.toThrow();
   });
   it.each([
     ['the top frame', { ...frame, frameId: 0 }],
@@ -511,21 +538,19 @@ describe('files list frame', () => {
     ['a sender with no frame id', { ...frame, frameId: undefined }],
   ])('refuses %s', async (_name, sender) => {
     const { host } = setup();
-    await expect(routeViewerMessage(open, sender, host)).rejects.toThrow();
+    await expect(frameOpen(open, sender, host)).rejects.toThrow();
     expect(host.openInTop).not.toHaveBeenCalled();
   });
   it('refuses a bad file id and a tab whose top frame is not a submission page of the saved Canvas', async () => {
     const { host } = setup();
-    await expect(routeViewerMessage({ ...open, fileId: '4/2' }, frame, host)).rejects.toThrow(
-      'file id',
-    );
+    await expect(frameOpen({ ...open, fileId: '4/2' }, frame, host)).rejects.toThrow('file id');
     for (const url of [
       'https://other.edu/courses/2/assignments/3/submissions/4',
       'https://school.edu/courses/2/modules',
       null,
     ]) {
       vi.mocked(host.tabUrl).mockResolvedValue(url);
-      await expect(routeViewerMessage(open, frame, host)).rejects.toThrow('submission page');
+      await expect(frameOpen(open, frame, host)).rejects.toThrow('submission page');
     }
     expect(host.openInTop).not.toHaveBeenCalled();
   });
@@ -540,13 +565,13 @@ describe('files list frame', () => {
     it('passes the file of a frame with a page of the course and content_only=1 to the top frame', async () => {
       const { host } = setup();
       vi.mocked(host.tabUrl).mockResolvedValue(LIST);
-      expect(await routeViewerMessage(open, pane, host)).toEqual({ opened: true });
+      expect(await frameOpen(open, pane, host)).toEqual({ opened: true });
       expect(host.openInTop).toHaveBeenCalledWith(7, '42');
       const discussion = {
         ...pane,
         url: 'https://school.edu/courses/2/discussion_topics/9?content_only=1',
       };
-      expect(await routeViewerMessage(open, discussion, host)).toEqual({ opened: true });
+      expect(await frameOpen(open, discussion, host)).toEqual({ opened: true });
     });
     it.each([
       [
@@ -565,7 +590,7 @@ describe('files list frame', () => {
     ])('refuses %s', async (_name, sender) => {
       const { host } = setup();
       vi.mocked(host.tabUrl).mockResolvedValue(LIST);
-      await expect(routeViewerMessage(open, sender, host)).rejects.toThrow();
+      await expect(frameOpen(open, sender, host)).rejects.toThrow();
       expect(host.openInTop).not.toHaveBeenCalled();
     });
     it('refuses a frame when the top frame shows another course page, and the assignment pane frame under a submission page', async () => {
@@ -576,23 +601,23 @@ describe('files list frame', () => {
         'https://school.edu/courses/2/assignments/3?content_only=1',
       ]) {
         vi.mocked(host.tabUrl).mockResolvedValue(url);
-        await expect(routeViewerMessage(open, pane, host)).rejects.toThrow('submission page');
+        await expect(frameOpen(open, pane, host)).rejects.toThrow('submission page');
       }
       vi.mocked(host.tabUrl).mockResolvedValue(
         'https://school.edu/courses/2/assignments/3/submissions/4',
       );
-      await expect(routeViewerMessage(open, pane, host)).rejects.toThrow();
+      await expect(frameOpen(open, pane, host)).rejects.toThrow();
       expect(host.openInTop).not.toHaveBeenCalled();
     });
     it('passes the file of a pane frame of any course when the top frame is the dashboard, and of the course of a course home page', async () => {
       const { host } = setup();
       vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/');
-      expect(await routeViewerMessage(open, pane, host)).toEqual({ opened: true });
+      expect(await frameOpen(open, pane, host)).toEqual({ opened: true });
       const other = { ...pane, url: 'https://school.edu/courses/9/assignments/3?content_only=1' };
-      expect(await routeViewerMessage(open, other, host)).toEqual({ opened: true });
+      expect(await frameOpen(open, other, host)).toEqual({ opened: true });
       vi.mocked(host.tabUrl).mockResolvedValue('https://school.edu/courses/2');
-      expect(await routeViewerMessage(open, pane, host)).toEqual({ opened: true });
-      await expect(routeViewerMessage(open, other, host)).rejects.toThrow();
+      expect(await frameOpen(open, pane, host)).toEqual({ opened: true });
+      await expect(frameOpen(open, other, host)).rejects.toThrow();
     });
     it('injects the catcher for the top frame of the list, and for no other course page', async () => {
       const { host, sender } = setup();

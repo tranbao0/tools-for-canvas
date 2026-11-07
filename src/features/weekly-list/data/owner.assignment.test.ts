@@ -304,3 +304,93 @@ it('drops assignment details when another Canvas loads during the settings read'
   release();
   await failed;
 });
+
+describe('a hand-in that the list does not show yet', () => {
+  const COURSE = IDS.courses.biology;
+  const ASSIGNMENT = IDS.assignments.bioPreLab7Missing;
+
+  /** Makes Canvas answer the details of the assignment with a submission handed in at `at`. */
+  function handIn(h: Harness, at: string): void {
+    const records = rawRecords();
+    h.canvas.setAssignmentView(COURSE, ASSIGNMENT, {
+      assignment: { ...records.assignment, id: ASSIGNMENT },
+      submission: {
+        ...records.submission,
+        submitted_at: at,
+        workflow_state: 'submitted',
+        attempt: 1,
+      },
+    });
+  }
+
+  it('starts a round at once, inside the 60 seconds after the last round', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    h.canvas.resetCalls();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges().length).toBeGreaterThan(0);
+  });
+
+  it('starts no round for the same hand-in again, and none for work that the list shows as handed in', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    await vi.advanceTimersByTimeAsync(70_000);
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+    // The list holds this assignment as handed in, so its read needs no round.
+    const done = IDS.assignments.bioLabReport1;
+    const records = rawRecords();
+    h.canvas.setAssignmentView(COURSE, done, {
+      assignment: { ...records.assignment, id: done },
+      submission: records.submission,
+    });
+    await h.owner.assignmentDetails(COURSE, done, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+  });
+
+  it('starts no round for a submission that is not handed in', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    const records = rawRecords();
+    h.canvas.setAssignmentView(COURSE, ASSIGNMENT, {
+      assignment: { ...records.assignment, id: ASSIGNMENT },
+      submission: { ...records.submission, submitted_at: null, workflow_state: 'unsubmitted' },
+    });
+    h.canvas.resetCalls();
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+  });
+});
+
+describe('a hand-in that the assignment page shows', () => {
+  it('starts a round at once when the page reads the owner of a submission handed in', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    const course = IDS.courses.biology;
+    const assignment = IDS.assignments.bioPreLab7Missing;
+    const records = rawRecords();
+    h.canvas.setAssignmentView(course, assignment, {
+      assignment: { ...records.assignment, id: assignment },
+      submission: {
+        ...records.submission,
+        submitted_at: '2026-11-02T10:00:00Z',
+        workflow_state: 'submitted',
+      },
+    });
+    h.canvas.resetCalls();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.owner.assignmentOwner(course, assignment, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges().length).toBeGreaterThan(0);
+  });
+});

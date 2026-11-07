@@ -97,6 +97,13 @@ import type {
 } from '../../assignment-view/protocol';
 import { projectAssignmentView, projectReports } from '../../assignment-view/project';
 import {
+  handInKey,
+  handInRecordOf,
+  isHandedIn,
+  listShowsNoHandIn,
+  type HandInRecord,
+} from './handIn';
+import {
   applyPatch,
   matchesTarget,
   overrideTargetFor,
@@ -836,6 +843,25 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (cache === null) return;
     cache = { ...cache, limits: limitsAfterStart(cache.limits, 'full', clock.now()) };
     schedule('full');
+  }
+
+  /** The hand-ins that already started a round, so the same hand-in never starts a second one. */
+  const handInsSeen = new Set<string>();
+  const MAX_HAND_INS_SEEN = 64;
+
+  /**
+   * A read of a submission that shows work handed in, while the cached list still shows the
+   * assignment as not handed in, starts a round at once: the student changed it, and the 60-second
+   * limit is for rounds that nobody asked for.
+   */
+  function refreshForHandIn(courseId: string, assignmentId: string, record: HandInRecord): void {
+    if (cache === null || cache.limited || !isHandedIn(record)) return;
+    if (!listShowsNoHandIn(coveredItems(cache.planner), courseId, assignmentId)) return;
+    const key = handInKey(courseId, assignmentId, record);
+    if (handInsSeen.has(key)) return;
+    if (handInsSeen.size >= MAX_HAND_INS_SEEN) handInsSeen.clear();
+    handInsSeen.add(key);
+    scheduleForcedFull();
   }
 
   function cancelDefer(): void {
@@ -3093,7 +3119,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           ? canvasTimeZone(session, await viewContext(origin))
           : deps.browserTimeZone();
       if (!isCurrent(stamp)) throw new ViewerUnconfirmedError();
-      return { details: projectAssignmentView(assignment, submission), timeZone };
+      const details = projectAssignmentView(assignment, submission);
+      refreshForHandIn(courseId, assignmentId, handInRecordOf(submission));
+      return { details, timeZone };
     });
   }
 
@@ -3103,13 +3131,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentOwnerReply | NoSubmissionAccess> {
-    const reply = await readForAssignmentView(origin, tabId, async (api) => {
+    const reply = await readForAssignmentView(origin, tabId, async (api, entry) => {
       const record = await api
         .getOwnSubmissionUserRecord(courseId, assignmentId)
         .catch(notFoundIsNull);
       if (record === null) return null;
       const user = record['user_id'];
       if (typeof user !== 'string' || !isCanvasId(user)) throw new Error('Not a submission record');
+      // The assignment page reads this record on each load, so a hand-in that reloads the page
+      // shows here.
+      if (identityHolds(entry)) refreshForHandIn(courseId, assignmentId, handInRecordOf(record));
       return { userId: user, ...projectReports(record) };
     });
     return reply === null ? { kind: 'no_submission_access' } : reply;

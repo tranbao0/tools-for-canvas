@@ -7,7 +7,6 @@
  */
 import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { MAX_FILE_BYTES } from '../../../shared/canvas/fileBytes';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { t } from '../../../shared/ui/i18n';
 import { closeFile, openFile, type Tabs } from '../model';
@@ -15,11 +14,10 @@ import { FileCard, type FileState, type PaneFile } from './FileCard';
 import type { CoveredHost } from './covered';
 import type { FullViewHost } from './fullView';
 import { FullViewButton } from './FullViewButton';
-import { fileKind, isPdf } from './fileInfo';
+import { canShow, fileKind, isPdf } from './fileInfo';
 import { fileLinks, readAddress } from './links';
 import { PdfTab, type PdfHost } from './PdfTab';
 import { MediaTab } from './MediaTab';
-import { playerType } from './player';
 import { PANEL_ID, TabStrip, tabDomId, type TabItem } from './TabStrip';
 
 /** What the pane needs from the extension and from the Canvas page. */
@@ -283,9 +281,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   for (const fileId of tabs.ids) {
     const state = files[fileId];
     if (state?.kind !== 'ready') continue;
-    if (!isPdf(state.file.contentType) && !playerType(state.file.contentType, state.file.name))
-      continue;
-    if (Number.isFinite(state.file.size) && state.file.size > MAX_FILE_BYTES) continue;
+    if (!canShow(state.file.contentType, state.file.name, state.file.size)) continue;
     const course = courseHints.current.get(fileId) ?? state.file.courseId;
     const links = fileLinks(host.origin, fileId, course);
     if (!links) continue;
@@ -332,8 +328,8 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const activeState = active === null ? undefined : files[active];
   const activePdf =
     activeState?.kind === 'ready' &&
-    isPdf(activeState.file.contentType) &&
-    !(Number.isFinite(activeState.file.size) && activeState.file.size > MAX_FILE_BYTES);
+    canShow(activeState.file.contentType, activeState.file.name, activeState.file.size) &&
+    isPdf(activeState.file.contentType);
   const activeLinks =
     active !== null && activeState?.kind === 'ready'
       ? fileLinks(host.origin, active, courseHints.current.get(active) ?? activeState.file.courseId)

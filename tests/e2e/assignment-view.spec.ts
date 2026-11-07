@@ -95,7 +95,7 @@ const FILE_ROUTES: FakeCanvasRoute[] = [
  * a discussion, a quiz and a discussion of a group.
  */
 function paneContent(name: string, mode: string): string {
-  return `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>${name}</h1><p id="mode">${mode}</p><p><a id="file" href="/courses/12/files/501" onclick="return false">essay.txt</a> <a id="file-plain" href="/courses/12/files/501">essay again</a></p><p><a id="to-discussion" href="${DISCUSSION}">discussion</a> <a id="to-quiz" href="${QUIZ}">quiz</a> <a id="to-take" href="${QUIZ_TAKE}">take</a> <a id="to-group" href="${GROUP_DISCUSSION}">group</a></p><input id="marker" aria-label="Draft"><script>addEventListener('beforeunload',(e)=>{if(document.getElementById('marker').value){e.preventDefault();e.returnValue='';}})</script><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`;
+  return `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>${name}</h1><p id="mode">${mode}</p><p><a id="file" href="/courses/12/assignments/101/submissions/9?download=501" onclick="return false">Download essay.txt</a> <a id="file-plain" href="/courses/12/files/501">essay again</a></p><p><a id="to-discussion" href="${DISCUSSION}">discussion</a> <a id="to-quiz" href="${QUIZ}">quiz</a> <a id="to-take" href="${QUIZ_TAKE}">take</a> <a id="to-group" href="${GROUP_DISCUSSION}">group</a></p><input id="marker" aria-label="Draft"><script>addEventListener('beforeunload',(e)=>{if(document.getElementById('marker').value){e.preventDefault();e.returnValue='';}})</script><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`;
 }
 
 interface OpenOptions {
@@ -828,7 +828,7 @@ test('the pane is a card with a gap, and its header has a title, a second line a
   expect(header.titleSize).toBe('18px');
   expect(header.ellipsis).toBe('ellipsis');
   // The second line is the due text and the points of the row, in 13 px muted text.
-  expect(header.subText).toBe('Due Nov 3 at 10pm | 10 pts');
+  expect(header.subText).toBe('Due Nov 3 at 10pm | -/10 pts');
   expect(header.subSize).toBe('13px');
   expect(header.subColor).toBe('rgb(88, 104, 116)');
   expect(header.sub.y).toBeGreaterThan(header.title.y + header.title.height);
@@ -882,8 +882,8 @@ test('a row with no due text and no points gives a header with one line, and a l
   await ready(page, canvas);
   await page.evaluate(() => {
     document.querySelector('#assignment_102 .ig-details')!.remove();
-    // Canvas draws the date twice: for screen readers, and for the eye. A long date shows once.
-    const due = document.querySelector('#assignment_103 .non-screenreader')!;
+    // Canvas draws the date for screen readers and for the eye. A long date shows once.
+    const due = document.querySelector('#assignment_103 .visible-desktop')!;
     due.insertAdjacentHTML('beforeend', ' ' + 'long '.repeat(60));
   });
   const read = async () => {
@@ -919,7 +919,7 @@ test('a row with no due text and no points gives a header with one line, and a l
   expect(long.text).not.toContain('Due Nov 5 at 10pm Due');
   // The header follows the frame that shows.
   await preview(page, 'Essay').click();
-  await expect.poll(async () => (await read()).text).toBe('Due Nov 3 at 10pm | 10 pts');
+  await expect.poll(async () => (await read()).text).toBe('Due Nov 3 at 10pm | -/10 pts');
   await preview(page, 'Reading').click();
   await expect.poll(async () => (await read()).hidden).toBe(true);
 });

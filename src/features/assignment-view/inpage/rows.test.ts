@@ -211,9 +211,26 @@ describe('turning the view off', () => {
 });
 
 describe('the second line of the pane header', () => {
-  /** The details of a row as Canvas draws them: a copy for screen readers and one for the eye. */
-  const DETAILS =
-    '<div class="ig-details"><div class="ig-details__item assignment-date-due" data-view="date-due"><span class="screenreader-only">Due Nov 3 at 10pm</span><span class="non-screenreader" aria-hidden="true"><strong>Due</strong>\n  Nov 3 at 10pm</span></div><div class="ig-details__item js-score"><span class="screenreader-only">10 Points Possible</span><span class="non-screenreader" aria-hidden="true">10 pts</span></div></div>';
+  /**
+   * The details of a row as the Canvas of 2026-04 draws them (`AssignmentListItem.handlebars`
+   * and the due date and score parts of the Assignments list): the date has a copy for screen
+   * readers in a hashed class of its React component, and the copy for the eye has a version for
+   * each window width, one of them hidden by the page. The score has a copy for the eye
+   * and one for screen readers.
+   */
+  const DUE =
+    '<div class="ig-details__item assignment-date-due" data-view="date-due"><span wrap="normal" letter-spacing="normal" class="css-10bemfc-text">Due</span> <span data-testid="friendly-date-time"><span class="css-r9cwls-screenReaderContent">Nov 3 at  10:00pm</span><time datetime="2026-11-04T06:00:00.000Z" aria-hidden="true"><span class="visible-desktop">Nov 3 at  10:00pm</span><span class="hidden-desktop">Nov 3 at  10:00pm</span></time></span></div>';
+  const SCORE =
+    '<div class="ig-details__item js-score"><span class="non-screenreader" aria-hidden="true">\n  <span class="score-display">\n    -/10 pts\n  </span>\n  &nbsp;|&nbsp;\n  <span class="grade-display">\n    Not Yet Graded\n  </span>\n</span>\n<span class="screenreader-only">\n  Assignment not yet graded. 10 points possible.\n</span>\n</div>';
+  const DETAILS = `<div class="ig-details rendered">\n  ${DUE}\n  ${SCORE}\n</div>`;
+  /** The rules of the page that hide those copies. */
+  const PAGE_STYLE =
+    '.css-r9cwls-screenReaderContent,.screenreader-only{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);border:0}.hidden-desktop{display:none}';
+  beforeEach(() => {
+    const style = document.createElement('style');
+    style.textContent = PAGE_STYLE;
+    document.head.append(style);
+  });
   const press = (id: string): void => click(button(id), true);
 
   it('is the due text and the points that Canvas shows, joined with a bar', () => {
@@ -224,22 +241,33 @@ describe('the second line of the pane header', () => {
       courseId: '12',
       assignmentId: '101',
       title: 'Essay',
-      details: 'Due Nov 3 at 10pm | 10 pts',
+      details: 'Due Nov 3 at 10:00pm | -/10 pts | Not Yet Graded',
     });
   });
 
   it('reads the row at the click, and leaves out the part that a row does not have', () => {
     start();
-    rowOf('101').querySelector('.ig-details')!.outerHTML = DETAILS.replace(
-      /<div class="ig-details__item js-score">.*<\/div><\/div>$/,
-      '</div>',
-    );
+    rowOf('101').querySelector('.ig-details')!.outerHTML = `<div class="ig-details">${DUE}</div>`;
     press('101');
     expect(onPreview).toHaveBeenLastCalledWith({
       courseId: '12',
       assignmentId: '101',
       title: 'Essay',
-      details: 'Due Nov 3 at 10pm',
+      details: 'Due Nov 3 at 10:00pm',
+    });
+  });
+
+  it('shows one copy of the date at any window width, and the copy that is on screen', () => {
+    start();
+    rowOf('101').querySelector('.ig-details')!.outerHTML = `<div class="ig-details">${DUE}</div>`;
+    document.querySelector('style')!.textContent +=
+      '.visible-desktop{display:none}.hidden-desktop{display:inline}';
+    press('101');
+    expect(onPreview).toHaveBeenLastCalledWith({
+      courseId: '12',
+      assignmentId: '101',
+      title: 'Essay',
+      details: 'Due Nov 3 at 10:00pm',
     });
   });
 

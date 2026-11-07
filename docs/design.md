@@ -1464,6 +1464,11 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   The list stays on screen with its cached days and the refresh marker.
   A new day that the cache lacks shows as placeholders and loads like any other day (see "The planner cache"), and the light round of the midnight refreshes the cached range.
   The daily load ahead of the new neighbor span, with its assignment details, runs at the lowest priority, so it never delays the days that are shown.
+- A read of the one assignment view, or of the assignment page, that shows work handed in while the cached planner items still show the assignment as not handed in starts a full round at once, and it skips the 60-second limit like a write.
+  The student made that change, so the round is one that somebody asked for.
+  The read is `assignment:details` (the pane, and the Submission Details page) and `assignment:owner` (each load of the assignment page).
+  One hand-in (the assignment with its `submitted_at` and `attempt`) starts one such round, and an assignment that no cached planner item holds starts none.
+  A `visible` refresh alone is not enough, because the limit skips it when the round of the page load ran in the last 60 seconds (live facts, 2026-11-06: a row stayed in Past due with Missing for about a minute after a hand-in, on the assignment page and after a hand-in in the pane).
 - At most one refresh round runs per 60 seconds.
   Loading a week that a surface shows is not a refresh round, so it never waits for this limit or for a running round.
   A write and a change of address skip this limit.
@@ -3146,7 +3151,9 @@ With the pane read alone, the default run of the test failed before the fix.
    - Image: a raster image shows in an image element, and an SVG is drawn on a canvas (item 10).
    - Audio and video: the browser's own elements, from a blob URL of the fetched bytes.
    - Plain text and code: shown as text, never rendered as HTML.
-   - Any other type, such as Word or PowerPoint: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
+   - Any other type, such as Word, PowerPoint or a ZIP: a short card with "Open in Canvas" and "Download", because Canvas converts those files on its own servers.
+     The card says why the body is empty: "This file can't be shown here. Use Download or Open in Canvas." (`canShow` in `fileInfo.ts`).
+     The same card and sentence show for a PDF or a passive format that is larger than the limit of the pane (item 5), which also has no viewer.
    - Every tab has "Download" and "Open in Canvas".
 5. **Fetching.**
    - The pane's extension page reads the file record from the background, then fetches the bytes with the student's session through the redirect, as decision 23 proved.
@@ -3287,8 +3294,10 @@ With the pane read alone, the default run of the test failed before the fix.
      Escape cancels the typed number: the input shows the page in view again, no page change follows, and the pane stays open.
    - **Zoom.**
      The default is "Fit width".
-     The menu offers "Fit width", "Fit page", 50, 75, 100, 125, 150, 200, 300 and 400 percent.
-     The buttons step through 25, 50, 75, 100, 125, 150, 200, 300, 400 and 500 percent, from the zoom in view.
+     The menu offers "Fit width", "Fit page", 25, 50, 75, 100, 125, 150, 200, 300, 400 and 500 percent.
+     The buttons step through the same 25 to 500 percent, from the zoom in view, so the menu lists every zoom that a button reaches (one list in `zoom.ts`).
+     Ctrl and the wheel over the pages give the same steps, and keep the wheel from zooming the page of the browser.
+     A notch of a mouse wheel is one step, and the small events of a pinch on a touchpad add up to 40 px for a step (`createWheelZoom` in `zoom.ts`).
      100 percent means 96/72 CSS pixels for each point of the page.
      A resize of the pane keeps the position in the document.
    - **Saved position.**
@@ -3547,6 +3556,8 @@ With the pane read alone, the default run of the test failed before the fix.
     The catcher never runs in a frame of another origin.
   - A trusted click is required, so a script of the Canvas page cannot make the catcher open a file.
   - The background accepts the forward only from a child frame whose URL is on the saved origin and that the page of the top frame serves, in a tab whose top frame is on the saved origin, and it sends to the top frame of that tab only.
+    It reads that URL from the frame itself (`location.href` of the document that sent the message, through `scripting.executeScript`), never from `sender.url`.
+    Chromium keeps `about:blank` in `sender.url` for the pane frame on a real Canvas, so a check on it refused every click and the browser saved the file.
     The page script of the top frame accepts the message only from the background.
   - The file id is the only data that crosses.
     It is a number that the page already shows in the link, and the pane reads the file with the same cookie rules as for any click.
@@ -4479,7 +4490,10 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     At card widths of 360, 420, 480 and 800 px, the title is at least 120 px wide and the header is at most 91 px high, because the second line shows at most two lines.
     The feedback pane has the same header.
   - The second line is the due text and the points of the row, as plain text.
-    The script reads them from Canvas's own row at the click: the visible text of `.ig-details .assignment-date-due` and `.ig-details .js-score`, without the copy for screen readers (`.screenreader-only`) and without script or style content.
+    The script reads them from Canvas's own row at the click: the visible text of `.ig-details .assignment-date-due` and `.ig-details .js-score`, and without script or style content.
+    Visible means what the computed styles leave on screen, never a class name: an element with `display: none` is out, and so is an element with hidden overflow and a box of at most one pixel in both directions, which is how every screen reader only style hides text.
+    Canvas writes a date three times (live facts): once for screen readers in a hashed class of its React component (`css-...-screenReaderContent`), and twice for the eye (`.visible-desktop` and `.hidden-desktop`, one of them hidden by the page for the width of the window).
+    A score has the copy for the eye (`.non-screenreader`, with the grade) and the copy for screen readers (`.screenreader-only`).
     The two parts join with " | ", and the line has at most 160 characters.
     A row with neither part has no second line.
     The text belongs to the frame, so the header follows the frame that shows.
@@ -4588,6 +4602,8 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     After a failed read the next one waits twice as long, up to 5 minutes, and a good read starts over.
   - A change in `submitted_at`, `workflow_state` or `attempt` sends `weekrow:refresh` with the reason `visible`.
     That reason keeps the 60-second round limit and the planner backoff.
+  - The read that finds the change also asks the data layer for the round itself: a read that shows a hand-in the cached list does not show starts a round that skips the 60-second limit (decision 11, "Refresh triggers").
+    The `visible` refresh and its follow-up stay for the case that the cache already shows the hand-in.
   - The data layer skips a `visible` refresh with no answer when a round ran in the last 60 seconds, such as the round of a page load.
     It names a time (`retryAt`) only for a full round that follows a light one.
     No existing reason defers a light round, so the view keeps its own timer, like the weekly list surface.
@@ -4645,7 +4661,9 @@ No verified public close API is available for that overlay, so the extension doe
 3. **Folder and search views.**
    Canvas pushes `/courses/:id/files/folder/:splat?preview=:file` and `/courses/:id/files/search?...&preview=:file` (`FilesApp.jsx`, `FilePreview.jsx`).
    A trusted click on a file name in these views opens the pane, as it does in the root view.
-   The matcher takes `/courses/:id/files`, `/courses/:id/files/folder/...` and `/courses/:id/files/search`, and no other path.
+   The matcher takes `/courses/:id/files`, `/courses/:id/files/folder/...` and `/courses/:id/files/search`, and the same three routes under `/groups/:id` and `/users/:id`, and under the root `/files` that Canvas uses for All My Files of the student.
+   A live Canvas pushes `/files/folder/users_:id?preview=:file` there, and it draws its own overlay for a click that the pane does not take (live facts, 2026-11-06).
+   The matcher takes no other path.
 4. **Tests.**
    The classic click test uses the link form `/courses/:id/files?preview=:file` that only the preview matcher takes.
    Click tests cover the files, folder and search views.

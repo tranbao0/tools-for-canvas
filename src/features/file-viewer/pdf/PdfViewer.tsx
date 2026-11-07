@@ -27,6 +27,7 @@ import { REFUSED_NAME } from './repairGuard';
 import { Thumbnails } from './Thumbnails';
 import type { PdfjsLib } from './types';
 import { ZoomMenu } from './ZoomMenu';
+import { WHEEL_LINE_PX, createWheelZoom } from './zoom';
 
 export type PdfFailure = 'password' | 'invalid' | 'other';
 
@@ -79,6 +80,22 @@ export function PdfViewer(props: {
   // The pane is in a frame: at the end of the pages the rows pull, and the wheel never moves the
   // Canvas page behind the pane.
   usePull(scroller, undefined, true, props.active);
+  // Ctrl and the wheel zoom the pages, as the keys do, and never the page of the browser.
+  useEffect(() => {
+    const area = scroller.current;
+    if (!area || !props.active) return;
+    const step = createWheelZoom();
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      const lines = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? 1 : WHEEL_LINE_PX;
+      const direction = step(event.deltaY * lines, event.timeStamp);
+      if (direction > 0) live.current.engine?.zoomIn();
+      else if (direction < 0) live.current.engine?.zoomOut();
+    };
+    area.addEventListener('wheel', onWheel, { passive: false });
+    return () => area.removeEventListener('wheel', onWheel);
+  }, [props.active]);
   const pages = useRef<HTMLDivElement>(null);
   const searchField = useRef<HTMLInputElement>(null);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 440px)').matches);

@@ -27,8 +27,14 @@ const SUBMISSION_ROUTE = new RegExp(
 const COMMENT_TAB = new RegExp(
   `^/courses/${ID_PART}/assignments/${ID_PART}/${SUBMISSION_PART}\\?comment_id=${ID_PART}&download=${ID_PART}$`,
 );
-/** The routes where Canvas pushes `?preview=`: the files, a folder of them, and a search. */
-const PREVIEW_PAGE = new RegExp(`^/courses/${ID_PART}/files(?:/folder(?:/[^/]*)*|/search)?/?$`);
+/**
+ * The routes where Canvas pushes `?preview=`: the files, a folder of them, and a search, in the
+ * Files page of a course, a group or a user, and in My Files of the student (`/files`, whose
+ * folders are `users_:id`).
+ */
+const PREVIEW_PAGE = new RegExp(
+  `^/(?:(?:courses|groups|users)/${ID_PART}/)?files(?:/folder(?:/[^/]*)*|/search)?/?$`,
+);
 const FILE =
   /^\/(?:courses\/[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?\/)?files\/([1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?)(?:\/(?:download|preview))?$/;
 /**
