@@ -38,6 +38,31 @@ describe('gradesFix', () => {
     expect(document.querySelector('[data-wr-grades]')).not.toBeNull();
   });
 
+  it('draws the copies again when the widget changes the look of its cards, such as a theme change in either direction', () => {
+    const fix = gradesFix();
+    const context = fakeContext();
+    fix.apply(context);
+    const native = document.querySelector<HTMLElement>('[data-testid="course-grade-card-103"]')!;
+    // The card and its title, which carry the color of the text.
+    const looks = (id: string) =>
+      [
+        document.querySelector(`[data-testid="course-grade-card-${id}"]`),
+        document.querySelector(`[data-testid="course-${id}-name"]`),
+      ].map((node) => node?.getAttribute('class'));
+    // React gives every node of the card the classes of the new theme, and the node stays.
+    for (const to of ['dark', 'light']) {
+      for (const node of [native, ...native.querySelectorAll('*')]) {
+        node.setAttribute(
+          'class',
+          `${(node.getAttribute('class') ?? '').replace(/ ?(dark|light)$/, '')} ${to}`,
+        );
+      }
+      fix.apply(context);
+      expect(looks('107')).toEqual(looks('103'));
+      expect(cards()).toHaveLength(7);
+    }
+  });
+
   describe('the pager of Canvas', () => {
     const widget = () =>
       document.querySelector<HTMLElement>('[data-testid="widget-course-grades-widget"]')!;
