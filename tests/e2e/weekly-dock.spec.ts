@@ -304,6 +304,16 @@ test.describe('the dock on the classic dashboard', () => {
     for (const [width, room, column] of cases) {
       await page.setViewportSize({ width, height: 800 });
       await expect.poll(() => padding(page), { message: `padding at ${width}` }).toBe(room);
+      // The padding can stay the same from one width to the next, so the one column layout is
+      // what shows that the dock has laid out for this width.
+      await expect
+        .poll(
+          () => page.evaluate(() => document.documentElement.hasAttribute('data-weekrow-stack')),
+          {
+            message: `one column layout at ${width}`,
+          },
+        )
+        .toBe(column === 'below');
       const found = await parts();
       expect(found.heading.right, `heading and button at ${width}`).toBeLessThanOrEqual(
         found.switchButton.left,
