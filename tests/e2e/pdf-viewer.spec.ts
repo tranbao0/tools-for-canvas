@@ -344,12 +344,13 @@ test('pulls the pages at the end of a one-page PDF, and the wheel never moves th
   await expect.poll(kept).toEqual(['true', 'true']);
   await expect(scroll).not.toHaveClass(/wr-pulling/);
   expect(await page.evaluate(() => window.scrollY)).toBe(behind);
-  // A wheel with Ctrl and a wheel that is mostly sideways are not the pull's.
+  // A wheel with Ctrl is the zoom's, which keeps it from the browser too, and a wheel that is
+  // mostly sideways is not the pull's.
   await page.keyboard.down('Control');
   await page.mouse.wheel(0, 300);
   await page.keyboard.up('Control');
   await page.mouse.wheel(300, 10);
-  await expect.poll(kept).toEqual(['true', 'true', 'false', 'false']);
+  await expect.poll(kept).toEqual(['true', 'true', 'true', 'false']);
 
   // The pages away from their place, in a screenshot of the pane.
   const pulled = await shootPulled(scroll, 100, { file: 'pdf-one-page.png', of: page });
@@ -483,6 +484,71 @@ test('zoom in changes the width of the canvas, and the menu sets fit modes', asy
   // Escape closes the menu only; the pane stays.
   await expect(frame.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('#tools-file-viewer')).toBeVisible();
+});
+
+test('Ctrl and the wheel over the pages zoom in and out by the steps of the buttons', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  const zoomText = frame.locator('[data-part="pdf-zoom-text"]');
+  const scroll = frame.locator('[data-part="pdf-scroll"]');
+  const box = (await scroll.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(zoomText).toHaveText('Fit width');
+  const canvas = pageBox(frame, 1).locator('canvas');
+  const before = (await canvas.boundingBox())!.width;
+  await page.keyboard.down('Control');
+  // A wheel notch up is one step up from the zoom in view.
+  await page.mouse.wheel(0, -100);
+  await expect(zoomText).not.toHaveText('Fit width');
+  await expect.poll(async () => (await canvas.boundingBox())?.width ?? 0).toBeGreaterThan(before);
+  await page.mouse.wheel(0, -100);
+  await expect(zoomText).toHaveText('100%');
+  await page.mouse.wheel(0, 100);
+  await expect(zoomText).toHaveText('75%');
+  await page.keyboard.up('Control');
+  // The zoom stays, and the plain wheel scrolls as before.
+  await page.mouse.wheel(0, 100);
+  await expect(zoomText).toHaveText('75%');
+  await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
+test('the zoom menu lists every zoom that the buttons reach, from 25 to 500 percent', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  const items = frame.getByRole('menuitemradio');
+  await expect(items).toHaveText([
+    'Fit width',
+    'Fit page',
+    '25%',
+    '50%',
+    '75%',
+    '100%',
+    '125%',
+    '150%',
+    '200%',
+    '300%',
+    '400%',
+    '500%',
+  ]);
+  // Zoom out to the smallest step, and the menu names it.
+  await page.keyboard.press('Escape');
+  const out = frame.getByRole('button', { name: 'Zoom out' });
+  for (let press = 0; press < 5; press += 1) await out.click();
+  await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('25%');
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await expect(frame.getByRole('menuitemradio', { name: '25%', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
 });
 
 test('the thumbnails toggle shows 3 thumbnails that draw, and a click goes to the page', async ({

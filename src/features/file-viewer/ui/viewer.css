@@ -163,6 +163,13 @@ html:not([data-theme]) #app {
   line-height: 20px;
 }
 
+.fv-card-note {
+  margin: 0;
+  color: var(--wr-text-2);
+  font-size: 14px;
+  line-height: 20px;
+}
+
 .fv-actions {
   display: flex;
   flex-wrap: wrap;

@@ -721,3 +721,42 @@ test('focus follows a keyboard student into the pane of the dock and back to Pre
   await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
   await expect(preview(page, LAB_4)).toBeFocused();
 });
+
+test('a hand-in in the pane that the card opened moves the row at the close, though a round ran in the last 60 seconds', async ({
+  context,
+  page,
+  background,
+}) => {
+  const scenario = buildScenario(SCENARIO_NOW);
+  let handedIn = false;
+  // Canvas answers the planner with the hand-in as soon as it happened.
+  const planner: FakeCanvasRoute = {
+    path: '/api/v1/planner/items',
+    respond: () => ({
+      body: json(
+        scenario.plannerItems.map((item) =>
+          item.plannable_id === '1004' && typeof item.submissions === 'object'
+            ? { ...item, submissions: { ...item.submissions, submitted: handedIn } }
+            : item,
+        ),
+      ),
+    }),
+  };
+  const { canvas, state } = await open(context, page, background, { extra: [planner] });
+  await expect(rowOf(page, LAB_4)).toBeVisible();
+  await preview(page, LAB_4).click();
+  await expect
+    .poll(
+      () =>
+        canvas.requests.filter((request) =>
+          request.path.includes('/courses/101/assignments/1004/submissions/self'),
+        ).length,
+    )
+    .toBeGreaterThan(0);
+  // The page load round ran a few seconds ago, so the 60-second limit holds for the rounds that
+  // nobody asked for. The student hands in, and the close reads the submission.
+  state.submitted = true;
+  handedIn = true;
+  await closeAssignment(page);
+  await expect(rowOf(page, LAB_4)).toHaveCount(0, { timeout: 8000 });
+});

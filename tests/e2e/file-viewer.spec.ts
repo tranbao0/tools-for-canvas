@@ -451,6 +451,11 @@ const PREVIEW_VIEWS = {
     path: `${FILES_PATH}/search`,
     href: `${FILES_PATH}/search?search_term=notes&preview=42`,
   },
+  // All My Files of the student: the path and the link that a real Canvas pushes.
+  myFiles: {
+    path: '/files/folder/users_9',
+    href: '/files/folder/users_9?preview=42',
+  },
 } as const;
 const recordNotes = {
   path: '/api/v1/files/42',

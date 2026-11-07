@@ -8,6 +8,7 @@ import {
   ZOOM_PRESETS,
   ZOOM_STEPS,
   clampZoom,
+  createWheelZoom,
   percentText,
   resolveZoom,
   zoomInFrom,
@@ -23,6 +24,21 @@ describe('zoom presets', () => {
       expect(ZOOM_STEPS).toContain(preset);
     }
     expect(ZOOM_PRESETS).toContain(1);
+  });
+
+  it('offers in the menu every zoom that Zoom in and Zoom out reach, down to the minimum and up to the maximum', () => {
+    expect([...ZOOM_PRESETS]).toEqual([...ZOOM_STEPS]);
+    expect(ZOOM_PRESETS[0]).toBe(MIN_ZOOM);
+    expect(ZOOM_PRESETS.at(-1)).toBe(MAX_ZOOM);
+    let zoom: number = MAX_ZOOM;
+    for (let press = 0; press < 20; press += 1) zoom = zoomOutFrom(zoom);
+    expect(zoom).toBe(MIN_ZOOM);
+    let reached: number = MIN_ZOOM;
+    for (let press = 0; press < 20; press += 1) {
+      expect(ZOOM_PRESETS).toContain(reached);
+      reached = zoomInFrom(reached);
+    }
+    expect(reached).toBe(MAX_ZOOM);
   });
 
   it('uses the size of a point in CSS pixels at 100 percent', () => {
@@ -88,5 +104,33 @@ describe('resolveZoom', () => {
     expect(resolveZoom(FIT_WIDTH, page, { width: 1, height: 1 })).toBe(MIN_ZOOM);
     expect(resolveZoom(FIT_WIDTH, page, { width: 100000, height: 1 })).toBe(MAX_ZOOM);
     expect(resolveZoom(FIT_WIDTH, { width: 0, height: 0 }, { width: 400, height: 400 })).toBe(1);
+  });
+});
+
+describe('zoom by the wheel with Ctrl held', () => {
+  it('takes a notch of a mouse wheel as one step, up for a wheel up and down for a wheel down', () => {
+    const step = createWheelZoom();
+    expect(step(-100, 1000)).toBe(1);
+    expect(step(100, 2000)).toBe(-1);
+    expect(step(-100, 3000)).toBe(1);
+  });
+
+  it('adds up the small events of a touchpad pinch until they make a step', () => {
+    const step = createWheelZoom();
+    const results = [-10, -10, -10, -10, -10, -10, -10, -10].map((delta, index) =>
+      step(delta, 1000 + index * 16),
+    );
+    expect(results).toEqual([0, 0, 0, 1, 0, 0, 0, 1]);
+  });
+
+  it('starts again after a pause and after a turn in the other direction', () => {
+    const step = createWheelZoom();
+    expect(step(-30, 1000)).toBe(0);
+    // The pause ends the gesture, so the 30 px before do not count.
+    expect(step(-30, 2000)).toBe(0);
+    expect(step(-30, 2016)).toBe(1);
+    expect(step(-30, 3000)).toBe(0);
+    expect(step(30, 3016)).toBe(0);
+    expect(step(30, 3032)).toBe(-1);
   });
 });

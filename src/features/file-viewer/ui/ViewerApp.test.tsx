@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAX_FILE_BYTES } from '../../../shared/canvas/fileBytes';
 import type { Tabs } from '../model';
 import type { PdfjsLib } from '../pdf/types';
 import type { PaneFile } from './FileCard';
@@ -433,6 +434,37 @@ describe('file card', () => {
       expect(link.rel).toContain('noopener');
     }
     expect(document.querySelector('[data-part="viewer-body"]')).toBeTruthy();
+  });
+
+  it('says why a file with no viewer is not drawn, and a file with a viewer has no such note', async () => {
+    const zip = {
+      name: 'archive.zip',
+      contentType: 'application/zip',
+      size: 90,
+      url: '',
+      courseId: null,
+    };
+    const huge = {
+      name: 'Book.pdf',
+      contentType: 'application/pdf',
+      size: MAX_FILE_BYTES + 1,
+      url: '',
+      courseId: null,
+    };
+    const files: Record<string, PaneFile> = { ...FILES, '4': zip, '5': huge };
+    const { open } = setup({ loadFile: vi.fn(async (id: string) => files[id]) });
+    for (const id of ['1', '4', '5']) {
+      await open(id);
+      await waitFor(() => expect(document.querySelector('[data-part="card-note"]')).toBeTruthy());
+      expect(document.querySelector('[data-part="card-note"]')?.textContent).toBe(
+        "This file can't be shown here. Use Download or Open in Canvas.",
+      );
+      expect(screen.getByRole('link', { name: 'Download' })).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'Open in Canvas' })).toBeTruthy();
+    }
+    await open('2');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Photo.png' })).toBeTruthy());
+    expect(document.querySelector('[data-part="card-note"]')).toBeNull();
   });
 
   it('builds the Download link from the file id alone, never from the query of the record', async () => {
