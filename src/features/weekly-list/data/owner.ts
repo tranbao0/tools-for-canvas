@@ -1711,9 +1711,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
   function identityHolds(stamp: WriteStamp): boolean {
     return (
+      cache !== null &&
+      stamp.origin !== null &&
       stamp.identityVersion === identityVersion &&
       stamp.origin === knownOrigin &&
-      sameStudent(stamp)
+      (stamp.userId === null || sameStudent(stamp))
     );
   }
 
@@ -1727,8 +1729,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
   /**
    * Queues a write behind the earlier ones of its queue. A task create has a queue of its own,
-   * so a long run of done marks does not hold the form. The queue stamps the job, and drops it
-   * when it runs for another generation, Canvas or user than the one that queued it. The job
+   * so a long run of done marks does not hold the form. The caller supplies the stamp after it
+   * checks identity. The queue drops a job that runs for another generation, Canvas or user. The job
    * resolves with whether Canvas may now differ from the cache, after a confirmed write or a
    * failed one, so a forced round syncs the list once the queues are empty.
    */
@@ -2764,17 +2766,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
-  /** Accepts a first session only within the origin and generation of a cold viewer entry. */
+  /** Checks a viewer entry's identity and confirms a first session with the cookie. */
   async function viewerSessionStamp(origin: string, stamp: WriteStamp): Promise<WriteStamp | null> {
-    if (stamp.userId !== null)
-      return identityHolds(stamp) && stamp.origin === origin ? stamp : null;
-    if (
-      stamp.identityVersion !== identityVersion ||
-      stamp.origin !== knownOrigin ||
-      stamp.origin !== origin
-    )
-      return null;
-    if (cache?.session == null) return stamp;
+    if (!identityHolds(stamp) || stamp.origin !== origin) return null;
+    if (stamp.userId !== null || cache?.session == null) return stamp;
     const first = writeStamp();
     if (!(await signedInStudentOwnsCache()) || !identityHolds(first)) return null;
     return writeStamp();
