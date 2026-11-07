@@ -65,21 +65,9 @@ export const SIDE_PANEL = 'side';
  * the bottom bar.
  */
 export const DOCK_LIST_CSS = `
-:host([data-panel='${SIDE_PANEL}']) {
-  --wr-pad-x: 16px;
-  --wr-pad-y: 12px;
-  height: 100% !important;
-}
-:host([data-panel='${SIDE_PANEL}']) .wr-mount {
-  height: 100%;
-}
-:host([data-panel='${SIDE_PANEL}']) .wr[data-surface='inpage'],
-:host([data-panel='${SIDE_PANEL}'][data-theme='dark']) .wr[data-surface='inpage'] {
-  --wr-bg: light-dark(#fff, #1b2330);
-  height: 100%;
-  border-radius: 0;
-  box-shadow: none;
-}
+:host([data-panel='${SIDE_PANEL}']){--wr-pad-x:16px;--wr-pad-y:12px;height:100% !important}
+:host([data-panel='${SIDE_PANEL}']) .wr-mount{height:100%}
+:host([data-panel='${SIDE_PANEL}']) .wr[data-surface='inpage'],:host([data-panel='${SIDE_PANEL}'][data-theme='dark']) .wr[data-surface='inpage']{--wr-bg:light-dark(#fff,#1b2330);height:100%;border-radius:0;box-shadow:none}
 `;
 
 /**
