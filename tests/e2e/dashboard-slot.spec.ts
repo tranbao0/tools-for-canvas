@@ -187,6 +187,9 @@ for (const size of [
     await openCanvasPage(page, canvas.origin);
     await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot');
     await settledList(page);
+    await page.locator(WRAPPER).evaluate((node) => {
+      (node as HTMLElement).style.overflow = 'auto';
+    });
     await page.locator(SECTION).evaluate((node) => {
       (node as HTMLElement).style.height = '5997px';
     });
@@ -195,11 +198,16 @@ for (const size of [
     const card = inpageList(page).locator('.wr');
     await expect.poll(async () => (await card.boundingBox())!.height).toBeCloseTo(band, 0);
     // The card sits at the top of the box of the widget, and the day list scrolls inside it.
-    const { card: box, section } = await slotBoxes(page);
+    const { card: box, section, wrapper } = await slotBoxes(page);
     expect(box.top).toBeCloseTo(section.top, 0);
     const region = inpageList(page).getByRole('region', { name: 'Tasks by day', exact: true });
     expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
     await scrollTo(region, 200);
+    await page.mouse.move(20, 400);
+    await page.mouse.wheel(0, 1500);
+    await expect.poll(async () => (await card.boundingBox())!.y).toBeCloseTo(12, 0);
+    const after = await slotBoxes(page);
+    expect(after.wrapper.height).toBeCloseTo(wrapper.height, 0);
   });
 }
 

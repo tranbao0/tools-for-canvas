@@ -1453,12 +1453,12 @@ test.describe('the full list in the card', () => {
     await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(0);
   });
 
-  test('scrolls with the page, and does not stick to the top of the window', async ({
+  test('the card without a Course work slot scrolls with the page', async ({
     context,
     page,
     background,
   }) => {
-    await open(context, page, background);
+    await open(context, page, background, { query: NO_COURSE_WORK });
     await page.evaluate(() => {
       const filler = document.createElement('div');
       filler.style.height = '3000px';

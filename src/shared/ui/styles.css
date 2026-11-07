@@ -99,13 +99,8 @@
 }
 
 :host([data-panel='dock']) {
-  height: 100% !important;
   /* The host is as tall as the page area, so only the card takes clicks. */
   pointer-events: none !important;
-}
-
-:host([data-panel='dock']) .wr-mount {
-  height: 100%;
 }
 
 :host([data-panel]) .wr[data-surface='inpage'],
@@ -148,10 +143,12 @@
 }
 
 /* The host reset sets every property with !important, so the height needs it too. */
+:host([data-panel='dock']),
 :host([data-panel='slot']) {
   height: 100% !important;
 }
 
+:host([data-panel='dock']) .wr-mount,
 :host([data-panel='slot']) .wr-mount {
   height: 100%;
 }
@@ -162,6 +159,7 @@
  * make a card as tall as the page, and its day list would not scroll inside it.
  */
 :host([data-panel='slot']) .wr[data-surface='inpage'] {
+  top: clamp(0px, var(--wr-slot-top, 0px), calc(100% - var(--wr-card-height)));
   height: 100%;
   max-height: var(--wr-card-height);
 }

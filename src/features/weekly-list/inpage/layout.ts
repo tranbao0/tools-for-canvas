@@ -319,6 +319,14 @@ export function claimDashboardLayout(
     restoreScroll();
   }
 
+  /** Canvas has overflow ancestors, so the card follows page scroll within its own slot. */
+  function stick(): void {
+    if (container.firstElementChild?.getAttribute('data-panel') !== 'slot') return;
+    cardRoot()
+      ?.querySelector<HTMLElement>('.wr')
+      ?.style.setProperty('--wr-slot-top', `${12 - container.getBoundingClientRect().top}px`);
+  }
+
   function startWait(): void {
     waiting = true;
     deadline ??= view.setTimeout(() => {
@@ -440,6 +448,7 @@ export function claimDashboardLayout(
     observer.disconnect();
     sizeObserver?.disconnect();
     view.removeEventListener('resize', onSize);
+    view.removeEventListener('scroll', stick, true);
     if (frame !== undefined) view.cancelAnimationFrame(frame);
     frame = undefined;
   }
@@ -456,6 +465,7 @@ export function claimDashboardLayout(
       detached = true;
     }
     place(force || !container.isConnected);
+    stick();
     // The card places itself by the size of the content box and of the grid, so a change in
     // either one, such as a window or zoom change that the grid answers, places it again.
     for (const element of [
@@ -468,6 +478,7 @@ export function claimDashboardLayout(
     }
   }
 
+  view.addEventListener('scroll', stick, { passive: true, capture: true });
   body.setAttribute(LAYOUT_ATTRIBUTE, '');
   if (options.waitForGrid === true) startWait();
   observer.observe(doc.documentElement, {
