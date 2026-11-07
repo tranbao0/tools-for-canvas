@@ -2614,7 +2614,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const origin = knownOrigin;
     for (let checks = 0; ; checks++) {
       const fingerprint = await readFingerprint(origin);
-      if (!isCurrent(stamp)) return false;
+      if (!identityHolds(stamp)) return false;
       if (fingerprint === undefined) return false;
       if (fingerprint === null) {
         signOut({ kind: 'signed_out' });
