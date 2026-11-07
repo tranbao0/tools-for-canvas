@@ -8,6 +8,7 @@ import {
   removeStaleFilePane,
   reportFilePane,
   setFullView,
+  watchFilePane,
   watchFullView,
   type Dock,
 } from './dock';
@@ -103,6 +104,10 @@ export async function startViewer(): Promise<void> {
   // The pane page cannot read the state of the Canvas page, so it gets the full view state here.
   const sendFullView = () =>
     port?.postMessage({ type: 'full-view', on: isFullView(), available: fullViewAvailable() });
+  // Another pane may hide the file pane. The pane page is told, because it cannot see that: its
+  // tabs pause their media and keep their place while the pane is hidden.
+  const sendCovered = () =>
+    port?.postMessage({ type: 'covered', covered: dock !== undefined && !dock.shown });
   let width = normalizeWidth(undefined, innerWidth);
   let dock: Dock | undefined;
   // The port of the pane once it proved the secret, and a port that waits for that proof.
@@ -149,6 +154,7 @@ export async function startViewer(): Promise<void> {
     }
     applyTheme();
     sendFullView();
+    sendCovered();
     if (tabs.active && port && !synced) {
       synced = true;
       waitingFile = null;
@@ -342,8 +348,10 @@ export async function startViewer(): Promise<void> {
   scope.__weekrowViewer = teardown;
   // The pane follows full view, and the width of the window decides whether the button shows.
   const stopWatchingFullView = watchFullView(sendFullView);
+  const stopWatchingPanes = watchFilePane(sendCovered);
   addEventListener('resize', sendFullView, { signal: lifetime.signal });
   lifetime.signal.addEventListener('abort', stopWatchingFullView, { once: true });
+  lifetime.signal.addEventListener('abort', stopWatchingPanes, { once: true });
   // The opens run one after another. Each one reads the stored tabs, adds its file and writes them
   // back, so two that ran side by side would both start from the same tabs and the second write
   // would drop the file of the first. The tab order is also the order of the clicks.

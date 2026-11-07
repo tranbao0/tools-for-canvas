@@ -45,7 +45,8 @@ export const DEFAULT_WEEKLY_DOCK_WIDTH = 360;
 
 /**
  * The width of the weekly list dock: the width rules of the file pane (at least 360 px, at most
- * 70% of the window), with a default of 360 px for a value that is missing or not a number.
+ * 70% of the window when a window is given), with a default of 360 px for a value that is missing
+ * or not a number. A stored width has no window, so the dock clamps to its window where it uses it.
  */
 export function normalizeWeeklyDockWidth(value: unknown, viewportWidth?: number): number {
   return typeof value === 'number' && Number.isFinite(value)
