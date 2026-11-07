@@ -62,9 +62,12 @@ const VIEWS = [
 
 const isBottom = (kind: GroupKind) => kind === 'no_due_date' || kind === 'done';
 
-/** The number in the group heading. */
+/**
+ * The number in the group heading and on the view switch. Done counts the work of the shown span
+ * only: its older line has a count of its own.
+ */
 export function groupCount(group: ListGroup): number {
-  return group.items.length + group.older.length;
+  return group.kind === 'done' ? group.items.length : group.items.length + group.older.length;
 }
 
 export function isGroupEmpty(group: ListGroup): boolean {
@@ -221,13 +224,14 @@ function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHand
   return (
     <>
       <ItemList {...rows} items={group.items} />
-      {group.kind === 'past_due' && (
+      {(group.kind === 'past_due' || group.kind === 'done') && (
         <SubList
           {...rows}
           memoryKey={`older:${place}`}
           label={tp('olderCount', group.older.length)}
           items={group.older}
           action={
+            group.kind === 'past_due' &&
             olderToMarkDone(group).length > 0 && (
               <button
                 type="button"

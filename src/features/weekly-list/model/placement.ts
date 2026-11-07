@@ -5,6 +5,8 @@ import { plainDateOf, parseInstant } from './time';
 import type { Item, ItemState } from './types';
 
 export type PastDueList = 'items' | 'older';
+/** Done work of the shown span, or older done work under its own folded line. */
+export type DoneList = 'items' | 'older';
 export type NoDueDateList = 'items' | 'doneUndated';
 
 export type Slot =
@@ -12,7 +14,7 @@ export type Slot =
   /** `lookAhead`: the item is tomorrow and the shown span ends today. */
   | { group: 'day'; date: string; lookAhead: boolean }
   | { group: 'no_due_date'; list: NoDueDateList }
-  | { group: 'done'; lookAhead: boolean };
+  | { group: 'done'; list: DoneList; lookAhead: boolean };
 
 export interface PlacementContext {
   timeZone: string;
@@ -63,7 +65,7 @@ function undatedSlot(
   switch (state) {
     case 'done':
       return hasWarning
-        ? { group: 'done', lookAhead: false }
+        ? { group: 'done', list: 'items', lookAhead: false }
         : { group: 'no_due_date', list: 'doneUndated' };
     case 'open':
       return { group: 'no_due_date', list: 'items' };
@@ -78,6 +80,13 @@ function reminderSlot(date: Temporal.PlainDate, context: PlacementContext): Slot
     : null;
 }
 
+/**
+ * A done item of the span, or of tomorrow after a one-day span, is in Done. Other done work inside
+ * the Past due horizon is under the folded older line of Done, so work that a student marks done
+ * never looks lost: the work before the span, and in a span that ended before today also the work
+ * that is overdue and dated after the span, which Past due shows in every span. A done item with
+ * a warning chip stays in Done in the span that starts today, so the warning count covers it.
+ */
 function doneSlot(
   due: Temporal.Instant,
   date: Temporal.PlainDate,
@@ -85,15 +94,13 @@ function doneSlot(
   item: Item,
   context: PlacementContext,
 ): Slot | null {
-  if (isInSpan(date, context)) return { group: 'done', lookAhead: false };
-  if (isLookAheadDate(date, context)) return { group: 'done', lookAhead: true };
-  const earlierWithWarning =
-    context.isCurrentSpan &&
-    hasWarning &&
-    !item.isReminder &&
-    compareDates(date, context.spanStart) < 0 &&
-    compareInstants(due, context.horizonFor(item.courseId)) >= 0;
-  return earlierWithWarning ? { group: 'done', lookAhead: false } : null;
+  if (isInSpan(date, context)) return { group: 'done', list: 'items', lookAhead: false };
+  if (isLookAheadDate(date, context)) return { group: 'done', list: 'items', lookAhead: true };
+  if (item.isReminder || compareInstants(due, context.horizonFor(item.courseId)) < 0) return null;
+  const before = compareDates(date, context.spanStart) < 0;
+  if (!before && compareInstants(due, context.now) >= 0) return null;
+  const warned = context.isCurrentSpan && hasWarning;
+  return { group: 'done', list: warned ? 'items' : 'older', lookAhead: false };
 }
 
 function pastDueSlot(due: Temporal.Instant, item: Item, context: PlacementContext): Slot | null {

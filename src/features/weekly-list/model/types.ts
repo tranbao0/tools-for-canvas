@@ -233,7 +233,10 @@ export interface ListGroup {
   date: string | null;
   /** Items shown in full. */
   items: ItemView[];
-  /** `past_due` only: items older than 7 days, collapsed under "N older". */
+  /**
+   * `past_due`: items older than 7 days, collapsed under "N older". `done`: done items from before
+   * the span, collapsed under "N older"; they are not in the count of the group.
+   */
   older: ItemView[];
   /** `no_due_date` only: done undated items, behind "N done". */
   doneUndated: ItemView[];

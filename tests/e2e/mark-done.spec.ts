@@ -96,6 +96,49 @@ test.describe('mark done', () => {
     expect(canvas.unmatched).toEqual([]);
   });
 
+  test('shows older done work under a folded line of Done, and every item that Mark all older done checks is in Done or under it', async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    const { canvas } = await serveScenario(context);
+    await addCsrfCookie(context, canvas.origin);
+    await saveAddress(background, canvas.origin);
+    await openExtensionPage(page, extensionUrl('sidepanel.html'));
+    const pastDue = group(page, 'past_due');
+    await expect(pastDue.getByRole('button', { name: '4 older' })).toBeVisible();
+    await settledList(page);
+    const done = group(page, 'done');
+    await done.getByRole('button').first().click();
+    // The done work from before the span is under a closed line, with a count of its own.
+    const line = done.getByRole('button', { name: /^\d+ older$/ });
+    await expect(line).toHaveAttribute('aria-expanded', 'false');
+    const before = Number((await line.textContent())!.replace(/\D/g, ''));
+    expect(before).toBeGreaterThan(0);
+    await expect(done.getByRole('heading')).toContainText(/Done\s*\d+/);
+    await expect(done.getByRole('button', { name: 'Mark all older done' })).toHaveCount(0);
+
+    await pastDue.getByRole('button', { name: 'Mark all older done' }).click();
+    await expect(pastDue.getByRole('button', { name: '1 older' })).toBeVisible();
+    await expect(page.locator('.wr-toast')).toContainText('3 marked done');
+    // A marked item that has a warning chip is in Done, and any other is under the line.
+    await line.click();
+    for (const title of ['Problem set 5', 'Homework 5', 'Module 3 reflection']) {
+      await expect(doneBox(done, title), title).toBeVisible();
+    }
+    // An uncheck on a row under the line makes it open again.
+    const row = done.locator('.wr-sublist li').first();
+    const title = (await row.getByRole('checkbox').getAttribute('aria-label'))!.replace(
+      /^Done: /,
+      '',
+    );
+    await row.getByRole('checkbox').click();
+    await expect(pastDue.getByRole('checkbox', { name: `Done: ${title}` })).toHaveCount(1, {
+      timeout: 15_000,
+    });
+  });
+
   test('an item that Canvas has as dismissed is done, and an uncheck makes it open again', async ({
     context,
     page,
