@@ -500,3 +500,47 @@ it.each([
   expect(cleared).not.toHaveBeenCalled();
   expect((await h.deps.store.cache.getValue())?.session?.profile.id).toBe('5501');
 });
+
+it('an explicit pane retry skips the failed-check limit and shares an active check', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('retry-cookie');
+  h.canvas.fail('getSelf', new Error('Temporary failure'), { times: 1 });
+  await h.owner.viewerPaneCheck(ORIGIN, TAB);
+  await h.owner.settled();
+  const before = h.canvas.calls.filter((call) => call.method === 'getSelf').length;
+  await h.owner.viewerPaneCheck(ORIGIN, TAB);
+  expect(h.canvas.calls.filter((call) => call.method === 'getSelf')).toHaveLength(before);
+  await h.owner.viewerPaneCheck(ORIGIN, TAB, true);
+  await h.owner.settled();
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toMatchObject({ verdict: 'yes' });
+});
+
+it('more Retry taps share the sign-in check that is already running', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('retry-cookie');
+  let finish!: (value: { id: string; name: string }) => void;
+  const check = vi.spyOn(h.canvas, 'checkCacheUser').mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const first = h.owner.viewerPaneCheck(ORIGIN, TAB, true);
+  await vi.advanceTimersByTimeAsync(0);
+  const second = h.owner.viewerPaneCheck(ORIGIN, TAB, true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(check).toHaveBeenCalledOnce();
+  finish({ id: '5501', name: 'Jordan Rivera' });
+  await Promise.all([first, second]);
+  check.mockRestore();
+});
+
+it('a null cookie without site access keeps the pane and stored student', async () => {
+  const h = await loaded();
+  const cleared = vi.fn();
+  h.deps.onUserDataCleared = cleared;
+  vi.mocked(h.deps.hasAccess).mockResolvedValue(false);
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
+  expect(cleared).not.toHaveBeenCalled();
+  expect((await h.deps.store.cache.getValue())?.session?.profile.id).toBe('5501');
+});

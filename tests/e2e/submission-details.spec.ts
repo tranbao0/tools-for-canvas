@@ -3090,3 +3090,22 @@ for (const theme of ['light', 'dark'] as const) {
     await cdp.detach();
   });
 }
+
+test('Submission Details waits through several unknown identity replies', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { switchOff: true });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  const world = await contentScriptWorld(page);
+  await world.evaluate(`(() => {
+    const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+    const send = runtime.sendMessage.bind(runtime);
+    let unknown = 3;
+    runtime.sendMessage = message => message.type === 'viewer:pane-check' && unknown-- > 0
+      ? Promise.resolve({ verdict: 'unknown' }) : send(message);
+  })()`);
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(host(page)).toBeAttached({ timeout: 10000 });
+});

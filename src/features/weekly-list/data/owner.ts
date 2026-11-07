@@ -236,8 +236,12 @@ export type PaneOwnerVerdict =
   { verdict: 'yes'; userId: string | null } | { verdict: 'no' | 'unknown' };
 
 export interface DataOwner {
-  /** Reads the cookie proof without an age-based check or a wait for Canvas. */
-  viewerPaneCheck(origin: string | null, tabId: number | undefined): Promise<PaneOwnerVerdict>;
+  /** Reads the cookie proof without an age-based check; an explicit retry awaits the shared check. */
+  viewerPaneCheck(
+    origin: string | null,
+    tabId: number | undefined,
+    retry?: boolean,
+  ): Promise<PaneOwnerVerdict>;
   /** Restores delayed deletes when the worker wakes. */
   resumeDeletes(): Promise<void>;
   /** `tabId` is the tab of the surface, when it has one. */
@@ -3275,6 +3279,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   async function viewerPaneCheck(
     origin: string | null,
     tabId: number | undefined,
+    retry = false,
   ): Promise<PaneOwnerVerdict> {
     const unknown: PaneOwnerVerdict = { verdict: 'unknown' };
     try {
@@ -3288,6 +3293,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const fingerprint = await readFingerprint(origin);
       if (!identityHolds(stamp) || fingerprint === undefined) return unknown;
       if (fingerprint === null) {
+        if (!(await deps.hasAccess(origin)) || !identityHolds(stamp)) return unknown;
         if (cache?.failure?.kind !== 'signed_out') signOut({ kind: 'signed_out' });
         return { verdict: 'no' };
       }
@@ -3298,7 +3304,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           ? proof.userId
           : null;
       if (userId === null) {
-        if (userCheck === null && checkAllowed(false)) void startUserCheck();
+        if (userCheck === null && checkAllowed(retry)) startUserCheck();
+        if (retry && userCheck !== null) await userCheck;
         return unknown;
       }
       // A pending or unreadable claim cannot supply a token for content.

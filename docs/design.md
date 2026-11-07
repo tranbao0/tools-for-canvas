@@ -1451,6 +1451,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - Open risk: a cookie that changes from F0 to another value and back to F0 while a request waits passes the two reads.
   Only a request that carries the other cookie can break the rule, and the reads cannot see it.
 - Open risk: a Canvas that renews the session cookie on every reply drops most responses and ends in `cant_load` until the cookie stops changing.
+  An open pane stays covered there, and the checks keep to their normal limits.
 - Open risk: the open surfaces learn of a sign-out only from a Canvas page load, a focus change, a visibility change or the timer.
   A sign-out that ends on another site, such as a single sign-on page, shows the list until one of them happens.
   The ticket removed the cookie event listener on purpose.
@@ -3181,7 +3182,8 @@ With the pane read alone, the default run of the test failed before the fix.
      Every consumer clears its state, including the file page, feedback sessions, assignment frames and submission baselines.
      A feedback address takes its identity token when the page reads it, before any pane opens, and opening checks that token before loading the signed address.
    - The watcher sends `viewer:pane-check` each second while any pane is open, including a hidden pane or tab.
-     This message stays inside the browser, bypasses the per-tab queue and never waits for a Canvas request.
+     This message stays inside the browser and bypasses the per-tab queue.
+     Automatic checks never wait for a Canvas request; an explicit Retry waits only to keep further taps idle.
      Its optional token names the content's student and clearing round.
      The owner compares the cookie fingerprint without an age-based check, so an idle pane makes no Canvas request and spends no check slot.
      An unconfirmed cookie asks for the shared user check under the normal limits and returns `unknown` at once.
@@ -3194,7 +3196,11 @@ With the pane read alone, the default run of the test failed before the fix.
        A 401 uses the existing sign-out path, which changes the clearing round.
      - `unknown`: the check is pending or limited, a cookie or store cannot be read, cold proof is absent, the context is gone, or the check or reply fails.
        A network failure, timeout, invalid reply, 5xx or 429 supplies no answer about the student.
-       An opaque panel covers the whole pane, including its header, and shows "Canvas can't confirm your sign-in." and Close.
+       An opaque panel covers the whole pane, including its header, and shows "Canvas can't confirm your sign-in." and Retry before Close.
+       Retry starts one shared check without the automatic check limits; more taps do nothing while it runs.
+       The next watcher tick reads the result.
+       When the cover appears with focus anywhere in the dock, focus moves to Retry and leaves any focused frame.
+       When confirmation hides the cover with focus on a cover button, focus moves to the dock section so Escape still works in full view.
        The frames and typed text stay alive under the cover, which goes on the next `yes`.
        The panel uses the dock's light and dark theme tokens and has no animation.
      The timer does not wait for a reply; a missing reply becomes `unknown` within five seconds of its request.

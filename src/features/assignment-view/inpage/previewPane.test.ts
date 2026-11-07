@@ -12,6 +12,8 @@ import {
 // The weekly dock needs 768 px beside it; panes reserve 420 px besides global navigation. These tests use a wide window.
 window.innerWidth = 1600;
 
+const identity = vi.hoisted(() => ({ show: (_yes: boolean) => {} }));
+
 const ORIGIN = 'https://school.instructure.com';
 const COURSE = '12';
 
@@ -1300,8 +1302,25 @@ describe('the header of the assignment pane', () => {
 
 vi.mock('../../file-viewer/paneIdentity', () => ({
   watchPaneIdentity: (show: (yes: boolean) => void) => {
+    identity.show = show;
     show(true);
     return () => undefined;
   },
   checkPaneIdentity: async () => ({ verdict: 'yes', token: '0:42' }),
 }));
+
+it('defers the confirmation read while hidden and reads when shown again', async () => {
+  const { pane, reload } = setup();
+  pane.open({ courseId: COURSE, assignmentId: '101', title: 'Essay' });
+  await vi.advanceTimersByTimeAsync(0);
+  reload.mockClear();
+  visibility = 'hidden';
+  identity.show(false);
+  identity.show(true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(reload).not.toHaveBeenCalled();
+  visibility = 'visible';
+  document.dispatchEvent(new Event('visibilitychange'));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(reload).toHaveBeenCalledExactlyOnceWith(ref('101'));
+});

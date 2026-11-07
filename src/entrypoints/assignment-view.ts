@@ -13,6 +13,10 @@ export default defineUnlistedScript(() => {
   const scope = globalThis as typeof globalThis & { __weekrowAssignmentView?: () => void };
   scope.__weekrowAssignmentView?.();
   const context = createPageScriptContext();
-  scope.__weekrowAssignmentView = () => context.notifyInvalidated();
-  void startAssignmentViewSurface(context);
+  const retirement = new AbortController();
+  scope.__weekrowAssignmentView = () => {
+    retirement.abort();
+    context.notifyInvalidated();
+  };
+  void startAssignmentViewSurface(context, retirement.signal);
 });

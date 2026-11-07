@@ -2,7 +2,7 @@
  * The dock of a pane: a card with a gap around it that can fill the window. The weekly list dock
  * is no card, so the rules of a card live here and only the panes carry them.
  */
-import { watchPaneIdentity } from './paneIdentity';
+import { retryPaneIdentity, watchPaneIdentity } from './paneIdentity';
 import { CARD_GAP_PX, createDock, type Dock, type DockOptions } from './dock';
 
 const CARD_CSS = `:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX}px ${CARD_GAP_PX}px ${CARD_GAP_PX}px 0;pointer-events:none}
@@ -13,6 +13,7 @@ const CARD_CSS = `:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX
 :host([data-card][data-full]) .handle{display:none}
 .identity-cover{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:var(--bg);color:var(--text);text-align:center;font:16px/1.5 Lato,Arial,sans-serif}
 .identity-cover[hidden]{display:none}
+.identity-actions{display:flex;gap:12px}
 .identity-cover button{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--btn-line);border-radius:4px;padding:8px 20px;cursor:pointer}
 .identity-cover button:hover{background:var(--btn-hover)}
 .identity-cover button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
@@ -40,7 +41,23 @@ export function createCardDock(
   button.addEventListener('click', (event) => {
     if (event.isTrusted) options.onClose();
   });
-  cover.append(message, button);
+  const retry = doc.createElement('button');
+  retry.type = 'button';
+  retry.textContent = 'Retry';
+  let retrying = false;
+  retry.addEventListener('click', (event) => {
+    if (!event.isTrusted || retrying) return;
+    retrying = true;
+    retry.setAttribute('aria-disabled', 'true');
+    void retryPaneIdentity(options.identityToken).finally(() => {
+      retrying = false;
+      retry.removeAttribute('aria-disabled');
+    });
+  });
+  const actions = doc.createElement('div');
+  actions.className = 'identity-actions';
+  actions.append(retry, button);
+  cover.append(message, actions);
   dock.section.append(cover);
   let confirmed = false;
   const inert = new Map<HTMLElement, boolean>();
@@ -67,8 +84,14 @@ export function createCardDock(
       const changed = confirmed !== yes;
       confirmed = yes;
       dock.host.setAttribute('data-identity', yes ? 'yes' : 'unknown');
+      const restoreFocus = yes && cover.contains(dock.root.activeElement);
       cover.hidden = yes;
+      if (!yes && doc.fullscreenElement === dock.host)
+        void doc.exitFullscreen().catch(() => undefined);
+      if (!yes && doc.activeElement === dock.host && !cover.contains(dock.root.activeElement))
+        retry.focus({ preventScroll: true });
       sync();
+      if (restoreFocus) dock.section.focus({ preventScroll: true });
       if (changed) options.onIdentityChange?.(yes);
     }, options.identityToken);
   };

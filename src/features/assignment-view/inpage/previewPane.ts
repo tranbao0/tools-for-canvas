@@ -195,6 +195,14 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
     );
   };
 
+  let deferredIdentityRead = false;
+  const onVisibility = (): void => {
+    if (!deferredIdentityRead || doc.visibilityState !== 'visible' || !visible) return;
+    deferredIdentityRead = false;
+    void read(visible);
+  };
+  doc.addEventListener('visibilitychange', onVisibility);
+
   const shownRef = (): PaneRef | null =>
     visible !== undefined && dock?.shown === true ? refOf(visible) : null;
 
@@ -410,6 +418,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   /** Removes every frame and the dock, and shows the file pane again if it was covered. */
   function shut(): void {
     stopPoll();
+    deferredIdentityRead = false;
     for (const slot of slots.values()) slot.remove();
     slots.clear();
     visible = undefined;
@@ -462,7 +471,10 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
             for (const slot of slots.values()) {
               if (!slot.frame.isConnected) parts?.wrapper.append(slot.frame);
             }
-            if (visible) void read(visible);
+            if (visible) {
+              deferredIdentityRead = doc.visibilityState !== 'visible';
+              if (!deferredIdentityRead) void read(visible);
+            }
           },
           id: PREVIEW_HOST_ID,
           label: 'Assignment',
@@ -519,6 +531,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (on && changed && slots.size > 0) options.onFrameLoad();
     },
     stop() {
+      doc.removeEventListener('visibilitychange', onVisibility);
       stopped = true;
       session++;
       shut();
