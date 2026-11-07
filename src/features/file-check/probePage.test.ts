@@ -50,3 +50,21 @@ describe('startFileProbe', () => {
     expect(win.postMessage).not.toHaveBeenCalled();
   });
 });
+
+it('reads only the saved origin from the diagnostic background API in Firefox', async () => {
+  vi.stubEnv('BROWSER', 'firefox');
+  const send = vi
+    .spyOn(fakeBrowser.runtime, 'sendMessage')
+    .mockResolvedValue({ canvasOrigin: SAVED } as never);
+  try {
+    const { win, parent } = fakeWindow(`?n=${NONCE}`, true);
+    await startFileProbe(win);
+    expect(send).toHaveBeenCalledWith({ type: 'weekrow:file-probe-origin' });
+    expect(parent.postMessage).toHaveBeenCalledWith(
+      { type: 'weekrow:file-probe', nonce: NONCE },
+      SAVED,
+    );
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});

@@ -170,8 +170,19 @@ export async function startViewer(): Promise<void> {
   let removeHello: (() => void) | undefined;
   let handshake: ReturnType<typeof setTimeout> | undefined;
   let lastHelloAt = -Infinity;
+  let connection: Promise<OpenResult> | undefined;
+  let settleConnection: ((result: OpenResult) => void) | undefined;
+  const waitForConnection = () => {
+    if (settleConnection) return;
+    connection = new Promise((resolve) => {
+      settleConnection = resolve;
+    });
+  };
   /** Removes the pane and gives the page its padding back. The stored tabs stay. */
-  const drop = () => {
+  const drop = (result: OpenResult = 'ended') => {
+    settleConnection?.(result);
+    settleConnection = undefined;
+    connection = undefined;
     waitingFile = null;
     clearTimeout(handshake);
     handshake = undefined;
@@ -253,6 +264,7 @@ export async function startViewer(): Promise<void> {
     }
     if (!live || generation !== started) return;
     lastHelloAt = -Infinity;
+    waitForConnection();
     const created = createCardDock({
       role: 'file',
       onClose: close,
@@ -287,11 +299,12 @@ export async function startViewer(): Promise<void> {
     const answerInTime = () => {
       clearTimeout(handshake);
       handshake = setTimeout(() => {
-        if (dock && !port) drop();
+        if (dock && !port) drop('failed');
       }, HANDSHAKE_MS);
     };
     removeHello = listenViewerHello(window, frame, browser.runtime.id, (origin) => {
       lastHelloAt = performance.now();
+      waitForConnection();
       pending?.close();
       port?.close();
       port = undefined;
@@ -317,6 +330,8 @@ export async function startViewer(): Promise<void> {
           return;
         }
         port = candidate;
+        settleConnection?.('opened');
+        settleConnection = undefined;
         synced = false;
         earlyClose.hidden = true;
         clearTimeout(handshake);
@@ -334,9 +349,14 @@ export async function startViewer(): Promise<void> {
       loads += 1;
       if (loads === 1) return;
       const loadedAt = performance.now();
+      if (lastHelloAt < loadedAt - 2000) {
+        port?.close();
+        port = undefined;
+        waitForConnection();
+      }
       clearTimeout(handshake);
       handshake = setTimeout(() => {
-        if (dock && lastHelloAt < loadedAt - 2000) drop();
+        if (dock && lastHelloAt < loadedAt - 2000) drop('failed');
       }, HANDSHAKE_MS);
     });
     created.section.append(frame);
@@ -381,18 +401,19 @@ export async function startViewer(): Promise<void> {
         waitingOpens -= 1;
       });
     opens = run.catch(() => undefined);
-    return run;
+    // The tab writes stay ordered while each caller waits separately for the frame to connect.
+    return run.then((result) => (typeof result === 'string' ? result : result.connected));
   };
   /**
    * Opens a file in the pane: resolves a module item to its file, then adds the tab. It resolves
-   * to `opened` when the pane has the file or is about to get it, to `ended` when the student
+   * to `opened` when the connected pane can take the file, to `ended` when the student
    * closed the pane or a reset came, and to `failed` when the pane could not take the file.
    */
   const openNow = async (
     target: FileTarget,
     href: string,
     started: number,
-  ): Promise<OpenResult> => {
+  ): Promise<OpenResult | { connected: Promise<OpenResult> }> => {
     const ended = () => !live || generation !== started;
     if (ended()) return 'ended';
     if (paneOpen()) {
@@ -404,13 +425,15 @@ export async function startViewer(): Promise<void> {
     }
     if (ended()) return 'ended';
     if (!paneOpen()) return 'failed';
+    const connected = connection;
     const file =
       'fileId' in target
         ? target
         : ((await browser.runtime
             .sendMessage({ type: 'viewer:module-item', ...target })
             .catch(() => undefined)) as { fileId: string } | undefined);
-    if (!paneOpen() || ended()) return 'ended';
+    if (ended()) return 'ended';
+    if (!paneOpen()) return connected ? { connected } : 'failed';
     if (!file) {
       // A pane that only this kind of open made has no file to show, and no open behind it will
       // give it one. A pane that shows a file stays.
@@ -440,9 +463,7 @@ export async function startViewer(): Promise<void> {
     // The pane may have connected while the tabs were written. It owns them from then on, and
     // it has not seen this file, so it gets the file as a request, never as a copy of the store.
     if (paneOpen() && port) return open();
-    await show();
-    if (ended()) return 'ended';
-    return paneOpen() ? 'opened' : 'failed';
+    return connected ? { connected } : 'failed';
   };
   document.addEventListener(
     'click',

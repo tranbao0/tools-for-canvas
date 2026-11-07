@@ -802,8 +802,26 @@ An earlier version used option B; schools on their own domain then needed an "Al
 - On Chrome and Edge, the background calls `storage.local.setAccessLevel('TRUSTED_CONTEXTS')` when it starts, so only extension pages and the background can use `storage.local`.
   Chrome 144 is the first version that accepts this call for `local`, which sets the minimum version.
 - Firefox has no such lock.
-  There, the saved address, the settings and the seen notes live in an IndexedDB database of the extension origin, which content scripts cannot open.
-  `storage.local` holds only a copy that the background repairs, and nothing reads that copy to decide where data goes.
+  Only the background opens the existing `weekrow-trusted` IndexedDB database and its `values` store.
+  The database name, version, keys and values stay unchanged, so an update preserves the saved address, settings, notes, positions and salt.
+  Other extension pages use the `trusted-vault` runtime message for the existing `Vault` operations.
+  The handler requires this extension's ID, its origin and Firefox's `addon_child` sender type.
+  Firefox verifies that type against the extension principal and process in `ConduitsParent.sys.mjs`; a URL alone is insufficient.
+  Direct operations and message operations use one queue, so they retain their arrival order even after a failed operation.
+  The mirror and its watch and repair logic stay in place, and no trusted read uses the mirror.
+  If IndexedDB cannot open in the background, the vault uses namespaced `storage.session` entries for that browser session.
+  A failed transaction after a successful open does not switch stores or hide persistent data.
+  The next browser start requires another "Use it" answer when IndexedDB is still unavailable; the extension does not import the local mirror.
+  The salt and PDF positions have no mirror.
+  Firefox's storage schema excludes content contexts from `storage.session`, and real Firefox 159 confirms that a Canvas content script sees it as undefined.
+- The embedded Firefox file pane runs in the Canvas content process, as measured by equal process IDs in real Firefox 159.
+  It must not use the full vault API.
+  Its separate read-only `viewer:origin` message returns only `{ canvasOrigin }`, after the existing extension-page and pane-frame checks, a tab check and an exact request-field check.
+  It cannot select a key, read the salt, enumerate the vault or read another student's positions.
+  Its other reads and writes retain the existing viewer messages and student checks.
+  The origin reply stays on the private runtime channel and is never sent through page-readable messages.
+  The test-channel diagnostic frame has its own read-only origin message with an exact `/file-probe.html` sender check; this handler and frame are absent from store builds.
+  Real Firefox tests cover the error card and stable Preview in private and container tabs, sidebar completion, and refusal of both APIs to Canvas content scripts.
 - Content scripts never get `storage.session`, so the cached Canvas data and a pending domain offer stay out of reach on every browser.
 - The background checks every stored value when it reads it, and uses the default for a field that is not valid.
 - The in-page script has no storage access.
@@ -1336,7 +1354,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   When both cookies exist, the fingerprint includes both hashes in the order of the cookie names.
   The salt is a trusted item (decision 5).
   On Chrome and Edge, it lives in `storage.local`, which the browser locks to trusted extension contexts, so content scripts can neither read nor write it.
-  On Firefox, it lives in the IndexedDB vault of the extension, which content scripts cannot open, and `saltItem` sets `mirror: false`, so no copy goes to `storage.local`, which content scripts can read.
+  On Firefox, it lives in the background-owned vault of decision 5, with a session fallback when IndexedDB cannot open, and `saltItem` sets `mirror: false`, so no copy goes to `storage.local`, which content scripts can read.
   An update removes the copy that an earlier build left there.
   The extension never stores or sends the cookie value.
   The cookie names are one ordered constant in `src/shared/canvas/session.ts`.
@@ -1455,9 +1473,10 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
 - Open risk: the open surfaces learn of a sign-out only from a Canvas page load, a focus change, a visibility change or the timer.
   A sign-out that ends on another site, such as a single sign-on page, shows the list until one of them happens.
   The ticket removed the cookie event listener on purpose.
-- Open risk: Firefox with "Never remember history" may send the requests of the extension with another store than `firefox-default`.
-  Then every read finds no cookie and shows the signed-out state.
-  The owner will check this live.
+- Measured on real Firefox 159 with local Canvas on 2026-11-07: "Never remember history" makes the background private and prevents IndexedDB from opening.
+  The background uses the session vault of decision 5 and selects `firefox-private` when `extension.inIncognitoContext` is true.
+  A normal background continues to use `firefox-default`, and container tabs remain separate.
+  The live check confirms the offer, "Use it", loaded list, rendered PDF and pane removal on sign-out.
 - Live finding on 2026-10-30: the owner's browser on hosted Canvas at `sjsu.instructure.com` has `canvas_session`, `_csrf_token`, `_hp2_id.*`, `k5_observer*` and `log_session_id`, with no `_normandy_session`.
   The extension reads `canvas_session` first, then the open-source default `_normandy_session`.
   `GET /api/v1/users/self` sets `_csrf_token` and `log_session_id`, but does not set the session cookie.
@@ -2094,6 +2113,12 @@ They show in the same three places, below Row size, and they are stored apart fr
 ### 20. No-telemetry guarantee
 
 **Decision:**
+
+- Firefox vault reads and writes stay inside the extension through the background-owned vault of decision 5.
+  The full vault API accepts only verified extension-process pages, and Canvas content scripts get no response data.
+  The embedded file pane has only the read-only saved-origin API, with no salt or whole-vault access.
+  Neither API sends its reply through a window message or another page-readable path.
+  The session fallback makes no network request and never restores values from the untrusted local mirror.
 
 - All network calls go through the fetch wrapper in `src/shared/canvas`.
   It has two functions.

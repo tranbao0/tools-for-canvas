@@ -216,6 +216,24 @@ export function routeViewerMessage(
   host: ViewerHost,
 ): Promise<unknown> | null {
   if (
+    import.meta.env.BROWSER === 'firefox' &&
+    typeof message === 'object' &&
+    message !== null &&
+    'type' in message &&
+    message.type === 'viewer:origin'
+  ) {
+    return (async () => {
+      if (
+        !host.isExtensionPage(sender) ||
+        !isPaneFrame(sender) ||
+        sender.tab?.id === undefined ||
+        Object.keys(message).some((key) => key !== 'type')
+      )
+        throw new Error('Only the pane frame may read its Canvas origin');
+      return { canvasOrigin: await host.savedOrigin() };
+    })();
+  }
+  if (
     typeof message !== 'object' ||
     message === null ||
     !('type' in message) ||

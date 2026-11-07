@@ -10,13 +10,17 @@ import { logFailure } from '@/shared/platform/log';
 import { wireFileCheck } from '@/features/file-check/background';
 import { wirePageSync } from '@/features/weekly-list/data/pageSync';
 import { createPanelRegistry } from '@/shared/platform/panelRegistry';
-import { restrictStorageToTrustedContexts } from '@/shared/platform/trustedStorage';
+import {
+  restrictStorageToTrustedContexts,
+  wireTrustedVault,
+} from '@/shared/platform/trustedStorage';
 
 /**
  * Every listener is added synchronously at the top level, so the browser can wake the service
  * worker for any of these events. See docs/design.md, decisions 4, 5 and 11.
  */
 export default defineBackground(() => {
+  wireTrustedVault();
   // First, so no page process can write the extension's storage while the worker runs.
   restrictStorageToTrustedContexts().catch((error: unknown) =>
     logFailure('storage access level', error),

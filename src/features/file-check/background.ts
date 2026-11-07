@@ -259,6 +259,26 @@ export function routeFileCheckMessage(
   sender: SenderInfo,
   host: FileCheckHost,
 ): Promise<unknown> | null {
+  if (
+    import.meta.env.BROWSER === 'firefox' &&
+    typeof message === 'object' &&
+    message !== null &&
+    'type' in message &&
+    message.type === 'weekrow:file-probe-origin'
+  ) {
+    return (async () => {
+      if (
+        !host.isExtensionPage(sender) ||
+        sender.tab?.id === undefined ||
+        sender.frameId === undefined ||
+        sender.frameId === 0 ||
+        parseUrl(sender.url ?? '')?.pathname !== '/file-probe.html' ||
+        Object.keys(message).some((key) => key !== 'type')
+      )
+        throw new Error('Only the diagnostic frame may read its Canvas origin');
+      return { canvasOrigin: await host.savedOrigin() };
+    })();
+  }
   if (!isFileCheckMessage(message)) return null;
   return (async () => {
     const saved = await host.savedOrigin();

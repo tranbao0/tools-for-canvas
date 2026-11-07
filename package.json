@@ -42,7 +42,8 @@
     "check:fetch": "node scripts/check-fetch.mjs",
     "check:storage": "node scripts/check-storage.mjs",
     "check:file-check": "node scripts/check-file-check.mjs",
-    "check": "npm run build && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage && npm run check:file-check"
+    "check": "npm run build && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage && npm run check:file-check",
+    "test:firefox:private-tabs": "node tests/firefox/private-tabs.mjs"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",
