@@ -92,6 +92,15 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
   const failures = new Set<string>();
   let focusCourse: string | undefined;
 
+  function setSaving(value: boolean): void {
+    saving = value;
+    for (const card of doc?.querySelectorAll('[data-wr-card]') ?? []) {
+      if (value) card.setAttribute('aria-busy', 'true');
+      else card.removeAttribute('aria-busy');
+      for (const eye of card.querySelectorAll('button')) eye.disabled = value;
+    }
+  }
+
   function blockWhileSaving(event: Event): void {
     if (saving && event.target instanceof Element && event.target.closest('[data-wr-grades]')) {
       event.preventDefault();
@@ -160,11 +169,9 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
           return;
         }
         const started = lifetime;
-        saving = true;
+        setSaving(true);
         failures.delete(course.id);
         card.querySelector('[data-wr-grade-note]')?.remove();
-        eye.disabled = true;
-        card.setAttribute('aria-busy', 'true');
         // Showing waits for the saved preference; hiding conceals the text immediately.
         fill(card, course.id, 'grade', HIDDEN_GRADE);
         try {
@@ -174,9 +181,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
             );
           if (started !== lifetime) return;
           if (hasOpenWork(context.doc)) {
-            saving = false;
-            eye.disabled = false;
-            card.removeAttribute('aria-busy');
+            setSaving(false);
             showNote(card, course.id, 'Close the open form first.');
             return;
           }
@@ -196,7 +201,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
           /* The card carries the failure note below. */
         }
         if (started !== lifetime) return;
-        saving = false;
+        setSaving(false);
         failures.add(course.id);
         focusCourse = course.id;
         context.refreshGrades();

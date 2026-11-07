@@ -2063,6 +2063,8 @@ for (const saved of [false, true])
     releaseRead();
     await expect(grade).toHaveText(saved ? '•••' : '95%');
     await expect(eye).toBeFocused();
+    await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
+    await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
     await expect(page.locator('[data-wr-card="107"] .fx-card-body [role="status"]')).toHaveText(
       'Could not save grade visibility. Try again.',
     );
@@ -2172,6 +2174,8 @@ test('a copied eye waits for a native eye write to settle', async ({ context, pa
   await nativeEye.click();
   await page.locator('[data-wr-card="107"] button').click();
   await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+  await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(2);
+  await expect(page.locator('[data-wr-card][aria-busy="true"]')).toHaveCount(2);
   await page.waitForTimeout(1500);
   await nativeEye.click();
   await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
