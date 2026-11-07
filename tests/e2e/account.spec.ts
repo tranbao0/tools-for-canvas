@@ -3,8 +3,9 @@
  * round asks `GET /api/v1/users/self`. When the user id changes, the round drops what it loaded
  * and all cached data, so one student never sees another student's work on a shared computer.
  */
-import type { Page } from '@playwright/test';
+import type { Page, Worker } from '@playwright/test';
 import type { Course, PlannerItem, Profile, UserSelf } from '../../src/shared/canvas/types';
+import { stableValue } from './support/settle';
 import { CANVAS_ERRORS } from '../fixtures/errors';
 import { IDS, type Scenario } from '../fixtures/scenario';
 import type { WireAssignment } from '../fixtures/wire-types';
@@ -687,10 +688,7 @@ test('an old hidden panel cannot mark rows for a different student', async ({
   await openExtensionPage(page, extensionUrl('sidepanel.html'));
   await loadedAccountList(page);
   await expect(doneBox(page, QUIZ_3)).toBeVisible();
-  await page.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
+  await hidePanel(page, background);
   await context.unrouteAll({ behavior: 'ignoreErrors' });
   const student = secondStudent(first.scenario);
   student.row.plannable_id = IDS.assignments.bioQuiz3Today;
@@ -707,8 +705,14 @@ test('an old hidden panel cannot mark rows for a different student', async ({
   expect(second.requests.filter((r) => r.method !== 'GET')).toEqual([]);
 });
 
-/** Hides the panel the way a background tab is hidden, so it asks for no state until it is shown. */
-async function hidePanel(page: Page): Promise<void> {
+/**
+ * Hides the panel the way a background tab is hidden, so it asks for no state until it is shown.
+ * A request from before this point still draws its reply, so the answers of the page and the
+ * background end first.
+ */
+async function hidePanel(page: Page, background: Worker): Promise<void> {
+  await settledList(page);
+  await stableValue(page, () => true, background);
   await page.evaluate(() => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
     document.dispatchEvent(new Event('visibilitychange'));
@@ -731,7 +735,7 @@ test.describe('an open form of the first student', () => {
     await loadedAccountList(page);
     await page.getByRole('button', { name: 'Add task' }).click();
     await page.getByLabel('Title').fill(DRAFT);
-    await hidePanel(page);
+    await hidePanel(page, background);
 
     await context.unrouteAll({ behavior: 'ignoreErrors' });
     const student = secondStudent(first.scenario);
@@ -800,7 +804,7 @@ test.describe('an open form of the first student', () => {
       scope.getByRole('button', { name: 'Edit task: Return library books', exact: true });
     await edit(page).click();
     await page.getByLabel('Title').fill('Edited for the first Canvas');
-    await hidePanel(page);
+    await hidePanel(page, background);
 
     await saveAddress(background, state.canvas.origin);
     const other = await context.newPage();
