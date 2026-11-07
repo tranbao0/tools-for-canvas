@@ -14,6 +14,7 @@
  */
 import {
   findGradeWidgets,
+  inEditMode,
   findPagedWidgets,
   type GradeCards,
 } from '../../../shared/canvas/widgetDashboard';
@@ -54,6 +55,29 @@ function looksOf(card: HTMLElement): string {
 export interface GradeVisibilityStore {
   userId?: string;
   observed: Map<string, Map<string, boolean>>;
+}
+
+/** Finds draft controls across the open roots used by dashboard cards. */
+function hasOpenWork(root: Document | ShadowRoot): boolean {
+  for (const node of root.querySelectorAll<HTMLElement>(
+    'form.wr-form, [role="dialog"] textarea, [role="dialog"] [contenteditable="true"], input[type="search"]',
+  )) {
+    if (node.getClientRects().length && (!(node instanceof HTMLInputElement) || node.value !== ''))
+      return true;
+  }
+  return [...root.querySelectorAll('*')].some(
+    (node) => node.shadowRoot && hasOpenWork(node.shadowRoot),
+  );
+}
+
+function showNote(card: HTMLElement, id: string, text: string): void {
+  card.querySelector('[data-wr-grade-note]')?.remove();
+  const note = card.ownerDocument.createElement('span');
+  note.setAttribute('role', 'status');
+  note.setAttribute('data-wr-grade-note', '');
+  note.style.cssText = 'display:block;margin-top:8px';
+  note.textContent = text;
+  card.querySelector(`[data-testid="course-${id}-name"]`)?.parentElement?.append(note);
 }
 
 export function gradesFix(store: GradeVisibilityStore = { observed: new Map() }): Fix {
@@ -112,7 +136,8 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
       'button[data-testid*="single-grade-button-"]',
     );
     for (const node of card.querySelectorAll('button')) if (node !== eye) node.remove();
-    if (eye) {
+    if (inEditMode(context.doc)) eye?.remove();
+    else if (eye) {
       const label = `${hidden ? 'Show' : 'Hide'} grade for ${course.name}`;
       eye.setAttribute('aria-label', label);
       eye.setAttribute(
@@ -129,6 +154,10 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         if (!event.isTrusted || saving || !context.data?.userId) return;
         event.preventDefault();
         event.stopPropagation();
+        if (hasOpenWork(context.doc)) {
+          showNote(card, course.id, 'Close the open form first.');
+          return;
+        }
         const started = lifetime;
         saving = true;
         failures.delete(course.id);
@@ -143,6 +172,13 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
               setTimeout(resolve, 500 - (Date.now() - nativeChangedAt)),
             );
           if (started !== lifetime) return;
+          if (hasOpenWork(context.doc)) {
+            saving = false;
+            eye.disabled = false;
+            card.removeAttribute('aria-busy');
+            showNote(card, course.id, 'Close the open form first.');
+            return;
+          }
           const reply = await context.send({
             type: 'weekrow:grade-visibility',
             widgetId,
@@ -167,13 +203,8 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         context.again();
       });
     }
-    if (failures.has(course.id)) {
-      const note = context.doc.createElement('span');
-      note.setAttribute('role', 'status');
-      note.setAttribute('data-wr-grade-note', '');
-      note.textContent = 'Could not save grade visibility. Try again.';
-      card.querySelector(`[data-testid="course-${course.id}-name"]`)?.parentElement?.append(note);
-    }
+    if (failures.has(course.id))
+      showNote(card, course.id, 'Could not save grade visibility. Try again.');
     card.setAttribute('data-wr-own', 'card');
     card.setAttribute('data-wr-card', course.id);
     card.setAttribute('aria-label', course.name);
@@ -275,6 +306,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         (context.data?.showGrades?.[widgetId] !== false && !found.gradesHidden)
       );
     const signature = JSON.stringify([
+      inEditMode(context.doc),
       template === undefined ? null : looksOf(template),
       missing.map((course) => [course.id, course.name, course.color, course.score, course.grade]),
       missing.map((course) => hidden(course.id)),

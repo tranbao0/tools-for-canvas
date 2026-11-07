@@ -2170,3 +2170,35 @@ test('a copied eye waits for a native eye write to settle', async ({ context, pa
   await page.locator('[data-wr-card="107"] button').click();
   await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
 });
+
+for (const work of ['task', 'search', 'message', 'customize'])
+  test(`a copied eye protects ${work}`, async ({ context, page }) => {
+    const { canvas } = await open(context, page, { scenario: EIGHT_COURSES });
+    await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+    if (work === 'task') await page.getByRole('button', { name: 'Add task', exact: true }).click();
+    else if (work === 'search') await page.locator(`${LIST} input[type="search"]`).fill('lab');
+    else
+      await page.evaluate((kind) => {
+        const node = document.createElement(kind === 'customize' ? 'button' : 'div');
+        if (kind === 'customize') node.dataset.testid = 'save-customize-button';
+        else {
+          node.setAttribute('role', 'dialog');
+          node.setAttribute('aria-label', 'Compose Message');
+          node.innerHTML = '<textarea aria-label="Message">Draft message</textarea>';
+        }
+        document.body.append(node);
+      }, work);
+    const eye = page.locator('[data-wr-card="107"] button');
+    if (work === 'customize') await expect(eye).toHaveCount(0);
+    else {
+      await eye.click();
+      await expect(page.locator('[data-wr-card="107"] .fx-card-body [role="status"]')).toHaveText(
+        'Close the open form first.',
+      );
+    }
+    expect(
+      canvas.requests.filter((request) =>
+        request.postData?.includes('updateWidgetDashboardConfig'),
+      ),
+    ).toHaveLength(0);
+  });
