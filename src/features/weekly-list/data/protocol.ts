@@ -58,39 +58,42 @@ export interface PreviousOverride {
   previous: OverrideFlags;
 }
 
-export type DataAction =
+/**
+ * The student and the Canvas of the rows that the student acted on. Every write carries it, and
+ * the owner refuses a write when it is not the student and the Canvas of the cache.
+ */
+export interface ActionIdentity {
+  userId: string;
+  origin: string;
+}
+
+export type DataAction = ActionIdentity &
   /** Checks or unchecks every item in `keys`: one item, or the items of the "N older" list. */
-  | { kind: 'setDone'; keys: readonly string[]; done: boolean }
-  /**
-   * Undo of an override action. The owner ignores it when `userId` is not the signed-in user or
-   * `origin` is not the saved Canvas, so a notice never writes onto the overrides of another
-   * user or school.
-   */
-  | { kind: 'restore'; userId: string; origin: string; entries: PreviousOverride[] }
-  | { kind: 'createTask'; input: TaskInput }
-  | { kind: 'updateTask'; noteId: string; input: TaskInput }
-  | { kind: 'deleteTask'; noteId: string }
-  | { kind: 'moveTaskToToday'; noteId: string }
-  /** The Undo notice of a task delete ended, so the delayed DELETE is sent now. */
-  | { kind: 'sendDelete'; noteId: string; deleteToken?: number }
-  /** Undo of a task delete. It works until the DELETE request has started. */
-  | { kind: 'cancelDelete'; noteId: string }
-  /**
-   * The student marks an announcement of the Announcements tab as read: `PUT .../read`. Only this
-   * explicit action writes a read state (decisions 22 and 24).
-   */
-  | { kind: 'markAnnouncement'; courseId: string; topicId: string }
-  /**
-   * Undo of that mark: `DELETE .../read`. The owner ignores it when `userId` is not the signed-in
-   * user or `origin` is not the saved Canvas, as it does for `restore`.
-   */
-  | {
-      kind: 'restoreAnnouncement';
-      userId: string;
-      origin: string;
-      courseId: string;
-      topicId: string;
-    };
+  (
+    | { kind: 'setDone'; keys: readonly string[]; done: boolean }
+    /**
+     * Undo of an override action. It carries the identity of the view like every action, so a
+     * notice never writes onto the overrides of another user or school.
+     */
+    | { kind: 'restore'; entries: PreviousOverride[] }
+    | { kind: 'createTask'; input: TaskInput }
+    | { kind: 'updateTask'; noteId: string; input: TaskInput }
+    | { kind: 'deleteTask'; noteId: string }
+    | { kind: 'moveTaskToToday'; noteId: string }
+    /** The Undo notice of a task delete ended, so the delayed DELETE is sent now. */
+    | { kind: 'sendDelete'; noteId: string; deleteToken?: number }
+    /** Undo of a task delete. It works until the DELETE request has started. */
+    | { kind: 'cancelDelete'; noteId: string }
+    /**
+     * The student marks an announcement of the Announcements tab as read: `PUT .../read`. Only this
+     * explicit action writes a read state (decisions 22 and 24).
+     */
+    | { kind: 'markAnnouncement'; courseId: string; topicId: string }
+    /**
+     * Undo of that mark: `DELETE .../read`.
+     */
+    | { kind: 'restoreAnnouncement'; courseId: string; topicId: string }
+  );
 
 type DataActionKind = DataAction['kind'];
 
@@ -339,7 +342,13 @@ function isPreviousOverride(value: unknown): value is PreviousOverride {
 export const MAX_ACTION_KEYS = 2000;
 
 export function isDataAction(value: unknown): value is DataAction {
-  if (!isObject(value) || !isString(value['kind'])) return false;
+  if (
+    !isObject(value) ||
+    !isString(value['kind']) ||
+    !isNonEmptyString(value['userId']) ||
+    !isNonEmptyString(value['origin'])
+  )
+    return false;
   const kind = value['kind'] as DataActionKind;
   switch (kind) {
     case 'setDone':
@@ -352,8 +361,6 @@ export function isDataAction(value: unknown): value is DataAction {
       );
     case 'restore':
       return (
-        isNonEmptyString(value['userId']) &&
-        isNonEmptyString(value['origin']) &&
         Array.isArray(value['entries']) &&
         value['entries'].length <= MAX_ACTION_KEYS &&
         value['entries'].every(isPreviousOverride)
@@ -365,12 +372,7 @@ export function isDataAction(value: unknown): value is DataAction {
     case 'markAnnouncement':
       return isCanvasId(value['courseId']) && isCanvasId(value['topicId']);
     case 'restoreAnnouncement':
-      return (
-        isNonEmptyString(value['userId']) &&
-        isNonEmptyString(value['origin']) &&
-        isCanvasId(value['courseId']) &&
-        isCanvasId(value['topicId'])
-      );
+      return isCanvasId(value['courseId']) && isCanvasId(value['topicId']);
     case 'deleteTask':
     case 'moveTaskToToday':
     case 'sendDelete':

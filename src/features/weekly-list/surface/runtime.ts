@@ -18,6 +18,7 @@
 import {
   MAX_ACTION_KEYS,
   type ActionReply,
+  type ActionIdentity,
   type CourseChoice,
   type DataAction,
   type DataMessage,
@@ -133,6 +134,12 @@ export interface SurfaceRuntime {
   stop(): void;
 }
 
+type DataActionInput = DataAction extends infer A
+  ? A extends DataAction
+    ? Omit<A, keyof ActionIdentity> & Partial<ActionIdentity>
+    : never
+  : never;
+
 /** Actions that change data. A new one ends the Undo notice of the last one. */
 const DATA_WRITES: ReadonlySet<DataAction['kind']> = new Set([
   'setDone',
@@ -203,6 +210,7 @@ function isTabSurface(surface: RequestSurface): surface is 'panel' | 'inpage' {
 
 export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions): SurfaceRuntime {
   let base: SurfaceState = { kind: 'loading' };
+  let identity: ActionIdentity | null = null;
   /** The span the student last asked for. A shown span can lag behind it while a span loads. */
   let spanOffset = 0;
   let settings: Settings | null = null;
@@ -372,6 +380,10 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       feed = null;
       listTab = 'tasks';
     }
+    identity =
+      reply.userId !== undefined && 'origin' in reply && reply.kind !== 'signed_out'
+        ? { userId: reply.userId, origin: reply.origin }
+        : null;
     base = reply;
     followCourses(reply);
     scheduleMidnight();
@@ -449,12 +461,20 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   function dropNotice(): void {
     const ended = notice;
     notice = null;
-    for (const data of ended?.data ?? []) if (data.kind === 'delete') endDelete(data.noteId);
+    for (const data of ended?.data ?? []) if (data.kind === 'delete') endDelete(data);
   }
 
-  function endDelete(noteId: string): void {
+  function endDelete(data: Extract<UndoData, { kind: 'delete' }>): void {
     host
-      .send({ type: 'weekrow:action', action: { kind: 'sendDelete', noteId } })
+      .send({
+        type: 'weekrow:action',
+        action: {
+          kind: 'sendDelete',
+          noteId: data.noteId,
+          userId: data.userId,
+          origin: data.origin,
+        },
+      })
       .catch(report('end undo'));
   }
 
@@ -471,9 +491,15 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
    * parts, and the replies make one notice.
    */
   function sendAction(
-    action: DataAction,
+    input: DataActionInput,
     shows?: UndoInfo['kind'],
   ): Promise<ActionReply | undefined> {
+    const source = 'userId' in input && 'origin' in input ? (input as ActionIdentity) : identity;
+    if (source === null)
+      return Promise.resolve(
+        input.kind === 'createTask' ? { undo: null, created: false } : { undo: null },
+      );
+    const action = { ...input, ...source } as DataAction;
     const isWrite = DATA_WRITES.has(action.kind);
     if (isWrite) {
       // The student acted again, so the last notice ends.
@@ -507,7 +533,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
             };
             emit();
           } else {
-            for (const d of data) if (d.kind === 'delete') endDelete(d.noteId);
+            for (const d of data) if (d.kind === 'delete') endDelete(d);
           }
         }
         await requestState().catch(report('state request'));
@@ -621,7 +647,12 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       const sends = last.data.map((data) =>
         sendAction(
           data.kind === 'delete'
-            ? { kind: 'cancelDelete', noteId: data.noteId }
+            ? {
+                kind: 'cancelDelete',
+                noteId: data.noteId,
+                userId: data.userId,
+                origin: data.origin,
+              }
             : data.kind === 'announcement'
               ? {
                   kind: 'restoreAnnouncement',

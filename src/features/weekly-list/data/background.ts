@@ -2,6 +2,7 @@
  * The data owner as the background runs it: the real Canvas client, storage, clock and browser
  * events. See docs/design.md, decision 11, option A.
  */
+import { isDataAction } from './protocol';
 import { extensionOrigin } from './router';
 import { browser } from 'wxt/browser';
 import { sessionFingerprint, surfaceUsesRequestStore } from '../../../shared/canvas/session';
@@ -81,12 +82,18 @@ export function wireDataTriggers(owner: DataOwner): () => void {
       !port.sender?.url?.startsWith(browser.runtime.getURL('/'))
     )
       return;
-    const noteId = port.name.slice('weekrow-delete:'.length);
+    let action: unknown;
+    try {
+      action = JSON.parse(port.name.slice('weekrow-delete:'.length));
+    } catch {
+      return;
+    }
+    if (!isDataAction(action) || action.kind !== 'deleteTask') return;
+    const original = action;
+    const noteId = original.noteId;
     let closed = false;
     const origin = extensionOrigin(() => canvasOriginItem.getValue());
-    const pending = origin.then((checked) =>
-      owner.act({ kind: 'deleteTask', noteId }, undefined, checked),
-    );
+    const pending = origin.then((checked) => owner.act(original, undefined, checked));
     port.onDisconnect.addListener(() => {
       void browser.runtime.lastError;
       closed = true;
@@ -95,7 +102,7 @@ export function wireDataTriggers(owner: DataOwner): () => void {
           if (reply.deleteToken !== undefined)
             return origin.then((checked) =>
               owner.act(
-                { kind: 'sendDelete', noteId, deleteToken: reply.deleteToken },
+                { ...original, kind: 'sendDelete', noteId, deleteToken: reply.deleteToken },
                 undefined,
                 checked,
               ),

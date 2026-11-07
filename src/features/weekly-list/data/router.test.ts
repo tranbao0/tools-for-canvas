@@ -212,7 +212,13 @@ describe('routeDataMessage', () => {
     it('route the announcement read mark as an action, from the saved Canvas only', async () => {
       const message = {
         type: 'weekrow:action',
-        action: { kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
+        action: {
+          userId: '5501',
+          origin: 'https://school.instructure.com',
+          kind: 'markAnnouncement',
+          courseId: '101',
+          topicId: '31901',
+        },
       };
       await routeDataMessage(owner, message, CONTENT_SCRIPT, host);
       expect(owner.act).toHaveBeenCalledWith(message.action, 3, SAVED);
@@ -679,7 +685,13 @@ describe('routeDataMessage', () => {
     );
     expect(owner.refresh).toHaveBeenLastCalledWith('retry', SAVED);
 
-    const action = { kind: 'setDone', keys: ['assignment:1'], done: true };
+    const action = {
+      userId: '5501',
+      origin: 'https://school.instructure.com',
+      kind: 'setDone',
+      keys: ['assignment:1'],
+      done: true,
+    };
     await expect(
       routeDataMessage(owner, { type: 'weekrow:action', action }, CONTENT_SCRIPT, host),
     ).resolves.toEqual({ undo: null });
@@ -712,7 +724,16 @@ describe('routeDataMessage', () => {
     const messages = [
       { type: 'weekrow:get-state', request: REQUEST },
       { type: 'weekrow:refresh', reason: 'retry' },
-      { type: 'weekrow:action', action: { kind: 'setDone', keys: ['assignment:1'], done: true } },
+      {
+        type: 'weekrow:action',
+        action: {
+          userId: '5501',
+          origin: 'https://school.instructure.com',
+          kind: 'setDone',
+          keys: ['assignment:1'],
+          done: true,
+        },
+      },
       { type: 'weekrow:open-page', page: 'welcome' },
     ];
     for (const message of messages) {

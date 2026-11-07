@@ -132,3 +132,38 @@ it('does not let a cold viewer use a first session under an unconfirmed cookie',
   expect(await pending).toBeNull();
   expect(read).not.toHaveBeenCalled();
 });
+
+it.each(['createTask', 'setDone'] as const)(
+  'refuses a cold %s of another student when the first session loads',
+  async (kind) => {
+    const h = await createHarness();
+    const releaseRound = h.canvas.hold('getProfile');
+    await h.owner.getState(PANEL, undefined, ORIGIN);
+    await vi.advanceTimersByTimeAsync(0);
+    const held = gate();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockImplementationOnce(async () => {
+      await held.hold();
+      return true;
+    });
+    const other = { userId: '7777', origin: ORIGIN };
+    const pending = h.owner
+      .act(
+        kind === 'createTask'
+          ? { ...other, kind, input }
+          : { ...other, kind, keys: ['assignment:1'], done: true },
+        1,
+        ORIGIN,
+      )
+      .catch((error: unknown) => error);
+    await held.entered;
+    releaseRound();
+    await loadReady(h);
+    h.canvas.resetCalls();
+    held.release();
+    expect(await pending).toEqual(
+      kind === 'createTask' ? { undo: null, created: false } : { undo: null },
+    );
+    await settleAll();
+    expect(h.canvas.calls).toEqual([]);
+  },
+);

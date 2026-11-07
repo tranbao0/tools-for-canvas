@@ -870,6 +870,7 @@ describe('states', () => {
 
     expect(await h.owner.getState(PANEL)).toEqual({
       kind: 'no_courses',
+      userId: IDS.user,
       origin: ORIGIN,
       offer: null,
       allCourses: [],

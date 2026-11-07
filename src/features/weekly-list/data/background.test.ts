@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { IDS } from '../../../../tests/fixtures/scenario';
-import { loadReady } from './testing/harness';
+import { ORIGIN, loadReady } from './testing/harness';
 import { wireDataTriggers } from './background';
 import { createHarness, settleAll, useScenarioClock } from './testing/harness';
 
@@ -72,11 +72,14 @@ it('limits disconnect to its delete token and maintains the alarm', async () => 
     vi.spyOn(event, 'removeListener').mockImplementation(() => undefined);
   const stop = wireDataTriggers(h.owner);
   const noteId = IDS.notes.libraryBooksToday;
-  function port(url: string) {
+  function port(
+    url: string,
+    identity: { userId: string; origin: string } = { userId: IDS.user, origin: ORIGIN },
+  ) {
     let disconnect = () => {};
     const postMessage = vi.fn();
     connect({
-      name: `weekrow-delete:${noteId}`,
+      name: `weekrow-delete:${JSON.stringify({ kind: 'deleteTask', noteId, ...identity })}`,
       sender: { url },
       postMessage,
       onDisconnect: {
@@ -90,6 +93,16 @@ it('limits disconnect to its delete token and maintains the alarm', async () => 
   const rejected = port('https://example.com/');
   await h.owner.settled();
   expect(rejected.postMessage).not.toHaveBeenCalled();
+  for (const identity of [
+    { userId: '7777', origin: ORIGIN },
+    { userId: IDS.user, origin: 'https://other.instructure.com' },
+  ]) {
+    const stale = port(browser.runtime.getURL('/sidepanel.html'), identity);
+    await h.owner.settled();
+    stale.close();
+    await h.owner.settled();
+    expect(h.canvas.callsOf('deleteNote')).toEqual([]);
+  }
   const first = port(browser.runtime.getURL('/sidepanel.html'));
   await h.owner.settled();
   await vi.waitFor(() => expect(first.postMessage).toHaveBeenCalled());

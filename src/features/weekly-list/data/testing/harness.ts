@@ -26,7 +26,7 @@ import { sessionCacheItem, type SessionData } from '../cache';
 import { viewerStudentItem } from '../../../file-viewer/student';
 import { mergeIntervals, toInterval, toRange } from '../coverage';
 import { createDataOwner, type DataOwner, type DataOwnerDeps } from '../owner';
-import type { StateReply, SurfaceRequest } from '../protocol';
+import type { DataAction, ActionIdentity, StateReply, SurfaceRequest } from '../protocol';
 import { plannerRangeForView, spanRange, type ViewContext } from '../state';
 import { createFakeCanvas, type FakeCanvas } from './fakeCanvas';
 
@@ -52,7 +52,21 @@ type OriginMethod =
   | 'announcementFeed'
   | 'markDashboardAnnouncement';
 export type TestDataOwner = Omit<DataOwner, OriginMethod> & {
-  [K in OriginMethod]: (...args: Partial<Parameters<DataOwner[K]>>) => ReturnType<DataOwner[K]>;
+  [K in Exclude<OriginMethod, 'act'>]: (
+    ...args: Partial<Parameters<DataOwner[K]>>
+  ) => ReturnType<DataOwner[K]>;
+} & {
+  act(
+    action:
+      | DataAction
+      | (DataAction extends infer A
+          ? A extends DataAction
+            ? Omit<A, keyof ActionIdentity>
+            : never
+          : never),
+    tabId?: number,
+    origin?: string | null,
+  ): ReturnType<DataOwner['act']>;
 };
 
 /** Direct test calls use the stored origin unless they supply one. */
@@ -73,6 +87,14 @@ function withTestOrigin(owner: DataOwner): TestDataOwner {
         return async (...args: unknown[]) => {
           if (args[position] === undefined)
             args[position] = await extensionOrigin(() => canvasOriginItem.getValue());
+          if (property === 'act') {
+            const stored = await sessionCacheItem.getValue();
+            args[0] = {
+              userId: stored?.session?.profile.id ?? IDS.user,
+              origin: args[position],
+              ...(args[0] as object),
+            };
+          }
           return Reflect.apply(target[property as OriginMethod], target, args);
         };
       }

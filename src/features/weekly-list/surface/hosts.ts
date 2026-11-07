@@ -76,7 +76,9 @@ export function extensionPageHost(): SurfaceHost {
       }
       const noteId = message.action.noteId;
       // The browser closes this port even when pagehide cannot deliver a message.
-      const port = browser.runtime.connect({ name: `weekrow-delete:${noteId}` });
+      const port = browser.runtime.connect({
+        name: `weekrow-delete:${JSON.stringify(message.action)}`,
+      });
       deletePorts.set(noteId, port);
       return new Promise((resolve, reject) => {
         port.onMessage.addListener((result: { reply?: unknown; error?: string }) => {

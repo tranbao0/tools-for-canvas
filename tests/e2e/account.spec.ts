@@ -674,3 +674,35 @@ test('a refused Undo shows its notice again beside the error, and the next tap r
   await expect(doneBox(page, QUIZ_3)).not.toBeChecked();
   await expect.poll(writes).toBeGreaterThan(before);
 });
+
+test('an old hidden panel cannot mark rows for a different student', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const first = await serveScenario(context);
+  await addCsrfCookie(context, first.canvas.origin);
+  await saveAddress(background, first.canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await loadedAccountList(page);
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await context.unrouteAll({ behavior: 'ignoreErrors' });
+  const student = secondStudent(first.scenario);
+  student.row.plannable_id = IDS.assignments.bioQuiz3Today;
+  student.row.plannable.id = IDS.assignments.bioQuiz3Today;
+  const second = await serveFakeCanvas(context, secondStudentRoutes(student));
+  await advanceBackgroundClock(background, AFTER_LIMIT_MS);
+  const other = await context.newPage();
+  await openCanvasPage(other, second.origin);
+  await loadedAccountList(other);
+  await expect(doneBox(inpageList(other), SKETCHBOOK)).toBeVisible();
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await doneBox(page, QUIZ_3).click();
+  await expect(doneBox(page, QUIZ_3)).toHaveCount(0);
+  expect(second.requests.filter((r) => r.method !== 'GET')).toEqual([]);
+});
