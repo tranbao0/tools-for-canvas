@@ -544,3 +544,17 @@ it('a null cookie without site access keeps the pane and stored student', async 
   expect(cleared).not.toHaveBeenCalled();
   expect((await h.deps.store.cache.getValue())?.session?.profile.id).toBe('5501');
 });
+
+it.each(['viewerUserId', 'viewerMayFetch', 'dashboardData'] as const)(
+  '%s keeps the student when a null cookie has no site access',
+  async (method) => {
+    const h = await loaded();
+    const cleared = vi.fn();
+    h.deps.onUserDataCleared = cleared;
+    vi.mocked(h.deps.hasAccess).mockResolvedValue(false);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+    await h.owner[method](ORIGIN, TAB);
+    expect(cleared).not.toHaveBeenCalled();
+    expect((await h.deps.store.cache.getValue())?.session?.profile.id).toBe('5501');
+  },
+);
