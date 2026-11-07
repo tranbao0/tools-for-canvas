@@ -2013,6 +2013,9 @@ They show in the same three places, below Row size, and they are stored apart fr
     So on Chrome and Edge, a student whose browser mode differs from the system picks Light or Dark once.
   - With Automatic, the in-page list follows the Canvas page, because it is part of that page.
     It uses dark colors only when the page background is dark, as the original did [9].
+  - It follows the page live, with no reload, in both directions.
+    The widget dashboard of Canvas turns its dark mode on and off ("Switch to dark mode") with an inline `background-color` on `html` and `body`, so the watch reads the page background again after each change of an attribute of `html` or `body`, and after a stylesheet link is added or removed.
+    Every surface that follows the page does this: the in-page list and the weekly dock, the file pane and the assignment panes.
 
 ### 20. No-telemetry guarantee
 

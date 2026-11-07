@@ -38,7 +38,7 @@ import {
 } from './model';
 import { normalizeWidth } from './width';
 import type { ToolsSettings } from '../../shared/settings/tools';
-import { detectPageTheme } from '../../shared/ui/pageTheme';
+import { detectPageTheme, watchPageTheme } from '../../shared/ui/pageTheme';
 import { inpageTheme, type ThemeChoice } from '../../shared/ui/theme';
 
 export function listenViewerHello(
@@ -352,6 +352,8 @@ export async function startViewer(): Promise<void> {
   addEventListener('resize', sendFullView, { signal: lifetime.signal });
   lifetime.signal.addEventListener('abort', stopWatchingFullView, { once: true });
   lifetime.signal.addEventListener('abort', stopWatchingPanes, { once: true });
+  // Canvas turns its dark mode on and off with no reload, and Automatic follows it.
+  lifetime.signal.addEventListener('abort', watchPageTheme(document, applyTheme), { once: true });
   // The opens run one after another. Each one reads the stored tabs, adds its file and writes them
   // back, so two that ran side by side would both start from the same tabs and the second write
   // would drop the file of the first. The tab order is also the order of the clicks.

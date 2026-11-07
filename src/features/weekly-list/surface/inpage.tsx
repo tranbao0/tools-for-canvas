@@ -9,7 +9,7 @@ import type { InpageMount } from '../inpage/mount';
 import { attempt, startInpage } from '../inpage/start';
 import { findWidgetGrid } from '../../../shared/canvas/widgetDashboard';
 import { removeStaleWeeklyDock } from '../../file-viewer/dock';
-import { detectPageTheme } from '../../../shared/ui/pageTheme';
+import { detectPageTheme, watchPageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
 import { App } from '../ui/App';
 import { activeElementIn } from '../ui/focus';
@@ -28,6 +28,7 @@ import {
   followTheme,
   inpageTheme,
   setThemeAttribute,
+  type ThemeChoice,
   type ThemeSource,
 } from '../../../shared/ui/theme';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
@@ -129,15 +130,27 @@ export function mountInpageList(mount: InpageMount, deps: InpageListDeps): () =>
   if (deps.dock === true) ui.host.setAttribute('data-panel', SIDE_PANEL);
   // The host and the UI root always carry a theme: the student's choice, or with Automatic
   // the theme of the Canvas page (decision 19).
-  const stopTheme = followTheme(
+  let choice: ThemeChoice | null = null;
+  const applyTheme = (): void => {
+    if (choice === null) return;
+    const applied = inpageTheme(choice, () => detectPageTheme(doc));
+    setThemeAttribute([ui.host, ui.root], applied);
+    deps.onTheme?.(applied);
+  };
+  const stopSettings = followTheme(
     deps.settings,
     (theme) => {
-      const applied = inpageTheme(theme, () => detectPageTheme(doc));
-      setThemeAttribute([ui.host, ui.root], applied);
-      deps.onTheme?.(applied);
+      choice = theme;
+      applyTheme();
     },
     logFailure,
   );
+  // Canvas turns its dark mode on and off with no reload, so Automatic reads the page again then.
+  const stopPageTheme = watchPageTheme(doc, applyTheme);
+  const stopTheme = (): void => {
+    stopPageTheme();
+    stopSettings();
+  };
   const view = createInpageView(runtime, { doc });
   view.setContainer(ui.root);
   const stopSlotWatch = watchSlotMode(ui.host, (slot) => view.setSlot(slot));
