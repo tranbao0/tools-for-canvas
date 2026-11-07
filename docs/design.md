@@ -1830,7 +1830,7 @@ These sizes come from one test build of the same small app [19].
    - lint, type checks and unit tests;
    - builds for all browsers, and a check that each built manifest has `manifest_version` 3, the expected permissions and `gecko.id`;
    - the size check and `web-ext lint`;
-   - the Playwright tests and the Firefox smoke test;
+   - the Playwright tests, and in a second job beside them every Firefox suite;
    - a rebuild of the Firefox source zip on the `ubuntu-24.04-arm` runner with Node 24.14 and npm 11.9, compared byte for byte with the release build [20].
 
 **Why:**
