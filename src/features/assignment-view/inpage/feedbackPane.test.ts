@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDock, isFullView, setFullView } from '../../file-viewer/dock';
 import { FEEDBACK_HOST_ID, createFeedbackPane, type FeedbackPane } from './feedbackPane';
 
+// A dock lies over the page when it would leave Canvas less than 768 px, so these tests use a wide window.
+window.innerWidth = 1600;
+
 const URL_ONE = 'https://school.instructure.com/api/v1/canvadoc_session?blob=a&hmac=b';
 const URL_TWO = 'https://school.instructure.com/api/v1/canvadoc_session?blob=c&hmac=d';
 

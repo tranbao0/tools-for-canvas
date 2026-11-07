@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { Course } from '../../../shared/canvas/types';
-import { defaultColorFor } from '../../weekly-list/model/colors';
 import { course } from '../../weekly-list/model/testing/builders';
 import { dashboardCourses, inkFor } from './dashboardData';
 
@@ -59,16 +58,19 @@ describe('dashboardCourses', () => {
     });
   });
 
-  it('takes the default ring color when the student saved none', () => {
+  // The Course grades widget draws `custom_colors[course] ?? '#334451'` (CourseGradeCard), not the
+  // color that the rings pick for a course with no saved color.
+  it('takes the color that the grade card draws when the student saved none', () => {
     const [entry] = dashboardCourses([biology], { custom_colors: {} }, '5');
 
-    expect(entry?.color).toBe(defaultColorFor('101'));
+    expect(entry?.color).toBe('#334451');
+    expect(entry?.ink).toBe('#FFFFFF');
   });
 
-  it('takes the default ring color when the saved color is not a hex color', () => {
+  it('takes the color that the grade card draws when the saved color is not a hex color', () => {
     const [entry] = dashboardCourses([biology], { custom_colors: { course_101: 'red' } }, '5');
 
-    expect(entry?.color).toBe(defaultColorFor('101'));
+    expect(entry?.color).toBe('#334451');
   });
 
   it('takes the ink for the color it shows', () => {

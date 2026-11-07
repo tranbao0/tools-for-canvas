@@ -2369,7 +2369,7 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await page.setViewportSize({ width: 1400, height: 930 });
+  await page.setViewportSize({ width: 1600, height: 930 });
   await ready(page, canvas);
   await openPane(page, 'Essay');
   const hostBox = async () => (await page.locator(PANE_HOST).boundingBox())!;
@@ -2383,10 +2383,11 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   const start = await hostBox();
   expect(start.width).toBe(DEFAULT_TOOLS_SETTINGS.fileViewerWidth + 12);
 
-  // A drag from the handle to x = 700 makes the host 700 px wide: the card and the 12 px gap.
+  // A drag from the handle to x = 900 in a window of 1600 px makes the host 700 px wide: the card
+  // and the 12 px gap. The room that is left, 900 px, is above the 768 px that a dock leaves.
   await page.mouse.move(start.x + 2, start.y + start.height / 2);
   await page.mouse.down();
-  await page.mouse.move(700, start.y + start.height / 2, { steps: 4 });
+  await page.mouse.move(900, start.y + start.height / 2, { steps: 4 });
   await page.mouse.up();
   await saved(688);
   expect((await hostBox()).width).toBe(700);
@@ -2411,7 +2412,7 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   const narrow = await hostBox();
   await page.mouse.move(narrow.x + 2, narrow.y + narrow.height / 2);
   await page.mouse.down();
-  await page.mouse.move(1390, narrow.y + narrow.height / 2, { steps: 4 });
+  await page.mouse.move(1590, narrow.y + narrow.height / 2, { steps: 4 });
   await page.mouse.up();
   await saved(360);
   expect((await hostBox()).width).toBe(372);
