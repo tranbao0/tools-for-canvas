@@ -61,7 +61,7 @@ When both cookies exist, the fingerprint includes both salted hashes.
 It stores up to three confirmed fingerprints with their cookie names, the user id and the check time in session storage.
 It stores a random per-install salt in a trusted storage item.
 On Chrome and Edge, the item lives in `storage.local`, which the browser locks to trusted extension contexts, so web pages and content scripts cannot read it.
-On Firefox, only the background reads and writes the salt in its IndexedDB vault.
+On Firefox, only the background reads and writes the salt in its IndexedDB vault, or in `storage.session` when IndexedDB cannot open.
 The salt has no copy in `storage.local`, and neither Canvas content scripts nor the embedded file pane can read it.
 It never stores or sends the session cookie value.
 It reads the fingerprint before and after each request that fills its cache.
@@ -194,6 +194,11 @@ These replies never pass through a message that a page script can read.
 The normal copy in `storage.local` and its check and repair logic remain, but the extension never uses that copy to restore trusted data.
 The salt has no such copy.
 
+When Firefox always uses private browsing, IndexedDB cannot open and the trusted vault uses `storage.session` instead.
+You answer "Use it" again after each browser start in this mode.
+The trusted settings and notes also last only for that session; a local mirror does not restore them.
+Real Firefox tests confirm that Canvas content scripts cannot read `storage.session`, and that the list and file pane work in this mode.
+
 ## What the extension sends elsewhere
 
 The extension sends no data to the developer.
@@ -318,6 +323,7 @@ The extension stores the page number, zoom mode or scale, and save time for each
 Each entry uses the Canvas address, student ID and file ID as its key.
 On Chrome and Edge, the entries live in local browser storage (`storage.local`), which the browser locks to the extension.
 On Firefox, only the background reads and writes them in its IndexedDB vault, with no copy in `storage.local`.
+If IndexedDB cannot open, including in always-private browsing, the positions live in `storage.session` and end with that browser session.
 The pane requests one position through the existing background check for the current student; it cannot read the whole vault or another student's positions.
 The store keeps at most 200 entries and removes the oldest entries first.
 The extension clears these entries on sign-out and when it finds that another student is signed in.

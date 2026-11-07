@@ -7,7 +7,8 @@
  * - Chrome and Edge lock `storage.local` to trusted contexts, so content scripts can neither read
  *   nor write it. The items stay in `storage.local`.
  * - Firefox cannot lock it. Only the background opens the IndexedDB vault. Verified extension
- *   pages use a runtime message; embedded pane frames have no access to this API.
+ *   pages use a runtime message; embedded pane frames have no access to this API. If IndexedDB
+ *   cannot open, the vault uses storage.session, which content contexts cannot read.
  *   `storage.local` holds a mirror for extension pages to watch. Nothing trusts that mirror:
  *   a mirror that differs from the vault is repaired, and every read comes from the vault.
  * Every read also normalizes the value, so a bad value in either place never breaks the extension.
@@ -114,22 +115,27 @@ const VAULT_DATABASE = 'weekrow-trusted';
 const VAULT_STORE = 'values';
 
 /** The vault in the IndexedDB of the extension origin. Pages of other origins cannot open it. */
-export function indexedDbVault(): Vault {
-  let opened: Promise<IDBDatabase> | null = null;
-  function open(): Promise<IDBDatabase> {
-    opened ??= new Promise((resolve, reject) => {
+export function indexedDbVault(fallback?: Vault): Vault {
+  let opened: Promise<IDBDatabase | null> | null = null;
+  function open(): Promise<IDBDatabase | null> {
+    opened ??= new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(VAULT_DATABASE, 1);
       request.onupgradeneeded = () => request.result.createObjectStore(VAULT_STORE);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error ?? new Error('IndexedDB did not open'));
+    }).catch((error: unknown) => {
+      if (fallback) return null;
+      throw error;
     });
     return opened;
   }
   async function run<T>(
     mode: IDBTransactionMode,
     work: (store: IDBObjectStore) => IDBRequest<T>,
+    temporary: () => Promise<T>,
   ): Promise<T> {
     const database = await open();
+    if (database === null) return temporary();
     return new Promise<T>((resolve, reject) => {
       const transaction = database.transaction(VAULT_STORE, mode);
       const request = work(transaction.objectStore(VAULT_STORE));
@@ -140,10 +146,19 @@ export function indexedDbVault(): Vault {
   }
   return {
     async keys() {
-      const found = await run<IDBValidKey[]>('readonly', (store) => store.getAllKeys());
+      const found = await run<IDBValidKey[]>(
+        'readonly',
+        (store) => store.getAllKeys(),
+        () => fallback!.keys(),
+      );
       return found.filter((key): key is string => typeof key === 'string');
     },
-    get: (key) => run<unknown>('readonly', (store) => store.get(key)),
+    get: (key) =>
+      run<unknown>(
+        'readonly',
+        (store) => store.get(key),
+        () => fallback!.get(key),
+      ),
     async set(key, value) {
       await run<unknown>(
         'readwrite',
@@ -151,7 +166,27 @@ export function indexedDbVault(): Vault {
           (value === null || value === undefined
             ? store.delete(key)
             : store.put(value, key)) as IDBRequest,
+        () => fallback!.set(key, value),
       );
+    },
+  };
+}
+
+/** Session storage is unavailable to Firefox content contexts, including embedded pane pages. */
+export function sessionVault(): Vault {
+  const prefix = 'trustedVault:';
+  return {
+    async get(key) {
+      return (await browser.storage.session.get(prefix + key))[prefix + key];
+    },
+    async set(key, value) {
+      if (value === null || value === undefined) await browser.storage.session.remove(prefix + key);
+      else await browser.storage.session.set({ [prefix + key]: value });
+    },
+    async keys() {
+      return Object.keys(await browser.storage.session.get(null))
+        .filter((key) => key.startsWith(prefix))
+        .map((key) => key.slice(prefix.length));
     },
   };
 }
@@ -224,7 +259,7 @@ let backgroundVault: Vault | undefined;
 /** Installs the owner before any background reads. No other context opens IndexedDB. */
 export function wireTrustedVault(): void {
   if (import.meta.env.BROWSER !== 'firefox') return;
-  backgroundVault = orderedVault(indexedDbVault());
+  backgroundVault = orderedVault(indexedDbVault(sessionVault()));
   browser.runtime.onMessage.addListener(
     vaultMessageHandler(
       backgroundVault,

@@ -6,10 +6,15 @@ import { createTrustedItem, removeMirror } from '../platform/trustedStorage';
 export const SESSION_COOKIE_NAMES = ['canvas_session', '_normandy_session'] as const;
 
 /**
- * The cookie store that the requests of the extension use: the default store of the browser.
+ * The cookie store that the requests of the background use, including an always-private browser.
  * It is not taken from the list of stores, because that list holds only stores with an open tab.
  */
-const REQUEST_STORE_ID = BROWSER_KIND === 'firefox' ? 'firefox-default' : '0';
+const REQUEST_STORE_ID =
+  BROWSER_KIND === 'firefox'
+    ? import.meta.env.BROWSER === 'firefox' && browser.extension.inIncognitoContext
+      ? 'firefox-private'
+      : 'firefox-default'
+    : '0';
 
 const SALT_KEY = 'sessionFingerprintSalt';
 

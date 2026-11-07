@@ -88,7 +88,7 @@ it('reads from the background in another extension page without opening IndexedD
   vi.stubGlobal('indexedDB', { open });
   const send = vi
     .spyOn(fakeBrowser.runtime, 'sendMessage')
-    .mockResolvedValue({ value: 'https://school.edu' });
+    .mockResolvedValue({ value: 'https://school.edu' } as never);
   try {
     const { createTrustedItem } = await import('./trustedStorage');
     const item = createTrustedItem({ key: 'canvasOrigin', fallback: () => null as string | null });
