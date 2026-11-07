@@ -120,7 +120,7 @@ for (const size of [
     await page.setViewportSize({ width: size.width - 50, height: 600 });
     await frames(page);
     expectOverSection(await slotBoxes(page));
-    expect((await card.boundingBox())!.height).toBeCloseTo(1200, 0);
+    expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
     // A fresh wrapper: it shows until the placement runs, then it is claimed and hidden again, and
     // the card is its first child.
     await freshClone(page, WRAPPER);
@@ -135,7 +135,7 @@ for (const size of [
       .toBe('weekrow-inpage');
     await frames(page);
     expectOverSection(await slotBoxes(page));
-    expect((await card.boundingBox())!.height).toBeCloseTo(1200, 0);
+    expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
     const next = page.locator('[data-testid="widget-container-course-grades-widget"]');
     const before = (await next.boundingBox())!.y;
     await inpageList(page).getByRole('button', { name: 'Minimize list' }).click();
@@ -144,7 +144,9 @@ for (const size of [
     await inpageList(page)
       .getByRole('button', { name: /^Weekly list/ })
       .click();
-    await expect.poll(async () => (await card.boundingBox())!.height).toBeCloseTo(1200, 0);
+    await expect
+      .poll(async () => (await card.boundingBox())!.height)
+      .toBeCloseTo((await slotBoxes(page)).limit, 0);
     await enterEditMode(page);
     await expect(page.locator(WRAPPER)).toBeVisible();
     await expect(page.locator('#weekrow-inpage')).toBeHidden();
@@ -166,7 +168,38 @@ for (const size of [
     });
     await frames(page);
     expectOverSection(await slotBoxes(page));
-    expect((await card.boundingBox())!.height).toBeCloseTo(1200, 0);
+    expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
+  });
+}
+
+// The widget that the card covers can be very tall, such as a narrow window that stacks its parts.
+// The card has the height of the card in the band, at most, so its list scrolls inside it.
+for (const size of [
+  { width: 1000, height: 900 },
+  { width: 1440, height: 1100 },
+]) {
+  test(`keeps the card to the height of the band over a tall widget at ${size.width}x${size.height}`, async ({
+    context,
+    page,
+  }) => {
+    const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+    await page.setViewportSize(size);
+    await openCanvasPage(page, canvas.origin);
+    await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot');
+    await settledList(page);
+    await page.locator(SECTION).evaluate((node) => {
+      (node as HTMLElement).style.height = '5997px';
+    });
+    await frames(page);
+    const band = Math.max(420, Math.min(size.height - 48, 760));
+    const card = inpageList(page).locator('.wr');
+    await expect.poll(async () => (await card.boundingBox())!.height).toBeCloseTo(band, 0);
+    // The card sits at the top of the box of the widget, and the day list scrolls inside it.
+    const { card: box, section } = await slotBoxes(page);
+    expect(box.top).toBeCloseTo(section.top, 0);
+    const region = inpageList(page).getByRole('region', { name: 'Tasks by day', exact: true });
+    expect(await region.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    await scrollTo(region, 200);
   });
 }
 
@@ -225,7 +258,9 @@ test('covers the box of the widget after the wait, and follows it when the widge
       '<input data-testid="submission-status-filter-select"><div style="height:1200px">Loaded</div>';
   });
   // The card follows the new box when the placement runs, which is after the change.
-  await expect.poll(async () => (await card.boundingBox())!.height).toBeGreaterThan(1200);
+  await expect
+    .poll(async () => (await card.boundingBox())!.height)
+    .toBeCloseTo((await slotBoxes(page)).limit, 0);
   await waitOverSection(page);
 });
 
@@ -307,8 +342,9 @@ test('covers a slot that shows up after the wait, when the student opens the Das
   expect(widgetHeight).toBeGreaterThan(700);
   await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot');
   await expect(page.locator(WRAPPER)).toBeHidden();
+  // The widget is 772 px high and the card in the band is 760 px high at this window height.
   expect((await inpageList(page).locator('.wr').boundingBox())!.height).toBeCloseTo(
-    widgetHeight,
+    Math.min(widgetHeight, (await slotBoxes(page)).limit),
     0,
   );
 });
@@ -433,6 +469,8 @@ interface SlotBoxes {
   /** The gap between the widgets of column 1, as Canvas lays it out. */
   gap: number;
   announcements: Rect;
+  /** The height of the card in the band, which is the most that the card has over a tall widget. */
+  limit: number;
 }
 
 /** The boxes of the card, of the widget it covers, and of the widgets around it. */
@@ -451,27 +489,36 @@ function slotBoxes(page: Page): Promise<SlotBoxes> {
       next: rect(get('[data-testid="widget-container-course-grades-widget"]')),
       gap: Number.parseFloat(getComputedStyle(get('[data-testid="widget-column-1"]')).rowGap),
       announcements: rect(get('[data-testid="widget-announcements-widget"]')),
+      limit: Math.max(420, Math.min(innerHeight - 48, 760)),
     };
   });
 }
 
+/**
+ * The distances of the card from the box of the section at its left, top and right edges, and of
+ * its bottom from the bottom that it has: the height of the section, but never above the height
+ * of the card in the band.
+ */
+function offsetsOver({ card, section, limit }: SlotBoxes): number[] {
+  return [
+    card.left - section.left,
+    card.top - section.top,
+    card.right - section.right,
+    card.bottom - (section.top + Math.min(section.height, limit)),
+  ].map(Math.abs);
+}
+
 /** The card is over the box of the section, to half a pixel. */
 function expectOverSection(boxes: SlotBoxes): void {
-  for (const side of ['left', 'top', 'right', 'bottom'] as const)
-    expect(Math.abs(boxes.card[side] - boxes.section[side]), side).toBeLessThanOrEqual(0.5);
+  offsetsOver(boxes).forEach((offset, side) =>
+    expect(offset, `side ${side}`).toBeLessThanOrEqual(0.5),
+  );
 }
 
 /** Waits until the card is over the box of the section, to half a pixel. */
 async function waitOverSection(page: Page): Promise<void> {
   await expect
-    .poll(async () => {
-      const { card, section } = await slotBoxes(page);
-      return Math.max(
-        ...(['left', 'top', 'right', 'bottom'] as const).map((side) =>
-          Math.abs(card[side] - section[side]),
-        ),
-      );
-    })
+    .poll(async () => Math.max(...offsetsOver(await slotBoxes(page))))
     .toBeLessThanOrEqual(0.5);
 }
 

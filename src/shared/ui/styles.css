@@ -140,7 +140,8 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  height: max(420px, min(100vh - 48px, 760px));
+  --wr-card-height: max(420px, min(100vh - 48px, 760px));
+  height: var(--wr-card-height);
   overflow: hidden auto;
   /* The scroll positions are the student's, kept by the layout code: the browser must not move them. */
   overflow-anchor: none;
@@ -155,9 +156,14 @@
   height: 100%;
 }
 
-/* The container is laid over the box of the widget it replaces, so the card is that high. */
+/*
+ * The container is laid over the box of the widget it replaces, so the card is that high, but never
+ * higher than the card in the band: a tall widget, such as one that a narrow window stacks, would
+ * make a card as tall as the page, and its day list would not scroll inside it.
+ */
 :host([data-panel='slot']) .wr[data-surface='inpage'] {
   height: 100%;
+  max-height: var(--wr-card-height);
 }
 
 .wr[data-surface='inpage'] > * {
