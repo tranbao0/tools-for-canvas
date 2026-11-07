@@ -97,6 +97,10 @@ test.describe('what stays open when another view replaces the list', () => {
     await list.getByRole('button', { name: 'Add task' }).click();
     await list.getByRole('button', { name: 'Cancel' }).click();
     await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'true');
+
+    // A click on the returned line closes it.
+    await olderToggle(list).click();
+    await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('the older list of the card stays open over a minimize', async ({
@@ -110,6 +114,8 @@ test.describe('what stays open when another view replaces the list', () => {
     await expect(list.locator('.wr-minbar')).toBeVisible();
     await list.locator('.wr-minbar').click();
     await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'true');
+    await olderToggle(list).click();
+    await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('the Done group of the side panel stays open over the task form', async ({
@@ -130,6 +136,8 @@ test.describe('what stays open when another view replaces the list', () => {
     await page.getByRole('button', { name: 'Add task' }).click();
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('the open Done group of the card keeps its scroll position over the settings', async ({

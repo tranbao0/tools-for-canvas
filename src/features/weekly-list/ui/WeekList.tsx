@@ -1,5 +1,5 @@
 /** The groups of the shown span, in the order the model gives (design decision 6). */
-import { useContext, useState } from 'preact/hooks';
+import { useContext, useReducer, useState } from 'preact/hooks';
 import { createContext, type ComponentChildren } from 'preact';
 import { t, tp } from '../../../shared/ui/i18n';
 import type { BottomGroupKind, GroupKind, ItemView, ListGroup, WeekView } from '../model/types';
@@ -27,16 +27,16 @@ export interface ListHandlers extends ItemHandlers {
 export type OpenMemory = Map<string, boolean>;
 export const OpenMemoryContext = createContext<OpenMemory | null>(null);
 
-/** An open state that the holder of the memory keeps under `key`. */
+/** An open state that the holder of the memory keeps under `key`, or the list itself without one. */
 function useOpen(key: string, initial: boolean): [boolean, (open: boolean) => void] {
-  const memory = useContext(OpenMemoryContext);
-  const [own, setOwn] = useState(initial);
-  const open = memory?.get(key) ?? own;
+  const own = useState<OpenMemory>(() => new Map())[0];
+  const memory = useContext(OpenMemoryContext) ?? own;
+  const [, redraw] = useReducer((count: number) => count + 1, 0);
   return [
-    open,
+    memory.get(key) ?? initial,
     (next) => {
-      memory?.set(key, next);
-      setOwn(next);
+      memory.set(key, next);
+      redraw(0);
     },
   ];
 }
