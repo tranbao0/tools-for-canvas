@@ -58,3 +58,42 @@ it('keeps an existing database authoritative when a transaction fails', async ()
   expect(fallback.get).not.toHaveBeenCalled();
   expect(fallback.set).not.toHaveBeenCalled();
 });
+
+it('retries a transient open failure without reading or writing the fallback', async () => {
+  const fallback = { get: vi.fn(), set: vi.fn(), keys: vi.fn() };
+  const values = new Map<string, unknown>([['canvasOrigin', 'https://school.edu']]);
+  const open = vi.fn(() => {
+    const request = {
+      error: new DOMException('Disk busy', 'UnknownError'),
+      onerror: () => undefined,
+      onsuccess: () => undefined,
+      result: {
+        transaction() {
+          const transaction = {
+            oncomplete: () => undefined,
+            objectStore: () => ({
+              get: (key: string) => ({ result: values.get(key) }),
+              put: (value: unknown, key: string) => {
+                values.set(key, value);
+                return { result: key };
+              },
+            }),
+          };
+          queueMicrotask(() => transaction.oncomplete());
+          return transaction;
+        },
+      },
+    };
+    queueMicrotask(() => (open.mock.calls.length === 1 ? request.onerror() : request.onsuccess()));
+    return request;
+  });
+  vi.stubGlobal('indexedDB', { open });
+  const vault = indexedDbVault(fallback);
+  await expect(vault.get('canvasOrigin')).rejects.toThrow('Disk busy');
+  await expect(vault.get('canvasOrigin')).resolves.toBe('https://school.edu');
+  await vault.set('canvasOrigin', 'https://other.edu');
+  expect(values.get('canvasOrigin')).toBe('https://other.edu');
+  expect(open).toHaveBeenCalledTimes(2);
+  expect(fallback.get).not.toHaveBeenCalled();
+  expect(fallback.set).not.toHaveBeenCalled();
+});

@@ -124,7 +124,13 @@ export function indexedDbVault(fallback?: Vault): Vault {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error ?? new Error('IndexedDB did not open'));
     }).catch((error: unknown) => {
-      if (fallback) return null;
+      if (
+        fallback &&
+        (browser.extension.inIncognitoContext ||
+          (error instanceof DOMException && error.name === 'InvalidStateError'))
+      )
+        return null;
+      opened = null;
       throw error;
     });
     return opened;
