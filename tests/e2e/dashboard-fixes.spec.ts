@@ -1995,48 +1995,74 @@ for (const frame of ['input', 'wrapper', 'none']) {
   }
 }
 
-test('copied eyes ignore script clicks and conceal a grade while a refused write waits', async ({
-  context,
-  page,
-}) => {
-  let mutations = 0;
-  let release: () => void = () => undefined;
-  const pending = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const served = await serveScenario(
-    context,
-    [
-      ...PAGE,
-      {
-        method: 'POST',
-        path: '/api/graphql',
-        respond: async (request): Promise<FakeReply> => {
-          if (request.postData?.includes('updateWidgetDashboardConfig')) {
-            mutations++;
-            await pending;
-            return { body: { errors: [{ message: 'Refused' }] } };
-          }
-          return { body: { data: { legacyNode: { widgetDashboardConfig: '{}' } } } };
+for (const saved of [false, true])
+  test(`copied eyes refresh after a failed reply, saved=${saved}`, async ({ context, page }) => {
+    let mutations = 0;
+    let reads = 0;
+    let releaseRead: () => void = () => undefined;
+    const pendingRead = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    let release: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: async (request): Promise<FakeReply> => {
+            if (request.postData?.includes('updateWidgetDashboardConfig')) {
+              mutations++;
+              await pending;
+              return { body: { errors: [{ message: 'Refused' }] } };
+            }
+            if (mutations) {
+              reads++;
+              await pendingRead;
+            }
+            return {
+              body: {
+                data: {
+                  legacyNode: {
+                    widgetDashboardConfig: JSON.stringify(
+                      saved && mutations
+                        ? {
+                            filters: {
+                              'course-grades-widget': { gradeVisibilities: { '107': false } },
+                            },
+                          }
+                        : {},
+                    ),
+                  },
+                },
+              },
+            };
+          },
         },
-      },
-    ],
-    EIGHT_COURSES,
-  );
-  await addCsrfCookie(context, served.canvas.origin);
-  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
-  const grade = page.getByTestId('course-107-grade');
-  const eye = page.locator('[data-wr-card="107"] button');
-  await expect(grade).toHaveText('95%', { timeout: READ_WAIT });
-  await eye.evaluate((button) => (button as HTMLButtonElement).click());
-  await expect(grade).toHaveText('95%');
-  expect(mutations).toBe(0);
-  await eye.click();
-  await expect(grade).toHaveText('•••');
-  await expect.poll(() => mutations).toBe(1);
-  release();
-  await expect(grade).toHaveText('95%');
-  await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
-    'Could not save grade visibility. Try again.',
-  );
-});
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+    const grade = page.getByTestId('course-107-grade');
+    const eye = page.locator('[data-wr-card="107"] button');
+    await expect(grade).toHaveText('95%', { timeout: READ_WAIT });
+    await eye.evaluate((button) => (button as HTMLButtonElement).click());
+    await expect(grade).toHaveText('95%');
+    expect(mutations).toBe(0);
+    await eye.click();
+    await expect(grade).toHaveText('•••');
+    await expect.poll(() => mutations).toBe(1);
+    release();
+    await expect.poll(() => reads).toBeGreaterThan(0);
+    await expect(grade).toHaveText('•••');
+    releaseRead();
+    await expect(grade).toHaveText(saved ? '•••' : '95%');
+    await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
+      'Could not save grade visibility. Try again.',
+    );
+  });

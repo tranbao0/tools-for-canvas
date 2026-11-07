@@ -21,6 +21,8 @@ export interface FixContext {
   css(name: string, css: string | null): void;
   /** Asks for another pass, for example after a request answered. */
   again(): void;
+  /** Conceals unconfirmed grades and starts a fresh preference read. */
+  refreshGrades(): void;
 }
 
 export interface Fix {

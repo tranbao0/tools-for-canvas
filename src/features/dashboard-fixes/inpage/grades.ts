@@ -144,6 +144,7 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         if (started !== lifetime) return;
         saving = false;
         failures.add(course.id);
+        context.refreshGrades();
         card.remove();
         context.again();
       });

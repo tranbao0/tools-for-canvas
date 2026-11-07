@@ -136,6 +136,10 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       else blocks.set(name, css);
     },
     again: () => schedule(0),
+    refreshGrades() {
+      markBlind();
+      schedule(0);
+    },
   };
 
   /** Runs a step of one fix. A fix that fails never stops the others. */
