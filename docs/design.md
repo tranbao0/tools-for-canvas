@@ -1720,6 +1720,9 @@ These sizes come from one test build of the same small app [19].
   The limit of `background.js` alone is 46 KB since 2026-11-06: the data owner now checks the Canvas and the student of every page request.
   The owner chose 46 KB over a refactor of those checks that saves about 60 bytes.
   The other entry points keep 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
+  `inpage.js` carries no code that only other surfaces use.
+  The extension pages pass the offer view to the list (`offerView`), because only they show the offer, and its rules are in `pages.css`.
+  The panes make their dock with `createCardDock`, which adds the card rules, because the weekly dock is no card.
   CI checks these limits.
   The budget applies to the store builds.
   The signed test-channel build and the E2E build also hold the file check code (decision 23), and they sit above the store limits on `background.js` and `inpage.js`.
@@ -2067,7 +2070,8 @@ They show in the same three places, below Row size, and they are stored apart fr
   - With Automatic, the in-page list follows the Canvas page, because it is part of that page.
     It uses dark colors only when the page background is dark, as the original did [9].
   - It follows the page live, with no reload, in both directions.
-    The widget dashboard of Canvas turns its dark mode on and off ("Switch to dark mode") with an inline `background-color` on `html` and `body`, so the watch reads the page background again after each change of an attribute of `html` or `body`, and after a stylesheet link is added or removed.
+    The widget dashboard of Canvas turns its dark mode on and off ("Switch to dark mode") with an inline `background-color` on `html` and `body`, so the watch reads the page background again after each change of an attribute of `html` or `body`.
+    The watch does not follow stylesheet links that are added or removed: a review showed that this never reported a change, and the dark mode of Canvas uses the inline background.
     Every surface that follows the page does this: the in-page list and the weekly dock, the file pane and the assignment panes.
 
 ### 20. No-telemetry guarantee

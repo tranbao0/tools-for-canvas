@@ -714,9 +714,8 @@
   color: var(--wr-text-2);
 }
 
-/* A notice and an offer carry a brand bar, like an InstUI alert, and have no box. */
-.wr-notices > :first-child,
-.wr-offer {
+/* A notice carries a brand bar, like an InstUI alert, and has no box. */
+.wr-notices > :first-child {
   padding-left: 9px;
   border-left: 3px solid var(--wr-brand);
 }
@@ -726,12 +725,6 @@
   padding-left: 12px;
   color: var(--wr-text-2);
   font-size: 12px;
-}
-
-.wr-offer {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
 }
 
 /* Progress chart */

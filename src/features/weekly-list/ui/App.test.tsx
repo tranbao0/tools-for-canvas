@@ -12,7 +12,7 @@ import {
   type SurfaceState,
 } from '../model/types';
 import { App } from './App';
-import { OFFER_ARM_MS } from './Notices';
+import { OFFER_ARM_MS, OfferBanner } from './Notices';
 import { KIND_SAVE_DELAY_MS } from './SpanPicker';
 import type { AppProps, SurfaceKind } from './contract';
 import { spyActions, type SpyActions } from './testing/actions';
@@ -34,11 +34,18 @@ import {
 
 afterEach(cleanup);
 
+/** The side panel passes the offer view to the list, as the panel page does. */
+const offerFor = (surface: SurfaceKind) => (surface === 'panel' ? OfferBanner : undefined);
+
 function setup(state: SurfaceState = readyState(), surface: SurfaceKind = 'panel') {
   const actions: SpyActions = spyActions();
-  const result = render(<App surface={surface} state={state} actions={actions} />);
+  const result = render(
+    <App surface={surface} state={state} actions={actions} offerView={offerFor(surface)} />,
+  );
   const rerender = (next: SurfaceState) =>
-    result.rerender(<App surface={surface} state={next} actions={actions} />);
+    result.rerender(
+      <App surface={surface} state={next} actions={actions} offerView={offerFor(surface)} />,
+    );
   return { ...result, actions, rerender };
 }
 

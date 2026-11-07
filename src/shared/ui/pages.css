@@ -65,6 +65,15 @@ body {
 
 /* The offer of a Canvas shows in extension pages only (design decision 5). It is a .wr-offer. */
 
+/* Like a notice, an offer carries a brand bar, like an InstUI alert, and has no box. */
+.wr-offer {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding-left: 9px;
+  border-left: 3px solid var(--wr-brand);
+}
+
 .wr-offer-title {
   font-weight: 700;
 }

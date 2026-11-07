@@ -12,13 +12,8 @@
  * redirect to DocViewer, so the script cannot read the address of the frame, and it cannot tell
  * whether DocViewer refused to be framed. The bar therefore always has "Open in new tab".
  */
-import {
-  createDock,
-  filePaneOpen,
-  hideFilePane,
-  watchFilePane,
-  type Dock,
-} from '../../file-viewer/dock';
+import { filePaneOpen, hideFilePane, watchFilePane, type Dock } from '../../file-viewer/dock';
+import { createCardDock } from '../../file-viewer/cardDock';
 import { CLOSE_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { OWN } from './own';
@@ -108,12 +103,11 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
         show(request);
         return;
       }
-      const created = createDock({
+      const created = createCardDock({
         role: 'feedback',
         id: FEEDBACK_HOST_ID,
         label: 'Feedback',
         resizeLabel: 'Resize feedback',
-        card: true,
         width: options.width(),
         onResized: options.saveWidth,
         doc,
