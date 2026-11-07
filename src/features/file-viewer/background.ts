@@ -18,7 +18,7 @@ import {
 import { browser, type Browser } from 'wxt/browser';
 import type { CanvasApi } from '../../shared/canvas/types';
 import { canvasOriginItem } from '../../shared/platform/storage';
-import { browserRouterHost, senderPageOrigin } from '../weekly-list/data/router';
+import { senderPageOrigin } from '../weekly-list/data/router';
 import type { DataOwner, PaneOwnerVerdict } from '../weekly-list/data/owner';
 import { injectFrameCatchers, injectViewerIntoOrigin } from '../../shared/platform/inject';
 import { toolsSettingsItem } from '../../shared/settings/toolsItem';
@@ -603,7 +603,8 @@ export function wireViewerRouter(
 ): void {
   const host: ViewerHost = {
     savedOrigin: () => canvasOriginItem.getValue(),
-    isExtensionPage: browserRouterHost.isExtensionPage,
+    isExtensionPage: (sender) =>
+      sender.url?.startsWith(browser.runtime.getURL('/')) === true && isPaneFrame(sender),
     read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
     paneCheck: (origin, tabId, retry) => owner.viewerPaneCheck(origin, tabId, retry),
     mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),

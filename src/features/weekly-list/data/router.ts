@@ -34,6 +34,9 @@ import {
 
 /** The parts of a message sender the router reads. */
 interface SenderInfo {
+  id?: string;
+  origin?: string;
+  envType?: string;
   url?: string;
   /** Set for a content script: the tab of its page. */
   tab?: { id?: number } | null;
@@ -318,6 +321,12 @@ export function routeDataMessage(
 /** The router host for the background. */
 export const browserRouterHost: RouterHost = {
   isExtensionPage(sender) {
+    if (import.meta.env.BROWSER === 'firefox')
+      return (
+        sender.id === browser.runtime.id &&
+        sender.origin === browser.runtime.getURL('/').replace(/\/$/, '') &&
+        sender.envType === 'addon_child'
+      );
     return sender.url?.startsWith(browser.runtime.getURL('/')) === true;
   },
   savedOrigin: async () => {
