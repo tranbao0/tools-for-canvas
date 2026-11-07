@@ -136,4 +136,10 @@ describe('the feedback pane in full view', () => {
   });
 });
 
-vi.mock('../../file-viewer/paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));
+vi.mock('../../file-viewer/paneIdentity', () => ({
+  watchPaneIdentity: (show: (yes: boolean) => void) => {
+    show(true);
+    return () => undefined;
+  },
+  checkPaneIdentity: async () => ({ verdict: 'yes', token: '0:42' }),
+}));

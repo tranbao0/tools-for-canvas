@@ -1298,4 +1298,10 @@ describe('the header of the assignment pane', () => {
   });
 });
 
-vi.mock('../../file-viewer/paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));
+vi.mock('../../file-viewer/paneIdentity', () => ({
+  watchPaneIdentity: (show: (yes: boolean) => void) => {
+    show(true);
+    return () => undefined;
+  },
+  checkPaneIdentity: async () => ({ verdict: 'yes', token: '0:42' }),
+}));

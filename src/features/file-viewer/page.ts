@@ -1,3 +1,4 @@
+import { watchPaneReset } from './paneReset';
 import { browser, type Browser } from 'wxt/browser';
 import { t } from '../../shared/ui/i18n';
 import {
@@ -56,7 +57,6 @@ export function listenViewerHello(
 }
 
 /** The message that the background sends to every tab when it clears the data of a student. */
-const RESET = 'viewer:reset';
 
 /** What an open of a file came to. See `openNow`. */
 type OpenResult = 'opened' | 'ended' | 'failed';
@@ -107,7 +107,12 @@ export async function startViewer(): Promise<void> {
   // Another pane may hide the file pane. The pane page is told, because it cannot see that: its
   // tabs pause their media and keep their place while the pane is hidden.
   const sendCovered = () =>
-    port?.postMessage({ type: 'covered', covered: dock !== undefined && !dock.shown });
+    port?.postMessage({
+      type: 'covered',
+      covered:
+        dock !== undefined &&
+        (!dock.shown || dock.host.getAttribute('data-identity') === 'unknown'),
+    });
   let width = normalizeWidth(undefined);
   let dock: Dock | undefined;
   // The port of the pane once it proved the secret, and a port that waits for that proof.
@@ -142,11 +147,12 @@ export async function startViewer(): Promise<void> {
   let waitingFile: string | null = null;
   // Sends the active file to a pane that has not been told yet, and the theme to any pane.
   const send = async () => {
+    const started = generation;
     const [latest, stored] = await Promise.all([
       readContext().catch(() => undefined),
       readTabs().catch(() => null),
     ]);
-    if (!live) return;
+    if (!live || generation !== started) return;
     if (latest?.settings?.theme) themeChoice = latest.settings.theme;
     if (stored) {
       tabs = waitingFile ? openFile(stored.tabs, waitingFile) : stored.tabs;
@@ -210,6 +216,8 @@ export async function startViewer(): Promise<void> {
     names.clear();
     addresses.clear();
   };
+  const stopReset = watchPaneReset(reset);
+  lifetime.signal.addEventListener('abort', stopReset, { once: true });
   // A page can remove the host. Then no pane is open, and the next click opens a new one.
   const paneOpen = () => {
     if (dock && !dock.host.isConnected) drop();
@@ -247,7 +255,9 @@ export async function startViewer(): Promise<void> {
     lastHelloAt = -Infinity;
     const created = createCardDock({
       role: 'file',
-      onIdentityLost: reset,
+      onClose: close,
+      identityToken: tabsToken,
+      onIdentityChange: sendCovered,
       id: FILE_HOST_ID,
       label: 'File viewer',
       resizeLabel: 'Resize file viewer',
@@ -496,7 +506,11 @@ export async function startViewer(): Promise<void> {
         const result = await openTarget(target, href, taken).catch(() => 'failed' as const);
         // The pane could not take the file, so the student gets the link, and never a dead click.
         // A newer click wins, because the student has moved on from this one.
-        if (result === 'failed' && click === clicks) followLink();
+        if (
+          (result === 'failed' || (result === 'ended' && generation !== taken)) &&
+          click === clicks
+        )
+          followLink();
       })().catch(() => undefined);
     },
     { capture: true, signal: lifetime.signal },
@@ -559,11 +573,6 @@ export async function startViewer(): Promise<void> {
       );
       return undefined;
     }
-    if (request?.type === RESET) {
-      // A page cannot send a runtime message to a content script. The sender is the background.
-      if (sender.id === browser.runtime.id && sender.tab === undefined) reset();
-      return undefined;
-    }
     if (request?.type !== TOP_OPEN) return undefined;
     // A page cannot send a runtime message to a content script. The sender is the background.
     if (sender.id !== browser.runtime.id || sender.tab !== undefined || !isFileId(request.fileId)) {
@@ -582,7 +591,7 @@ export async function startViewer(): Promise<void> {
       // The catcher clicks the link again on `false`, and only a failed open wants that.
       const result =
         live && enabled ? await openTarget({ fileId }, `/files/${fileId}`, taken) : null;
-      respond({ opened: live && result !== null && result !== 'failed' });
+      respond({ opened: live && result === 'opened' });
     })().catch(() => respond({ opened: false }));
     return true;
   };

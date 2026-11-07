@@ -11,18 +11,72 @@ const CARD_CSS = `:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX
 :host([data-card][data-theme='dark']) section{box-shadow:0 2px 14px rgba(0,0,0,.55)}
 :host([data-card]) .handle{z-index:1;top:${CARD_GAP_PX}px;height:calc(100% - ${2 * CARD_GAP_PX}px);pointer-events:auto}
 :host([data-card][data-full]) .handle{display:none}
+.identity-cover{position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:var(--bg);color:var(--text);text-align:center;font:16px/1.5 Lato,Arial,sans-serif}
+.identity-cover[hidden]{display:none}
+.identity-cover button{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--btn-line);border-radius:4px;padding:8px 20px;cursor:pointer}
+.identity-cover button:hover{background:var(--btn-hover)}
+.identity-cover button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 @media(max-width:875px){:host([data-card]){padding:0}:host([data-card]) section{border:0;border-left:1px solid var(--edge);border-radius:0;box-shadow:none}}
 `;
 
 /** Makes the dock of a pane, with the rules of a card. */
 export function createCardDock(
-  options: Omit<DockOptions, 'card' | 'css'> & { onIdentityLost(): void },
+  options: Omit<DockOptions, 'card' | 'css'> & {
+    onClose(): void;
+    identityToken?: string;
+    onIdentityChange?(confirmed: boolean): void;
+  },
 ): Dock {
   const dock = createDock({ ...options, card: true, css: CARD_CSS });
-  const stop = watchPaneIdentity(options.onIdentityLost);
+  const doc = dock.host.ownerDocument;
+  const cover = doc.createElement('div');
+  cover.className = 'identity-cover';
+  const message = doc.createElement('p');
+  message.setAttribute('role', 'status');
+  message.textContent = "Canvas can't confirm your sign-in.";
+  const button = doc.createElement('button');
+  button.type = 'button';
+  button.textContent = 'Close';
+  button.addEventListener('click', (event) => {
+    if (event.isTrusted) options.onClose();
+  });
+  cover.append(message, button);
+  dock.section.append(cover);
+  let confirmed = false;
+  const inert = new Map<HTMLElement, boolean>();
+  const sync = () => {
+    for (const child of inert.keys()) if (child.parentElement !== dock.section) inert.delete(child);
+    for (const child of dock.section.children) {
+      if (!(child instanceof HTMLElement) || child === cover || child.tagName === 'STYLE') continue;
+      if (!confirmed) {
+        if (!inert.has(child)) inert.set(child, child.inert);
+        child.inert = true;
+      } else if (inert.has(child)) {
+        child.inert = inert.get(child)!;
+        inert.delete(child);
+      }
+    }
+  };
+  const observer = new MutationObserver(sync);
+  observer.observe(dock.section, { childList: true });
+  let stop: (() => void) | undefined;
+  const open = dock.open;
+  dock.open = () => {
+    open();
+    stop ??= watchPaneIdentity((yes) => {
+      const changed = confirmed !== yes;
+      confirmed = yes;
+      dock.host.setAttribute('data-identity', yes ? 'yes' : 'unknown');
+      cover.hidden = yes;
+      sync();
+      if (changed) options.onIdentityChange?.(yes);
+    }, options.identityToken);
+  };
   const close = dock.close;
   dock.close = () => {
-    stop();
+    stop?.();
+    stop = undefined;
+    observer.disconnect();
     close();
   };
   return dock;

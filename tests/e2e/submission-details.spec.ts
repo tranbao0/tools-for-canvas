@@ -1,3 +1,5 @@
+import { dropResetMessages } from './support/pane-identity';
+import { advanceBackgroundClock } from './support/clock';
 /**
  * The assignment view on the Submission Details page (design decision 26) and the sidebar of the
  * assignment page, on fixtures that follow the markup of canvas-lms 1c9f0bb. The extension hides
@@ -2979,4 +2981,56 @@ test('the Submission box stops after two failed reads', async ({ context, page, 
   await expect(
     page.locator('#sidebar_content a[href*="download="] > [data-av-original]'),
   ).toHaveCount(0);
+});
+
+test('identity verdict: lost reset never opens the earlier feedback session', async ({
+  context,
+  page,
+  background,
+}) => {
+  let student = '42';
+  const canvas = await open(context, page, background, {
+    extra: [
+      {
+        path: '/api/v1/courses/12/assignments/101/submissions/self',
+        respond: () => {
+          const records = rawRecords(details());
+          return { body: json({ ...records.submission, user_id: student }) };
+        },
+      },
+      { path: '/api/v1/users/self', respond: () => ({ body: { id: student, name: 'Student' } }) },
+      {
+        path: '/api/v1/users/self/profile',
+        respond: () => ({
+          body: { id: student, name: 'Student', time_zone: 'America/Los_Angeles' },
+        }),
+      },
+    ],
+  });
+  const feedback = box(page).getByRole('button', { name: 'View Feedback' });
+  await expect(feedback).toBeVisible();
+  await dropResetMessages(background);
+  await advanceBackgroundClock(background, 60000);
+  student = '9001';
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'student-b',
+      url: canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  const world = await contentScriptWorld(page);
+  await world.send({ type: 'viewer:tabs-get' });
+  const before = canvas.requests.filter((request) =>
+    request.path.startsWith('/api/v1/canvadoc_session'),
+  ).length;
+  await feedback.click();
+  await page.waitForTimeout(2500);
+  expect(
+    canvas.requests.filter((request) => request.path.startsWith('/api/v1/canvadoc_session')),
+  ).toHaveLength(before);
+  await expect(page.locator(FEEDBACK)).toHaveCount(0);
+  await expect(feedback).toHaveCount(0);
 });

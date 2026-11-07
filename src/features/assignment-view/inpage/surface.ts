@@ -38,13 +38,9 @@ export async function startAssignmentViewSurface(ctx: PageScriptContext): Promis
   ctx.watchValidity(CONTEXT_CHECK_MS);
   await startAssignmentView({
     channel,
-    signal: ctx.signal,
+    // A lost extension context is unknown identity. The watcher covers the panes and keeps drafts.
+    // The channel stops on abort; the student can still close a covered pane.
     requestFrameCatcher: () => browser.runtime.sendMessage({ type: 'viewer:inject-frames' }),
-    // The background tells every page when the student of the data changed or signed out.
-    onStudentReset: (listener) =>
-      listenToBackground((message) => {
-        if ((message as { type?: unknown } | null)?.type === 'viewer:reset') listener();
-      }),
   }).catch((error: unknown) => logFailure('assignment view', error));
   if (import.meta.env.WXT_E2E === '1' && !ctx.signal.aborted) {
     document.documentElement.setAttribute('data-av-started', '');

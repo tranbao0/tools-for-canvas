@@ -3157,7 +3157,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The page script of the file pane closes the pane, also a pane that the assignment pane covers, and clears the tabs, the courses and the names in its memory, so no pane stays open with the file of the earlier student.
      It writes nothing to the background when it resets.
      A page script cannot send it: the page script handles it only from the extension itself (the sender is this extension and has no tab).
-     A click that started before the reset ends without a pane and writes no tabs, because the earlier student owns it.
+     A click that a reset ends writes no tabs and follows its original link, so the student never gets a dead click.
      The first click of the new student, after the reset, opens a pane as usual.
      A read gives a token (the clearing round and the student in its global decimal form), and a write must send the token of the last read.
      So an open pane cannot write the tabs of one student back as the tabs of another, or after a clearing.
@@ -3174,6 +3174,33 @@ With the pane read alone, the default run of the test failed before the fix.
      A pane whose first read of the tabs was refused has no token and reads the tabs again before each file loads, and the file loads even when that read fails.
      The reads and writes of one browser tab run in the order they arrive.
      A pane or page script whose read was refused keeps its tabs in memory, writes nothing, and reads again at the next request.
+   - One identity watcher per browser tab starts with the first dock and stops with the last.
+     The file viewer, assignment view and in-page script share it and one reset signal through registered symbols on `globalThis` in their isolated world.
+     No DOM event or `postMessage` carries the signal.
+     A checked background `viewer:reset` message and a watcher verdict of `no` both fire this signal.
+     Every consumer clears its state, including the file page, feedback sessions, assignment frames and submission baselines.
+     A feedback address takes its identity token when the page reads it, before any pane opens, and opening checks that token before loading the signed address.
+   - The watcher sends `viewer:pane-check` each second while any pane is open, including a hidden pane or tab.
+     This message stays inside the browser, bypasses the per-tab queue and never waits for a Canvas request.
+     Its optional token names the content's student and clearing round.
+     The owner compares the cookie fingerprint without an age-based check, so an idle pane makes no Canvas request and spends no check slot.
+     An unconfirmed cookie asks for the shared user check under the normal limits and returns `unknown` at once.
+     This includes a changed cookie and a missing cold proof after a worker restart.
+     The next tick reads the result.
+     The three verdicts are:
+     - `yes`: the cookie is confirmed for the content's student in the same clearing round, and the pane shows.
+       The reply includes the token.
+     - `no`: another student is confirmed, there is no session cookie, or the clearing round changed, and the full local reset runs.
+       A 401 uses the existing sign-out path, which changes the clearing round.
+     - `unknown`: the check is pending or limited, a cookie or store cannot be read, cold proof is absent, the context is gone, or the check or reply fails.
+       A network failure, timeout, invalid reply, 5xx or 429 supplies no answer about the student.
+       An opaque panel covers the whole pane, including its header, and shows "Canvas can't confirm your sign-in." and Close.
+       The frames and typed text stay alive under the cover, which goes on the next `yes`.
+       The panel uses the dock's light and dark theme tokens and has no animation.
+     The timer does not wait for a reply; a missing reply becomes `unknown` within five seconds of its request.
+     A positive read that places the tab in another cookie store returns `yes`, because its Canvas frames use that tab's cookies.
+     An unreadable store returns `unknown`.
+     File reads keep their own gates and show the existing error card with Retry, Download and Open in Canvas in another store.
    - The tab strip is the ARIA tabs pattern, drawn like the tabs of Canvas: text tabs on a line, and the active tab has a bar in the brand color.
      Each tab shows a file type icon and the file name.
      A long name ends with an ellipsis, and the tooltip of the tab shows the whole name.
@@ -3268,7 +3295,8 @@ With the pane read alone, the default run of the test failed before the fix.
    - Files larger than 100 MB show the card instead, with "Download" and "Open in Canvas".
      The pane checks the size of the file record before it fetches.
      It also stops the read when `Content-Length` or the bytes read pass 100 MB, because a header can be wrong.
-   - Before the pane fetches the bytes, it asks the background with `viewer:fetch-allowed` whether the sign-in cookie is confirmed for the student of the cache (decision 11).
+   - The frame byte gate stays separate from the three-verdict pane check.
+     Before the pane fetches the bytes, it asks the background with `viewer:fetch-allowed` whether the sign-in cookie is confirmed for the student of the cache (decision 11).
      The request carries the token of the last read of the tabs, and the background refuses it when the token names another student or an older clearing round.
      A pane that a lost reset left open therefore reads no file for another student.
      It asks again after the read and drops the bytes when the answer changed.
@@ -4692,7 +4720,10 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     It names a time (`retryAt`) only for a full round that follows a light one.
     No existing reason defers a light round, so the view keeps its own timer, like the weekly list surface.
     It asks again at `retryAt` when the reply has one, and otherwise once more after 61 seconds, which the limit can no longer skip.
-  - Details of another student remove the pane and every frame, as does the `viewer:reset` message that the background sends when it clears the data of a student.
+  - Details of another student remove the pane and every frame.
+    The shared local reset also clears the pane and its submission baselines, whether it comes from the background's checked `viewer:reset` message or the watcher's `no` verdict.
+    An `unknown` identity covers the whole pane and suspends its submission reads without discarding typed text.
+    A lost reset cannot reuse a feedback session for a new student, because the session carries the token taken when its address was read.
   - A read while the "One assignment view" switch is off does nothing.
 
 These source facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.

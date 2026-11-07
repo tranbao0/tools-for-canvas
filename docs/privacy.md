@@ -281,7 +281,16 @@ While the pane is open, a script of the Canvas page can see a message that names
 On Firefox that address is random for each install and does not change.
 This shows that the extension is installed, and it reveals nothing else.
 The file viewer reads a record or bytes only while the session cookie of your Canvas is the one that the extension confirmed for your account, so it never shows the file of another account.
-If it cannot confirm it, the pane shows "Open in Canvas" and reads nothing.
+While any pane is open, one watcher in the tab sends a message inside the browser each second to check its student and clearing round.
+This check makes no Canvas request unless the session cookie changed or has no confirmed proof, as after a restart.
+It does not refresh an old proof just because time passed.
+If the student is not yet confirmed, an opaque cover over the whole pane says "Canvas can't confirm your sign-in." and offers Close.
+The pane reads nothing while covered, and its frames and typed text stay alive underneath.
+The cover goes when the same student is confirmed again.
+A confirmed change of student, a sign-out (including a 401 answer), or a changed clearing round removes the frames and clears the page's stored feedback sessions.
+A network failure, timeout, invalid reply, 5xx, or 429 leaves the content under the cover.
+A tab confirmed to be in another cookie store keeps its Canvas Preview open with that tab's own cookies.
+File reads in that tab still refuse and show the file error card with Retry, Download and Open in Canvas.
 The file viewer switch and pane width stay in local settings.
 With the File viewer on, it also reads the address of the file link that you click in a frame of the assignment pane, to open that file in the file pane, and it reads nothing else of those frames, apart from the Escape key (see "What the one assignment view does").
 It reads the same address in the frame of a submission page, also on an anonymous submission page.

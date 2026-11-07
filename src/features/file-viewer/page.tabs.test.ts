@@ -87,4 +87,10 @@ for (const mode of ['refused', 'rejected'] as const) {
   });
 }
 
-vi.mock('./paneIdentity', () => ({ watchPaneIdentity: () => () => undefined }));
+vi.mock('./paneIdentity', () => ({
+  watchPaneIdentity: (show: (yes: boolean) => void) => {
+    show(true);
+    return () => undefined;
+  },
+  checkPaneIdentity: async () => ({ verdict: 'yes', token: '0:42' }),
+}));

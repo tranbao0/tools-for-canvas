@@ -399,11 +399,13 @@ describe('viewer reads', () => {
     const h = await createHarness();
     const hook = vi.fn();
     h.deps.onUserDataCleared = hook;
+    const original = h.deps.store.viewerStudent.getValue;
     h.deps.store.viewerStudent.getValue = () => Promise.reject(new Error('busy'));
     const owner = h.restart();
     await owner.viewerConfirm(ORIGIN, TAB);
     await loadReady({ ...h, owner });
     await owner.settled();
+    h.deps.store.viewerStudent.getValue = original;
     expect(hook).not.toHaveBeenCalled();
   });
 
@@ -438,4 +440,61 @@ describe('viewer reads', () => {
     expect(other).toHaveBeenCalled();
     await vi.waitFor(async () => expect(await saved()).toBeNull());
   });
+});
+
+it('identity verdict: ten idle minutes start no user check', async () => {
+  const h = await loaded();
+  await h.owner.viewerMayFetch(ORIGIN, TAB);
+  const before = h.canvas.calls.filter((call) => call.method === 'getSelf').length;
+  for (let second = 0; second < 600; second++) {
+    await vi.advanceTimersByTimeAsync(1000);
+    const verdict = await h.owner.viewerPaneCheck(ORIGIN, TAB);
+    expect(verdict.verdict).toBe('yes');
+  }
+  expect(h.canvas.calls.filter((call) => call.method === 'getSelf')).toHaveLength(before);
+});
+
+it('pane checks distinguish unreadable stores from tabs in another store', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({
+    verdict: 'yes',
+    userId: null,
+  });
+  vi.mocked(h.deps.surfaceUsesRequestStore).mockRejectedValue(new Error('Store unavailable'));
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
+});
+
+it('pane checks return unknown immediately while one user check is held', async () => {
+  const h = await loaded();
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('new-cookie');
+  let finish!: (value: { id: string; name: string }) => void;
+  const check = vi.spyOn(h.canvas, 'checkCacheUser').mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
+  expect(check).toHaveBeenCalledOnce();
+  finish({ id: '5501', name: 'Jordan Rivera' });
+  await h.owner.settled();
+  check.mockRestore();
+});
+
+it.each([
+  ['network', new Error('Network failed')],
+  ['503', canvasError('server', 503)],
+  ['429', canvasError('rate_limited', 429)],
+])('pane checks preserve content on a %s failure', async (_, error) => {
+  const h = await loaded();
+  const cleared = vi.fn();
+  h.deps.onUserDataCleared = cleared;
+  vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('new-cookie');
+  h.canvas.fail('getSelf', error);
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
+  await h.owner.settled();
+  await expect(h.owner.viewerPaneCheck(ORIGIN, TAB)).resolves.toEqual({ verdict: 'unknown' });
+  expect(cleared).not.toHaveBeenCalled();
+  expect((await h.deps.store.cache.getValue())?.session?.profile.id).toBe('5501');
 });
