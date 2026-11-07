@@ -41,7 +41,11 @@ export interface SurfaceRequest {
  * sends that user and the `origin` of the reply with every write from its rows, and can tell that
  * the user changed under its Undo notice.
  */
-export type StateReply = SurfaceState & { userId?: string; retryAt?: number };
+export type StateReply = SurfaceState & {
+  userId?: string;
+  retryAt?: number;
+  failedWrites?: string[];
+};
 
 /**
  * Why a surface asks for a refresh.
@@ -64,6 +68,7 @@ export interface PreviousOverride {
  * the owner refuses a write when it is not the student and the Canvas of the cache.
  */
 export interface ActionIdentity {
+  seq?: string;
   userId: string;
   origin: string;
 }
@@ -249,6 +254,7 @@ export interface ActionReply {
   undo: UndoData | null;
   /** Only the reply to a task create has it: whether Canvas saved the task. */
   created?: boolean;
+  saved?: boolean;
   /**
    * Only the reply to an Undo has it: whether the Undo restored the item. An Undo that cannot
    * restore says so, and the surface tells the student.

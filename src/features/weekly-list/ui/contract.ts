@@ -37,7 +37,7 @@ export interface Actions {
   dismissUndo(): void;
   /** Resolves with whether Canvas saved the task. The form waits for it. */
   createTask(input: TaskInput): Promise<boolean>;
-  updateTask(noteId: string, input: TaskInput): void;
+  updateTask(noteId: string, input: TaskInput): Promise<boolean>;
   deleteTask(noteId: string): void;
   moveTaskToToday(noteId: string): void;
   openItem(key: string): void;

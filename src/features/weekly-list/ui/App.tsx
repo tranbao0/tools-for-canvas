@@ -542,9 +542,13 @@ function ListView(props: {
   const createTask = async (input: TaskInput) => {
     submission.current = input;
     setSave('saving');
-    const saved = await actions.createTask(input);
+    const editing = form?.kind === 'edit' ? form.item : null;
+    const saved =
+      editing?.noteId != null
+        ? await actions.updateTask(editing.noteId, input)
+        : await actions.createTask(input);
     if (submission.current !== input) return;
-    if (saved) closeForm(null);
+    if (saved) closeForm(editing?.key ?? null);
     else setSave('failed');
   };
   /** Closes the form and focuses the control that opened it, or the Add button. */
@@ -696,12 +700,7 @@ function ListView(props: {
         saving={save === 'saving'}
         saveFailed={save === 'failed'}
         onSubmit={(input) => {
-          if (form.kind === 'edit' && form.item.noteId !== null) {
-            actions.updateTask(form.item.noteId, input);
-            closeForm(form.item.key);
-          } else {
-            void createTask(input);
-          }
+          void createTask(input);
         }}
         onDelete={(noteId) => {
           actions.deleteTask(noteId);

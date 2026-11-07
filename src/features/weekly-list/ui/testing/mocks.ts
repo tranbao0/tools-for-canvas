@@ -688,7 +688,10 @@ export function noopActions(
       record('createTask')(...args);
       return true;
     },
-    updateTask: record('updateTask'),
+    updateTask: async (...args) => {
+      record('updateTask')(...args);
+      return true;
+    },
     deleteTask: record('deleteTask'),
     moveTaskToToday: record('moveTaskToToday'),
     openItem: record('openItem'),

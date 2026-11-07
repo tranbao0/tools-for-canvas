@@ -223,19 +223,28 @@ function useUndoShortcut(
  * the notice. The notice has no timer: it stays until the student acts again or closes it.
  * Ctrl+Z (Cmd+Z on a Mac) also undoes while it shows, so the key and the notice share one dock.
  */
+const WRITE_FAILURE = {
+  done: 'writeDoneFailed',
+  undone: 'writeUndoneFailed',
+  moved: 'writeMoveFailed',
+  deleted: 'writeDeleteFailed',
+} as const;
+
 export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): void }) {
   const ref = useRef<HTMLDivElement>(null);
-  useUndoShortcut(ref, props.undo !== null, props.onUndo);
+  useUndoShortcut(ref, props.undo !== null && props.undo.failure === undefined, props.onUndo);
   return (
     <div ref={ref} class="wr-dock" role="status" aria-live="polite">
       {props.undo && (
         <div class="wr-toast">
           <span class="wr-toast-text">
-            {props.undo.kind === 'not_restored'
-              ? t('undoFailed')
-              : tp(UNDO_TEXT[props.undo.kind], props.undo.count)}
+            {props.undo.failure !== undefined
+              ? tp(WRITE_FAILURE[props.undo.failure], props.undo.count)
+              : props.undo.kind === 'not_restored'
+                ? t('undoFailed')
+                : tp(UNDO_TEXT[props.undo.kind], props.undo.count)}
           </span>
-          {props.undo.kind !== 'not_restored' && (
+          {(props.undo.kind !== 'not_restored' || props.undo.failure !== undefined) && (
             <button
               type="button"
               class="wr-link-btn wr-toast-action"
@@ -243,7 +252,7 @@ export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): 
               aria-keyshortcuts="Control+Z Meta+Z"
               onClick={props.onUndo}
             >
-              {t('undo')}
+              {t(props.undo.failure !== undefined ? 'tryAgain' : 'undo')}
             </button>
           )}
           <button

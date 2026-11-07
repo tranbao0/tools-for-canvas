@@ -1860,3 +1860,14 @@ describe('write replies in the other form of the student id', () => {
     expect((await item(h, QUIZ_3))?.state).toBe('done');
   });
 });
+
+it('reports an override failure after its Undo reply', async () => {
+  const h = await loaded();
+  const release = h.canvas.hold('createOverride');
+  h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
+  const reply = await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true, seq: 'late' });
+  expect(reply.undo).not.toBeNull();
+  release();
+  await h.owner.settled();
+  expect((await h.owner.getState(PANEL)).failedWrites).toContain('late');
+});

@@ -1114,5 +1114,32 @@
   },
   "goToNamedCourse": {
     "message": "Go to course $1"
+  },
+  "tryAgain": {
+    "message": "Try again"
+  },
+  "writeDoneFailed_one": {
+    "message": "Couldn't mark that done."
+  },
+  "writeDoneFailed_other": {
+    "message": "Couldn't mark those $1 items done."
+  },
+  "writeUndoneFailed_one": {
+    "message": "Couldn't mark that not done."
+  },
+  "writeUndoneFailed_other": {
+    "message": "Couldn't mark those $1 items not done."
+  },
+  "writeMoveFailed_one": {
+    "message": "Couldn't move the task."
+  },
+  "writeMoveFailed_other": {
+    "message": "Couldn't move the $1 tasks."
+  },
+  "writeDeleteFailed_one": {
+    "message": "Couldn't delete the task."
+  },
+  "writeDeleteFailed_other": {
+    "message": "Couldn't delete the $1 tasks."
   }
 }

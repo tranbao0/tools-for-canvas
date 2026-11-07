@@ -366,6 +366,7 @@ export type { Offer };
  * It has no timer, so keyboard and screen reader users can reach it.
  */
 export interface UndoInfo {
+  failure?: 'done' | 'undone' | 'moved' | 'deleted';
   /** `not_restored` is the line after an Undo that could not restore: it has no Undo button. */
   kind: 'done' | 'deleted' | 'announcement_read' | 'not_restored';
   count: number;

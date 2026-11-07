@@ -11,6 +11,7 @@ import { saveAddress } from './support/scenario-api';
 import {
   addCsrfCookie,
   expect,
+  doneBox,
   group,
   openExtensionPage,
   refreshedSince,
@@ -254,3 +255,56 @@ test.describe('custom tasks', () => {
     await expect(editButton(pastDue, 'Call financial aid office')).toHaveCount(0);
   });
 });
+
+for (const action of ['edit', 'done', 'move', 'delete'] as const) {
+  test(`failed ${action} keeps the task and permits a retry`, async ({
+    context,
+    page,
+    background,
+    extensionUrl,
+  }) => {
+    await openPanel(context, page, background, extensionUrl('sidepanel.html'));
+    const pattern =
+      action === 'done' ? '**/api/v1/planner/overrides*' : '**/api/v1/planner_notes/*';
+    await context.route(pattern, async (route) => {
+      if (route.request().method() === 'GET') return route.fallback();
+      await route.fulfill({ status: 500, body: 'Server error' });
+    });
+    const title = action === 'move' ? 'Call financial aid office' : 'Return library books';
+    if (action === 'done') {
+      await doneBox(page, title).click();
+    } else if (action === 'move') {
+      await page.getByRole('button', { name: `Move ${title} to today`, exact: true }).click();
+    } else {
+      await editButton(page, title).click();
+      if (action === 'edit') {
+        await page.getByLabel('Title').fill('Keep my typed title');
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+      } else {
+        await page.getByRole('button', { name: 'Delete task', exact: true }).click();
+        await page.getByRole('button', { name: 'Close notice', exact: true }).click();
+      }
+    }
+    if (action === 'edit') {
+      await expect(page.getByText("Couldn't save the task. Try again.")).toBeVisible();
+      await expect(page.getByLabel('Title')).toHaveValue('Keep my typed title');
+      await context.unroute(pattern);
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(editButton(page, 'Keep my typed title')).toBeVisible();
+    } else {
+      const message =
+        action === 'done'
+          ? "Couldn't mark that done."
+          : action === 'move'
+            ? "Couldn't move the task."
+            : "Couldn't delete the task.";
+      await expect(page.locator('.wr-toast')).toContainText(message);
+      await expect(editButton(page, title)).toBeVisible();
+      await context.unroute(pattern);
+      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      if (action === 'move') await expect(editButton(group(page, 'today'), title)).toBeVisible();
+      else await expect(editButton(page, title)).toHaveCount(0);
+      await expect(page.getByText(message, { exact: true })).toHaveCount(0);
+    }
+  });
+}

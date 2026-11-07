@@ -220,6 +220,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   let coursesOrigin: string | null = null;
   let courseFilter: string | null | undefined = undefined;
   let notice: Notice | null = null;
+  let pendingWrite: DataAction | null = null;
   /** The number of the last state request that went out before the notice showed. */
   let noticeSeq = 0;
   const tabsOption = options.announcementTabs ?? false;
@@ -392,6 +393,33 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       feed = null;
       listTab = 'tasks';
     }
+    if (pendingWrite !== null && reply.kind === 'ready') {
+      if (pendingWrite.userId !== reply.userId || pendingWrite.origin !== reply.origin) {
+        pendingWrite = null;
+        notice = null;
+      } else if (pendingWrite.seq !== undefined && reply.failedWrites?.includes(pendingWrite.seq)) {
+        const action = pendingWrite;
+        const failure =
+          action.kind === 'setDone'
+            ? action.done
+              ? 'done'
+              : 'undone'
+            : action.kind === 'moveTaskToToday'
+              ? 'moved'
+              : action.kind === 'deleteTask'
+                ? 'deleted'
+                : undefined;
+        if (failure !== undefined)
+          notice = {
+            info: {
+              kind: 'not_restored',
+              failure,
+              count: action.kind === 'setDone' ? action.keys.length : 1,
+            },
+            data: [],
+          };
+      }
+    }
     identity =
       reply.kind === 'ready' && reply.userId !== undefined
         ? { userId: reply.userId, origin: reply.origin }
@@ -517,6 +545,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       // The student acted again, so the last notice ends.
       endUndo();
       writeSeq += 1;
+      action.seq = `${host.clock.now()}-${Math.random()}`;
+      pendingWrite = action;
     }
     const seq = writeSeq;
     return Promise.all(
@@ -673,6 +703,19 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       );
     },
     undo() {
+      if (notice?.info.failure !== undefined && pendingWrite !== null) {
+        const action = pendingWrite;
+        notice = null;
+        void sendAction(
+          action,
+          action.kind === 'deleteTask'
+            ? 'deleted'
+            : action.kind === 'setDone' && action.done
+              ? 'done'
+              : undefined,
+        );
+        return;
+      }
       const last = notice;
       if (last === null) return;
       notice = null;
@@ -718,14 +761,16 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         .catch(report('undo'));
     },
     dismissUndo() {
+      if (notice?.info.failure !== undefined) pendingWrite = null;
       endUndo();
     },
     async createTask(input: TaskInput) {
       const reply = await sendAction({ kind: 'createTask', input });
       return reply?.created === true;
     },
-    updateTask(noteId: string, input: TaskInput) {
-      sendAction({ kind: 'updateTask', noteId, input });
+    async updateTask(noteId: string, input: TaskInput) {
+      const reply = await sendAction({ kind: 'updateTask', noteId, input });
+      return reply?.saved === true;
     },
     deleteTask(noteId: string) {
       sendAction({ kind: 'deleteTask', noteId }, 'deleted');
