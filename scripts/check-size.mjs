@@ -28,6 +28,15 @@ export const INPAGE_BUDGET_BYTES = 50_000;
 export const INPAGE_ENTRY = 'inpage.js';
 
 /**
+ * The gzip budget for the background script, in bytes. It holds the data owner, which checks the
+ * Canvas and the student of every page request (design decision 12).
+ */
+export const BACKGROUND_BUDGET_BYTES = 46_000;
+
+/** The built background script. */
+export const BACKGROUND_ENTRY = 'background.js';
+
+/**
  * The gzip budget for the detector content script, in bytes. It runs on every https page
  * (decision 5), so it must stay tiny.
  */
@@ -44,6 +53,7 @@ export const DETECTOR_ENTRY = 'detector.js';
 export function budgetFor(name) {
   if (name === DETECTOR_ENTRY) return DETECTOR_BUDGET_BYTES;
   if (name === INPAGE_ENTRY) return INPAGE_BUDGET_BYTES;
+  if (name === BACKGROUND_ENTRY) return BACKGROUND_BUDGET_BYTES;
   if (name === 'viewer.js') return 15_000;
   if (name === 'submission-frame.js') return 4_000;
   if (name === 'viewer.html') return 1_500_000;

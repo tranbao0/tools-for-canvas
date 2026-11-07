@@ -226,11 +226,11 @@ describe('check-size', () => {
     assert.ok(background && background.gzipBytes < 100);
   });
 
-  test('the detector has a budget of 2,000 bytes, the list script 50,000, and other entry points 45,000', () => {
+  test('the detector has a budget of 2,000 bytes, the list script 50,000, the background script 46,000, and other entry points 45,000', () => {
     assert.equal(budgetFor('detector.js'), DETECTOR_BUDGET_BYTES);
     assert.equal(DETECTOR_BUDGET_BYTES, 2000);
     assert.equal(budgetFor('inpage.js'), 50_000);
-    assert.equal(budgetFor('background.js'), BUDGET_BYTES);
+    assert.equal(budgetFor('background.js'), 46_000);
     assert.equal(budgetFor('sidepanel.html'), BUDGET_BYTES);
     assert.equal(BUDGET_BYTES, 45000);
   });
@@ -264,13 +264,13 @@ describe('check-size', () => {
       'chrome-mv3/detector.js': 'console.log(2)',
     });
     const large = await writeTree({
-      'chrome-mv3/background.js': incompressible(BUDGET_BYTES + 1000),
+      'chrome-mv3/background.js': incompressible(47_000),
       'chrome-mv3/detector.js': 'console.log(2)',
     });
     assert.equal((await runScript('check-size.mjs', ['--out-dir', small, 'chrome-mv3'])).code, 0);
     const result = await runScript('check-size.mjs', ['--out-dir', large, 'chrome-mv3']);
     assert.equal(result.code, 1);
-    assert.match(result.output, /background\.js is .* over the 45\.0 KB budget/);
+    assert.match(result.output, /background\.js is .* over the 46\.0 KB budget/);
   });
 
   test('the command reports a missing build', async () => {
