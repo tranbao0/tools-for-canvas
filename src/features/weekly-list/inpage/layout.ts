@@ -256,6 +256,15 @@ export function claimDashboardLayout(
     setPanelMode(container, 'slot');
   }
 
+  /**
+   * The width that the page keeps for itself: the window without the room that a pane takes at
+   * the right edge, which is the right padding of `html`. The card never goes into that room.
+   */
+  function pageWidth(): number {
+    const html = doc.documentElement;
+    return html.clientWidth - pixels(view.getComputedStyle(html).paddingRight, 0);
+  }
+
   /** Places the card over the slot, beside the tab panel, or in the flow above it. */
   function arrangeWidget(
     grid: WidgetGrid | null,
@@ -305,7 +314,7 @@ export function claimDashboardLayout(
   }
 
   function arrange(grid: WidgetGrid | null, slot: CourseWorkSlot | null): void {
-    keepCardScroll(container, () => arrangeWidget(grid, slot, doc.documentElement.clientWidth));
+    keepCardScroll(container, () => arrangeWidget(grid, slot, pageWidth()));
     trackCard();
     restoreScroll();
   }

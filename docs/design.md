@@ -492,6 +492,10 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     Its left edge is one column gap past the real `widget-columns` box.
     Its top matches the first widget row.
     It scrolls with the page.
+    The room is the window width without the room that an open pane takes at the right edge (the right padding of `html`), so the card never sits under the pane.
+    When a pane leaves too little room, the card goes above the tab content, and it comes back beside the grid when the pane closes.
+    In the Course work slot the card is in the page content, which the pane makes narrower, so it is never under the pane, at any width.
+    The mouse switches the pane to another row, and a second click on the same row closes it.
   - **Above the tab content**, below the tabs, when the viewport has too little room.
     The card fills the tab content width in normal flow.
     The widgets move down and keep their width.

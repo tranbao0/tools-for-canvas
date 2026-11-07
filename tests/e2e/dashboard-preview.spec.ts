@@ -215,6 +215,38 @@ test('a click opens the pane on the row, another row shows its page, and a secon
   expect(await paddingRight(page)).toBe(0);
 });
 
+// The pane takes the room at the right edge, so the card must stay beside it at every width: in the
+// slot, and in the layouts that a page without the Course work widget uses. The mouse switches the
+// pane to another row and a second click on that row closes it.
+for (const [place, query] of [
+  ['the Course work slot', '/'],
+  ['the layouts of a page without the Course work widget', '/?fixture_course_work=none'],
+] as const) {
+  for (const width of [1920, 1440, 1280, 1000]) {
+    test(`keeps the card beside the pane in ${place} at ${width} px`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await open(context, page, background, { path: query, width, height: 1000 });
+      await preview(page, LAB_4).click();
+      await expect(page.locator(PANE_HOST)).toBeVisible();
+      const paneLeft = (await page.locator(PANE_HOST).boundingBox())!.x;
+      await expect
+        .poll(async () => {
+          const box = (await card(page).boundingBox())!;
+          return box.x + box.width;
+        })
+        .toBeLessThanOrEqual(paneLeft);
+      await preview(page, HOMEWORK_7).click({ timeout: 3000 });
+      await expect(preview(page, HOMEWORK_7)).toHaveAttribute('aria-pressed', 'true');
+      await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'false');
+      await preview(page, HOMEWORK_7).click({ timeout: 3000 });
+      await expect(page.locator(PANE_HOST)).toHaveCount(0);
+    });
+  }
+}
+
 test('a script of the page cannot open the pane', async ({ context, page, background }) => {
   await open(context, page, background);
   await page.evaluate(() => {
