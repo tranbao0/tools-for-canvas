@@ -56,9 +56,14 @@ async function widgetHeight(page: Page): Promise<number> {
   );
 }
 
-/** The card is as tall as the widget it replaced, and at least 420 px. */
-function expectSlotHeight(card: number, widget: number): void {
-  expect(Math.abs(card - Math.max(420, widget))).toBeLessThanOrEqual(1);
+/**
+ * The card is as tall as the widget it replaced, at least 420 px, and never taller than the card
+ * in the band.
+ */
+function expectSlotHeight(card: number, widget: number, windowHeight: number): void {
+  expect(Math.abs(card - Math.min(Math.max(420, widget), limit(windowHeight)))).toBeLessThanOrEqual(
+    1,
+  );
 }
 
 async function open(
@@ -1365,8 +1370,8 @@ test.describe('the full list in the card', () => {
     }) => {
       await open(context, page, background, { height: windowHeight });
       const full = await cardBox(page);
-      // The window does not change the height: the card is as tall as the widget it replaced.
-      expectSlotHeight(full.card.height, await widgetHeight(page));
+      // The card is as tall as the widget it replaced, up to the height of the card in the band.
+      expectSlotHeight(full.card.height, await widgetHeight(page), windowHeight);
     });
 
     test(`has a height of the window minus 48 px, at most 760 px and at least 420 px, in a ${windowHeight} px window without a Course work widget`, async ({
@@ -1387,7 +1392,7 @@ test.describe('the full list in the card', () => {
     background,
   }) => {
     await open(context, page, background, { height: 400 });
-    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page));
+    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page), 400);
   });
 
   test('keeps 420 px in a low window without a Course work widget', async ({
@@ -1411,7 +1416,7 @@ test.describe('the full list in the card', () => {
     };
     await open(context, page, background, short);
     // The card keeps its size from span to span, so a short list leaves room at the bottom.
-    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page));
+    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page), 1000);
   });
 
   test('keeps its fixed height when the content is short, without a Course work widget', async ({

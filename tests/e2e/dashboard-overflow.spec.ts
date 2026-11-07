@@ -124,7 +124,10 @@ test.describe('the list on the widget dashboard, in the light theme', () => {
       expect(card.x).toBeCloseTo(original.x, 0);
       expect(card.y).toBeCloseTo(original.y, 0);
       expect(card.width).toBeCloseTo(original.width, 0);
-      expect(card.height).toBeCloseTo(Math.max(420, original.height), 0);
+      // The card is as tall as the widget, at least 420 px and at most the height of the card in
+      // the band: the window height minus 48 px, at most 760 px.
+      const band = Math.max(420, Math.min(VIEWPORT_HEIGHT - 48, 760));
+      expect(card.height).toBeCloseTo(Math.min(Math.max(420, original.height), band), 0);
       // Canvas boxes keep their size: the cards of the column the slot is not in stay as they were.
       expect(withList.firstCards.slice(1)).toEqual(without.firstCards.slice(1));
       expect(withList.header).toEqual(without.header);
