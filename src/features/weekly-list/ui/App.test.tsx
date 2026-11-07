@@ -1537,12 +1537,14 @@ describe('settings in place', () => {
 
   it('opens from the note on a hidden course, and returns focus to its link', () => {
     setupSettings(data, readyState({ view: hiddenCourseView() }), 'inpage');
-    const link = screen.getByRole('button', { name: 'Settings' });
+    const link = document.querySelector<HTMLElement>('[data-opener="note"]')!;
     fireEvent.click(link);
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByText('You hid this course from the weekly list.')).toBeTruthy();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Settings' }));
+    expect(document.activeElement).toBe(
+      document.querySelector<HTMLElement>('[data-opener="note"]')!,
+    );
   });
 });
 

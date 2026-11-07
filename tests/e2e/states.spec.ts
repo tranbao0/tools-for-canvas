@@ -2,6 +2,7 @@
  * The list states of design decision 11, "States the UI must show": signed out, planner turned
  * off and can't refresh. Also the offer of design decision 4, which only the side panel shows.
  */
+import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import type { Page, Worker } from '@playwright/test';
 import { CANVAS_ERRORS } from '../fixtures/errors';
 import { errorReply } from './support/canvas-state';
@@ -17,6 +18,7 @@ import {
   openExtensionPage,
   serveScenario,
   settledList,
+  saveSettings,
   test,
 } from './support/weekrow';
 
@@ -360,5 +362,22 @@ test('signed out settings screen shows fields', async ({
   await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.locator('.wr-settings')).toBeVisible();
+});
 
+test('custom days and focus survive the first list arrival', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { canvas } = await serveScenario(context, [], { latencyMs: 1500 });
+  await saveAddress(background, canvas.origin);
+  await saveSettings(background, { ...DEFAULT_SETTINGS, span: { kind: 'custom', days: 10 } });
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  const field = page.getByRole('spinbutton');
+  await field.fill('17');
+  await expect(page.locator('.wr-header')).toBeVisible();
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await expect(field).toHaveValue('17');
+  await expect(field).toBeFocused();
 });

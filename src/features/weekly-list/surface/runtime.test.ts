@@ -2296,3 +2296,76 @@ describe('settings without courses through App', () => {
     runtime.stop();
   });
 });
+
+describe('header availability through the runtime', () => {
+  afterEach(cleanup);
+  function mount(fake: FakeHost) {
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'inpage', scopeCourseId: '106' });
+    const view = () =>
+      createElement(App, {
+        surface: 'inpage',
+        state: runtime.state(),
+        settings: runtime.settings(),
+        actions: runtime.actions,
+      });
+    const ui = render(view());
+    const stop = runtime.subscribe(() => ui.rerender(view()));
+    runtime.start();
+    return { runtime, ui, stop };
+  }
+  it('can minimize an expanded hidden course note', async () => {
+    const fake = fakeHost();
+    fake.reply = () => readyFor(USER, { view: mkView({ scopeCourseHidden: true }) });
+    fake.stored = { ...DEFAULT_SETTINGS, minimized: true };
+    const { runtime, ui, stop } = mount(fake);
+    await settle();
+    fireEvent.click(ui.getByRole('button', { name: /^Weekly list/ }));
+    await settle();
+    fireEvent.click(ui.getByRole('button', { name: 'Minimize list' }));
+    await settle();
+    expect(fake.saved.at(-1)?.minimized).toBe(true);
+    stop();
+    runtime.stop();
+  });
+  it.each(['loading', 'cant_load'] as const)(
+    'saves a span in %s and shows the saved choice',
+    async (kind) => {
+      const fake = fakeHost();
+      fake.stored = { ...DEFAULT_SETTINGS, span: { kind: 'custom', days: 19 } };
+      fake.reply = () =>
+        kind === 'loading' ? { kind } : { kind, origin: ORIGIN, offline: false, offer: null };
+      const { runtime, ui, stop } = mount(fake);
+      await settle();
+      expect((ui.getByRole('combobox') as HTMLSelectElement).value).toBe('custom');
+      expect((ui.getByRole('spinbutton') as HTMLInputElement).value).toBe('19');
+      fireEvent.change(ui.getByRole('combobox'), { target: { value: 'month' } });
+      await settle();
+      expect(fake.saved.at(-1)).toEqual({ ...fake.stored, span: { kind: 'month', days: 19 } });
+      stop();
+      runtime.stop();
+    },
+  );
+  it.each(['input', 'select', '[data-part="minimize"]', '[data-opener="gear"]'])(
+    'keeps %s mounted and focused when the list arrives',
+    async (selector) => {
+      const fake = fakeHost();
+      fake.stored = { ...DEFAULT_SETTINGS, span: { kind: 'custom', days: 10 } };
+      fake.reply = () => ({ kind: 'loading' });
+      const { runtime, ui, stop } = mount(fake);
+      await settle();
+      const field = ui.getByRole('spinbutton') as HTMLInputElement;
+      field.value = '17';
+      const control = ui.container.querySelector<HTMLElement>(selector)!;
+      expect(control).not.toBeNull();
+      control.focus();
+      fake.reply = () => readyFor(USER);
+      fake.changed();
+      await settle();
+      expect(ui.getByRole('spinbutton')).toBe(field);
+      expect(field.value).toBe('17');
+      expect(document.activeElement).toBe(control);
+      stop();
+      runtime.stop();
+    },
+  );
+});
