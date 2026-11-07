@@ -25,6 +25,9 @@ import {
   type WeeklyDockOptions,
 } from './weeklyDock';
 
+// A dock lies over the page when it would leave Canvas less than 768 px, so these tests use a wide window.
+window.innerWidth = 1600;
+
 const html = document.documentElement;
 const padding = (): string => html.style.getPropertyValue('padding-right');
 

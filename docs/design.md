@@ -307,7 +307,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The setting `weeklyDockWidth` stores it with the rules of `fileViewerWidth`: at least 360 px, at most 70 percent of the window where the dock uses it, and 360 px for a missing value.
   The stored value has no window limit, only an absolute one of 8192 px, so a width that fits a wide window is saved and comes back after a reload.
   The file pane and the weekly dock never change each other's width.
-- The dock takes room with the same padding lease as the other panes: the `html` element gets a right padding of the width of the dock.
+- The dock takes room with the same padding lease as the other panes: the `html` element gets a right padding of the width of the dock, when the room that is left is at least 768 px (see "Canvas reads the window and not the room" below).
   Canvas's `.ic-Layout-wrapper` has `max-width: 1366px` and stays at the left of the window.
   Its `margin-left` is 84 px when the global navigation is expanded, and 54 px when the student collapsed it, from a window width of 768 px on.
   The expanded navigation is Canvas's default: the preference `collapse_global_nav` of a user is off (`app/models/user.rb`), and `app/views/layouts/application.html.erb` then puts `primary-nav-expanded` on the body.
@@ -321,6 +321,25 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - An account with the full-width layout (`full-width` on the body) has no width cap, so its content narrows by the width of the dock.
   On a narrower window the content narrows, as it does for the PDF pane.
   Below 900 px the dock covers the page, as the other panes do.
+- **Canvas reads the window and not the room.**
+  The media queries of Canvas see the width of the window, so a dock that takes room leaves a page that thinks it is wider than it is.
+  A dock of 360 px in a window of 1000 px left Canvas's two column layout in 556 px: the right column pushed the main column down to 268 px, the "Switch to new dashboard view" button lay over the title, and "Recent Feedback" lay over the header (the visual test on the local Canvas, student dana, 2026-11-06).
+  The room lease of the dock module (`file-viewer/dock.ts`) handles this for every pane and every page, with two rules.
+  - **A room below 768 px is not made.**
+    Canvas starts its mobile layout below 768 px (`tablet` in `app/stylesheets/base/mixins/_breakpoints.scss`), and a page cannot get that layout for a room.
+    A dock, a pane or a tab that would leave less than 768 px lies over the page at its own width and leaves the padding of the page alone.
+    This adds to the rule for a window below 900 px, which stretches the pane over the whole window.
+    So the default dock of 360 px takes room from a window of 1128 px, the default file pane of 480 px plus its 12 px gap from 1260 px, and a tab of 38 px from 900 px.
+  - **A room below the width of the two column layout gets one column.**
+    Canvas puts the right column beside the main content from 992 px (`desktop`), or from 1140 px on a page with the course menu open (`body.course-menu-expanded`, `desktop--nav-open`).
+    While the window minus the room that the lease holds is below that width, the `html` element carries the attribute `data-weekrow-stack`, and a style turns on the rules that Canvas drops below that width.
+    The main content (`.ic-app-main-content`) is a block and not a flex row, and the right column (`.ic-app-main-content__secondary`) has an automatic width.
+    These are the three rules of `shared-main-content`, `shared-primary` and `shared-secondary` in `app/stylesheets/base/_ic_app_layout.scss` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`).
+    The global navigation, the margin of the wrapper and the other rules of Canvas stay as they are, because they belong to the window.
+    The attribute and the style go with the last holder of room.
+  - The code does not read the style sheets of Canvas to move their breakpoints, because a hosted Canvas serves them from another origin (`stylesheet_link_tag` has no `crossorigin`), and the browser then hides their rules.
+  - Accepted result on the local Canvas, student dana, Card View, dock of 360 px, expanded navigation: at 1000 px and 1100 px the dock lies over the page and the right column of Canvas is under it, as the plain page at that width has it, and no part of the header overlaps another; at 1200 px and 1280 px the room is below 992 px and the right column stands under the cards; at 1366 px and 1440 px the two columns stay.
+    At 1000 px the options button of the dashboard header stands under the dock, so a student minimizes the list to reach it.
 - The dock and its tab are under the overlays of Canvas.
   They have `z-index: 1000`, and an InstUI Tray or Modal has 9999 (`stacking.topmost` of InstUI).
   The Add To Do tray and the grades tray of List View open at the right edge of the window with placement end, so they show on top of the dock and of the tab, with the focus inside them.
@@ -343,7 +362,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The tab is a real button with `aria-expanded="false"` and a name such as "Open weekly list, Nov 4 - 10, 2 open".
   A click opens the dock at once.
   Focus goes to the tab after a minimize that the student made inside the dock, and to the minimize button after an open from the tab.
-  The tab keeps 38 px of room on the page, as long as the window is at least 900 px wide, with the same padding lease as the dock.
+  The tab keeps 38 px of room on the page, as long as the window is at least 900 px wide and leaves 768 px of room, with the same padding lease as the dock.
   So the tab never covers the text of the page: at 1368 px the right column ends at the left edge of the tab.
   A window that is wide enough sees no change in the content of an account with the width cap, because the content of Canvas ends before the tab (see the accepted result above).
   A full-width account narrows by the 38 px of the tab.
@@ -3013,6 +3032,7 @@ With the pane read alone, the default run of the test failed before the fix.
    - The pane has a close button, and Escape closes it when focus is inside.
      In full view, Escape leaves full view first (see "Full view" below).
    - Below 900 px of window width, the pane covers the page instead, with the same close button, with no gap, no round corners and no Full view button.
+   - A pane that would leave the page less than 768 px of room lies over the page at its own width, with its gap and its corners, and takes no room (see "Canvas reads the window and not the room" under decision 4).
    - The weekly list dock of the classic dashboard (decision 4) uses the same dock module, with the role `weekly`, so the file pane and the dock sit in the same place.
      Only one of them shows at a time: while a file pane is open, the weekly dock and its tab are hidden, and they come back in the state they had when the pane closes.
      The two scripts share the room lease, and the weekly dock opens only when no file pane is open.
