@@ -471,6 +471,31 @@ describe('a hand-in that the list does not show yet', () => {
 });
 
 describe('a hand-in that the assignment page shows', () => {
+  it('applies a hand-in whose submission names the student in the sharded id form', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    const course = IDS.courses.biology;
+    const assignment = IDS.assignments.bioPreLab7Missing;
+    const records = rawRecords();
+    h.canvas.setAssignmentView(course, assignment, {
+      assignment: { ...records.assignment, id: assignment },
+      submission: {
+        ...records.submission,
+        user_id: `0~${IDS.user}`,
+        submitted_at: '2026-11-02T10:00:00Z',
+        workflow_state: 'submitted',
+      },
+    });
+    h.canvas.resetCalls();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.owner.assignmentOwner(course, assignment, ORIGIN, TAB);
+    await h.owner.settled();
+    const after = expectReady(await h.owner.getState(PANEL));
+    const group = after.view.groups.find((g) =>
+      [...g.items, ...g.older].some((i) => i.key === `assignment:${assignment}`),
+    );
+    expect(group?.kind).not.toBe('past_due');
+  });
   it('moves the row with no round when the page reads the owner of a submission handed in', async () => {
     const h = await createHarness();
     await loadReady(h);

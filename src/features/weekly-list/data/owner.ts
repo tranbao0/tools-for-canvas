@@ -3158,7 +3158,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       };
     });
     if (reply === null) return { kind: 'no_submission_access' };
-    if (identityHolds(reply.entry) && reply.value.userId === cache?.session?.profile.id)
+    if (identityHolds(reply.entry) && sameCanvasId(reply.value.userId, cache?.session?.profile.id))
       applyHandIn(courseId, assignmentId, reply.handIn);
     return reply.value;
   }
