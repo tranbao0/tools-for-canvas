@@ -167,9 +167,9 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         // Showing waits for the saved preference; hiding conceals the text immediately.
         fill(card, course.id, 'grade', HIDDEN_GRADE);
         try {
-          while (Date.now() - nativeChangedAt < 500)
+          while (Date.now() - nativeChangedAt < 3000)
             await new Promise((resolve) =>
-              setTimeout(resolve, 500 - (Date.now() - nativeChangedAt)),
+              setTimeout(resolve, 3000 - (Date.now() - nativeChangedAt)),
             );
           if (started !== lifetime) return;
           if (hasOpenWork(context.doc)) {
@@ -297,6 +297,12 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         }
       }
     }
+    if (
+      previous &&
+      (previous.hidden !== found.gradesHidden ||
+        [...values].some(([id, visible]) => previous.values.get(id) !== visible))
+    )
+      nativeChangedAt = Date.now();
     nativeStates.set(found.widget, { hidden: found.gradesHidden, values });
     const hidden = (id: string): boolean =>
       visibility == null ||

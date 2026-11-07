@@ -2121,6 +2121,7 @@ test('an added Course grades widget saves its own filter', async ({ context, pag
 test('a copied eye waits for a native eye write to settle', async ({ context, page }) => {
   let filters = { gradeVisibilities: {} as Record<string, boolean> };
   let written: unknown;
+  let savedAt = 0;
   const served = await serveScenario(
     context,
     [
@@ -2132,6 +2133,7 @@ test('a copied eye waits for a native eye write to settle', async ({ context, pa
           const body = JSON.parse(request.postData ?? '{}');
           if (body.query?.includes('updateWidgetDashboardConfig')) {
             written = body.variables.filters;
+            savedAt = Date.now();
             return { body: { errors: [{ message: 'Refused' }] } };
           }
           return {
@@ -2156,7 +2158,7 @@ test('a copied eye waits for a native eye write to settle', async ({ context, pa
   await page.exposeFunction('nativeEyeWrite', () => {
     setTimeout(() => {
       filters = { gradeVisibilities: { '101': false } };
-    }, 200);
+    }, 1200);
   });
   const nativeEye = page.locator(
     '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
@@ -2166,9 +2168,12 @@ test('a copied eye waits for a native eye write to settle', async ({ context, pa
       void (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
     }),
   );
+  const nativeAt = Date.now();
   await nativeEye.click();
   await page.locator('[data-wr-card="107"] button').click();
+  await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
   await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
+  expect(savedAt - nativeAt).toBeGreaterThanOrEqual(3000);
 });
 
 for (const work of ['task', 'search', 'message', 'customize'])
