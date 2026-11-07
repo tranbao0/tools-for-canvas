@@ -554,7 +554,8 @@
   border-bottom: 1px solid var(--wr-line);
 }
 
-.wr-head > .wr-icon-btn {
+.wr-head > .wr-icon-btn,
+.wr-notice > .wr-icon-btn {
   margin-block: -2px;
 }
 
