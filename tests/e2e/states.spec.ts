@@ -381,3 +381,31 @@ test('custom days and focus survive the first list arrival', async ({
   await expect(field).toHaveValue('17');
   await expect(field).toBeFocused();
 });
+
+test('side panel inset follows the Undo dock after loading', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  await page.setViewportSize({ width: 400, height: 420 });
+  const { canvas } = await serveScenario(context, [], { latencyMs: 400 });
+  await addCsrfCookie(context, canvas.origin);
+  await saveAddress(background, canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(page.locator('.wr')).toHaveAttribute('aria-busy', 'true');
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await settledList(page);
+  await doneBox(page, QUIZ_3).click();
+  await expect(
+    page.locator('.wr-dock').getByRole('button', { name: 'Undo', exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.locator('.wr').evaluate((root) => ({
+        inset: parseFloat(getComputedStyle(root).getPropertyValue('--wr-inset-bottom')),
+        height: root.querySelector<HTMLElement>('.wr-dock')!.offsetHeight,
+      })),
+    )
+    .toEqual({ inset: 56, height: 56 });
+});
