@@ -697,6 +697,31 @@ test('a file link in the pane of the classic dashboard opens the file pane, and 
   expect(await paddingRight(page)).toBe(360);
 });
 
+test('the classic header controls stay in the room beside a pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    fixture: 'dashboard-card-view',
+    width: 1797,
+    height: 900,
+  });
+  await preview(page, LAB_4).click();
+  const pane = page.locator(PANE_HOST);
+  await expect(pane).toBeVisible();
+  const clear = async (selector: string): Promise<boolean> => {
+    const edge = (await pane.boundingBox())?.x ?? 0;
+    const box = await page.locator(selector).boundingBox();
+    return box !== null && box.x + box.width <= edge;
+  };
+  for (const width of [900, 1000, 1100]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => clear('[data-testid="switch-to-new-dashboard-button"]')).toBe(true);
+    await expect.poll(() => clear('[data-testid="dashboard-options-button"]')).toBe(true);
+  }
+});
+
 test('focus follows a keyboard student into the pane of the dock and back to Preview', async ({
   context,
   page,
@@ -804,4 +829,21 @@ test('a wide pane stacks the widget columns in the room beside it', async ({
   }
   await closeAssignment(page);
   await expect(page.locator('html')).not.toHaveAttribute('data-weekrow-widget-stack');
+});
+
+test('the widget columns stack below the room where Canvas stacks them', async ({
+  context,
+  page,
+  background,
+}) => {
+  await page.setViewportSize({ width: 1872, height: 900 });
+  await open(context, page, background);
+  await preview(page, QUIZ_3).click();
+  const box = await page.locator(PANE_HOST).boundingBox();
+  if (!box) throw new Error('No assignment pane');
+  const columns = page.locator('[data-testid="widget-columns"]');
+  await page.setViewportSize({ width: Math.ceil(box.width) + 1380, height: 900 });
+  await expect(page.locator('html')).not.toHaveAttribute('data-weekrow-widget-stack');
+  await page.setViewportSize({ width: Math.ceil(box.width) + 1379, height: 900 });
+  await expect(columns).toHaveCSS('flex-direction', 'column');
 });

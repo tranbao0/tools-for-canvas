@@ -35,9 +35,11 @@ const WIDE_MENU_ROOM_PX = 1140;
 const STACK_ATTRIBUTE = 'data-weekrow-stack';
 const STACK_STYLE_ID = 'weekrow-stack-style';
 const MENU_ATTRIBUTE = 'data-weekrow-hide-menu';
+/** The window width where Canvas gives the widget dashboard two columns (`RESPONSIVE_QUERY` of `ui/features/widget_dashboard/index.tsx`). */
+const WIDGET_COLUMNS_ROOM_PX = 1380;
 const BESIDE_ATTRIBUTE = 'data-weekrow-beside-pane';
 const WIDGET_STACK_ATTRIBUTE = 'data-weekrow-widget-stack';
-const STACK_CSS = `html[${STACK_ATTRIBUTE}] .ic-app-main-content{display:block!important}html[${STACK_ATTRIBUTE}] .ic-app-main-content__secondary{width:auto!important}html[${MENU_ATTRIBUTE}] .ic-app-course-menu,html[${MENU_ATTRIBUTE}] #courseMenuToggle{display:none!important}html[${MENU_ATTRIBUTE}] .ic-Layout-columns{margin-left:0!important}html[${WIDGET_STACK_ATTRIBUTE}] [data-testid="widget-columns"]{flex-direction:column!important}html[${WIDGET_STACK_ATTRIBUTE}] [data-testid="widget-columns"]> *{width:100%!important;max-width:100%!important;min-width:0!important}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__layout> *{flex-wrap:wrap!important;gap:12px}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__layout> *> *{min-width:0;max-width:100%}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__actions{flex-wrap:wrap;gap:8px;justify-content:flex-start}html[${BESIDE_ATTRIBUTE}] :has(>#files-table){max-width:100%;overflow-x:auto}`;
+const STACK_CSS = `html[${STACK_ATTRIBUTE}] .ic-app-main-content{display:block!important}html[${STACK_ATTRIBUTE}] .ic-app-main-content__secondary{width:auto!important}html[${MENU_ATTRIBUTE}] .ic-app-course-menu,html[${MENU_ATTRIBUTE}] #courseMenuToggle{display:none!important}html[${MENU_ATTRIBUTE}] .ic-Layout-columns{margin-left:0!important}html[${WIDGET_STACK_ATTRIBUTE}] [data-testid="widget-columns"]{flex-direction:column!important}html[${WIDGET_STACK_ATTRIBUTE}] [data-testid="widget-columns"]> *{width:100%!important;max-width:100%!important;min-width:0!important}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__layout> *{flex-wrap:wrap!important;row-gap:12px}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__layout> *> *{min-width:0;max-width:100%}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__actions{flex-wrap:wrap;row-gap:8px;justify-content:flex-start}html[${BESIDE_ATTRIBUTE}] :has(>#files-table){max-width:100%;overflow-x:auto}`;
 
 /** Whether a dock that would take `px` of room leaves the page alone: the window is narrow, or the room of the weekly dock would be. */
 function covers(win: Window, px: number, role: DockRole): boolean {
@@ -84,7 +86,10 @@ function markStack(page: HTMLElement, taken: number): void {
   }
   page.toggleAttribute(STACK_ATTRIBUTE, stack);
   page.toggleAttribute(BESIDE_ATTRIBUTE, taken > 0);
-  page.toggleAttribute(WIDGET_STACK_ATTRIBUTE, taken > 0 && win.innerWidth - taken < 1366);
+  page.toggleAttribute(
+    WIDGET_STACK_ATTRIBUTE,
+    taken > 0 && win.innerWidth - taken < WIDGET_COLUMNS_ROOM_PX,
+  );
   page.toggleAttribute(MENU_ATTRIBUTE, win.innerWidth - taken < MIN_ROOM_PX);
 }
 
