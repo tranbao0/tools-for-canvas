@@ -3,7 +3,7 @@
  * (design decision 22). Pure: no I/O and no clock.
  */
 import type { Course } from '../../../shared/canvas/types';
-import { ringColor } from '../../weekly-list/model/colors';
+import { savedColor } from '../../weekly-list/model/colors';
 import type { DashboardCourse } from '../protocol';
 
 /** The total of a course as the student sees it, or nulls when Canvas sends none. */
@@ -16,6 +16,13 @@ function totals(course: Course): { score: number | null; grade: string | null } 
     grade: typeof grade === 'string' && grade !== '' ? grade : null,
   };
 }
+
+/**
+ * The header color of a grade card for a course with no saved color: `DEFAULT_COURSE_COLOR` of
+ * `CourseGradeCard.tsx` in canvas-lms. The widget draws `custom_colors[course] ?? this`, so a
+ * course that the student never colored is not one of the ring colors there.
+ */
+const DEFAULT_CARD_COLOR = '#334451';
 
 /** White text if its contrast with the color is 4.5 or more, else black (the widget's rule). */
 export function inkFor(color: string): string {
@@ -30,11 +37,12 @@ export function inkFor(color: string): string {
 
 export function dashboardCourses(
   courses: readonly Course[],
-  colors: Parameters<typeof ringColor>[1],
-  userId: string,
+  colors: Parameters<typeof savedColor>[0],
+  // The color of a course has no user part. The data owner still passes the student.
+  _userId?: string,
 ): DashboardCourse[] {
   return courses.map((course) => {
-    const color = ringColor(course.id, colors, userId);
+    const color = savedColor(colors, `course_${course.id}`) ?? DEFAULT_CARD_COLOR;
     return {
       id: course.id,
       name: course.name,

@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDock, filePaneOpen, hideFilePane } from './dock';
 import { listenViewerHello, startViewer } from './page';
 
+// A dock lies over the page when it would leave Canvas less than 768 px, so these tests use a wide window.
+window.innerWidth = 1600;
+
 const SECRET = 'c'.repeat(64);
 const { sendMessage, addListener, removeListener } = vi.hoisted(() => ({
   sendMessage: vi.fn(),
