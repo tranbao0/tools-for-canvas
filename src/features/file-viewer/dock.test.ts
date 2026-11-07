@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createDock,
   filePaneOpen,
@@ -166,6 +166,38 @@ describe('the room that Canvas gets beside a dock', () => {
         document.body.classList.remove('course-menu-expanded');
       }
     });
+  });
+
+  it('lays out again when the course menu opens or closes, with no resize, for a dock and for a tab', async () => {
+    const menu = (open: boolean) => document.body.classList.toggle('course-menu-expanded', open);
+    const host = document.createElement('div');
+    document.body.append(host);
+    // The room of the dock is 1008 px, and the room of the tab is 1132 px: both are above 992 px
+    // and below the 1140 px that Canvas wants beside the course menu.
+    for (const [width, hold] of [
+      [1500, () => (dock('file', 480, true).open(), { release: () => docks.pop()?.close() })],
+      [1170, () => leaseRoom(host, 38)],
+    ] as const) {
+      const { innerWidth } = window;
+      window.innerWidth = width;
+      try {
+        const held = hold();
+        expect(stacked()).toBe(false);
+        menu(true);
+        await vi.waitFor(() => expect(stacked()).toBe(true));
+        menu(false);
+        await vi.waitFor(() => expect(stacked()).toBe(false));
+        // A holder that gave its room back no longer watches the page.
+        held.release();
+        menu(true);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(stacked()).toBe(false);
+        expect(padding()).toBe('');
+      } finally {
+        menu(false);
+        window.innerWidth = innerWidth;
+      }
+    }
   });
 
   it('leaves no mark on the page after the last holder, and gives back what a dead copy left', () => {

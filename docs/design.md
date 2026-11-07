@@ -335,6 +335,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     So the card and the rows of the Assignments list stay beside the pane, and the mouse can switch the pane to another row.
   - **A room below the width of the two column layout gets one column.**
     Canvas puts the right column beside the main content from 992 px (`desktop`), or from 1140 px on a page with the course menu open (`body.course-menu-expanded`, `desktop--nav-open`).
+    The lease reads the class of `body` again when a resize or a change of that class happens, so a click on the toggle of the course menu changes the layout at once, with no resize.
     While the window minus the room that the lease holds is below that width, the `html` element carries the attribute `data-weekrow-stack`, and a style turns on the rules that Canvas drops below that width.
     The main content (`.ic-app-main-content`) is a block and not a flex row, and the right column (`.ic-app-main-content__secondary`) has an automatic width.
     These are the three rules of `shared-main-content`, `shared-primary` and `shared-secondary` in `app/stylesheets/base/_ic_app_layout.scss` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`).

@@ -42,6 +42,22 @@ function covers(win: Window, px: number, role: DockRole): boolean {
 }
 
 /**
+ * Calls `layout` when the window resizes and when the class list of `body` changes, because the
+ * width that Canvas wants for its two columns depends on the course menu (`course-menu-expanded`),
+ * which a click on its toggle changes with no resize. Returns the function that stops both.
+ */
+function watchLayout(doc: Document, win: Window, layout: () => void): () => void {
+  win.addEventListener('resize', layout);
+  const observer = new MutationObserver(layout);
+  if (doc.body !== null)
+    observer.observe(doc.body, { attributes: true, attributeFilter: ['class'] });
+  return () => {
+    win.removeEventListener('resize', layout);
+    observer.disconnect();
+  };
+}
+
+/**
  * Gives the page the one column layout that Canvas gives a window as wide as the room, while the
  * room is below the width of Canvas's two column layout. The rules are the ones that Canvas drops
  * below that width: the main content stops being a flex row, and the right column fills the row.
@@ -321,11 +337,11 @@ export function leaseRoom(host: HTMLElement, width: number, doc: Document = docu
     if (!live || !host.isConnected) return;
     writePadding(page, width, covers(win, width, 'weekly'));
   };
+  const stopWatching = watchLayout(doc, win, layout);
   const stop = (): void => {
     live = false;
-    win.removeEventListener('resize', layout);
+    stopWatching();
   };
-  win.addEventListener('resize', layout);
   layout();
   return {
     refresh() {
@@ -474,7 +490,7 @@ export function createDock(options: DockOptions): Dock {
   let hidden = false;
   let opened = false;
   let full = false;
-  let stopResize: (() => void) | undefined;
+  let stopWatching: (() => void) | undefined;
   const card = options.card === true;
   /** The panes that cover the weekly list tell the watchers when they open, close, hide or show. */
   const tellsPanes = options.role === 'file' || options.role === 'turn-in';
@@ -583,8 +599,7 @@ export function createDock(options: DockOptions): Dock {
       host.style.display = '';
       claimRoom(page, dock);
       doc.body.append(host);
-      win.addEventListener('resize', layout);
-      stopResize = () => win.removeEventListener('resize', layout);
+      stopWatching = watchLayout(doc, win, layout);
       if (card) {
         // A state that a vanished pane left behind (a page removed its host) ends with that pane.
         if (openPanes().size === 0) setFullView(false);
@@ -597,8 +612,8 @@ export function createDock(options: DockOptions): Dock {
     close() {
       if (!opened) return;
       opened = false;
-      stopResize?.();
-      stopResize = undefined;
+      stopWatching?.();
+      stopWatching = undefined;
       releaseRoom(page, dock);
       host.remove();
       if (card) {
@@ -629,8 +644,8 @@ export function createDock(options: DockOptions): Dock {
     },
     forget() {
       opened = false;
-      stopResize?.();
-      stopResize = undefined;
+      stopWatching?.();
+      stopWatching = undefined;
       openPanes().delete(dock);
       if (card && openPanes().size === 0) setFullView(false);
     },
