@@ -84,10 +84,12 @@ export function createCardDock(
       const changed = confirmed !== yes;
       confirmed = yes;
       dock.host.setAttribute('data-identity', yes ? 'yes' : 'unknown');
+      const restoreFocus = yes && cover.contains(dock.root.activeElement);
       cover.hidden = yes;
       if (!yes && doc.activeElement === dock.host && !cover.contains(dock.root.activeElement))
         retry.focus({ preventScroll: true });
       sync();
+      if (restoreFocus) dock.section.focus({ preventScroll: true });
       if (changed) options.onIdentityChange?.(yes);
     }, options.identityToken);
   };

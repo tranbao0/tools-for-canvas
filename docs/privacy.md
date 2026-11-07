@@ -287,6 +287,7 @@ It does not refresh an old proof just because time passed.
 If the student is not yet confirmed, an opaque cover over the whole pane says "Canvas can't confirm your sign-in." and offers Retry before Close.
 Retry starts one sign-in check without the automatic check limits and ignores more taps while that check runs.
 When the cover appears with focus anywhere in the dock, focus moves to Retry and leaves any focused frame.
+When confirmation hides the cover with focus on a cover button, focus moves to the dock section so Escape still works in full view.
 The pane reads nothing while covered, and its frames and typed text stay alive underneath.
 The cover goes when the same student is confirmed again.
 A confirmed change of student, a sign-out (including a 401 answer), or a changed clearing round removes the frames and clears the page's stored feedback sessions.

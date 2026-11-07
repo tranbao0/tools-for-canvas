@@ -2715,3 +2715,32 @@ test('identity cover: keys leave the frame and cannot submit its form', async ({
     ),
   ).toBe('Close');
 });
+
+test('identity cover: restored focus keeps Escape in full view', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  const host = page.locator(PANE_HOST);
+  await toggleFullView(page);
+  const world = await holdPaneIdentity(page);
+  await frame.evaluate(() =>
+    (
+      (window.frameElement!.getRootNode() as ShadowRoot).querySelector(
+        '.identity-cover button:last-child',
+      ) as HTMLElement
+    ).focus(),
+  );
+  await world.evaluate('globalThis.__restorePaneIdentity()');
+  await expect(host).toHaveAttribute('data-identity', 'yes');
+  expect(
+    await frame.evaluate(
+      () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.tagName,
+    ),
+  ).toBe('SECTION');
+  await page.keyboard.press('Escape');
+  await expect(host).not.toHaveAttribute('data-full');
+});

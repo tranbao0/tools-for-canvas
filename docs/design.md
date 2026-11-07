@@ -3199,6 +3199,7 @@ With the pane read alone, the default run of the test failed before the fix.
        Retry starts one shared check without the automatic check limits; more taps do nothing while it runs.
        The next watcher tick reads the result.
        When the cover appears with focus anywhere in the dock, focus moves to Retry and leaves any focused frame.
+       When confirmation hides the cover with focus on a cover button, focus moves to the dock section so Escape still works in full view.
        The frames and typed text stay alive under the cover, which goes on the next `yes`.
        The panel uses the dock's light and dark theme tokens and has no animation.
      The timer does not wait for a reply; a missing reply becomes `unknown` within five seconds of its request.
