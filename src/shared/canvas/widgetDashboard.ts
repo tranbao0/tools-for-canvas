@@ -8,14 +8,21 @@
  * its markup, this is the one file to edit. The layout takes the free area beside the content, or
  * the stack above it, when the anchors are missing.
  *
+ * Nothing here depends on a tag. The package draws its boxes as InstUI `View`s, and a `View` is a
+ * `span` or a `div` by its props and its release (a local Canvas of April 2026 draws the grid, the
+ * columns and the widget wrappers as `span`s). So every anchor is a test id, found with a prefix
+ * or an exact value, in any element.
+ *
  * As of package version 16.2.0, in `WidgetGrid`:
- * - `[data-testid="widget-columns"]` is a flex container with the columns as its children. On a
- *   desktop it is a row, and on a tablet or phone it is a column.
- * - A widget is a `div[data-testid="widget-container-<id>"]` around the `section` of
- *   `TemplateWidget` (`section[data-testid="widget-<id>"]`). The section is the visible card: it
- *   has a margin of 8px, 24px of padding, a shadow and 8px corners, and no border.
+ * - `[data-testid="widget-columns"]` is a flex container. On a desktop it is a row, and on a
+ *   tablet or phone it is a column.
+ * - A widget is a box `[data-testid="widget-container-<id>"]` around the card of `TemplateWidget`
+ *   (`[data-testid="widget-<id>"]`, a `section` in the April 2026 release). The card is the
+ *   visible box: it has a margin of 8px, 24px of padding, a shadow and 8px corners, and no border.
  * - Each column is `[data-testid="widget-column-1"]` and `widget-column-2` in a row, and
- *   `widget-column-1-stacked` and `widget-column-2-stacked` in a column.
+ *   `widget-column-1-stacked` and `widget-column-2-stacked` in a column. A column is not always a
+ *   child of the grid: in a row it sits in a flex item with no test id, so a finder looks for the
+ *   test id among the descendants of the grid.
  * - In edit mode ("Customize dashboard"), the header swaps the customize button for
  *   `[data-testid="cancel-customize-button"]` and `[data-testid="save-customize-button"]`, and
  *   the grid shows `[data-testid="add-widget-placeholder-<col>-<row>"]` drop zones.
@@ -72,9 +79,16 @@ export interface CourseWorkSlot {
   loaded: boolean;
 }
 
+/**
+ * The card of a widget: `widget-<id>`. The wrapper (`widget-container-<id>`), the grid
+ * (`widget-columns`) and a column (`widget-column-<n>`) have test ids with the same start.
+ */
+const WIDGET_CARD =
+  '[data-testid^="widget-"]:not([data-testid^="widget-container-"]):not([data-testid^="widget-column"])';
+
 /** The first single or combined Course work widget, including its loading and error states. */
 export function findCourseWorkSlot(doc: Document): CourseWorkSlot | null {
-  for (const widget of doc.querySelectorAll<HTMLElement>('section[data-testid^="widget-"]')) {
+  for (const widget of doc.querySelectorAll<HTMLElement>(WIDGET_CARD)) {
     const id = widget.getAttribute('data-testid')!.slice('widget-'.length);
     if (
       id !== 'course-work-widget' &&
@@ -83,7 +97,7 @@ export function findCourseWorkSlot(doc: Document): CourseWorkSlot | null {
       !id.startsWith('course_work_combined-widget-')
     )
       continue;
-    const wrapper = widget.closest<HTMLElement>('div[data-testid^="widget-container-"]');
+    const wrapper = widget.closest<HTMLElement>('[data-testid^="widget-container-"]');
     if (wrapper?.getAttribute('data-testid') !== `widget-container-${id}`) continue;
     const loaded =
       widget.querySelector('[data-testid="submission-status-filter-select"]') !== null ||
@@ -116,9 +130,6 @@ export interface WidgetGrid {
   firstCards: HTMLElement[];
 }
 
-/** The card of a widget: the `section` that `TemplateWidget` renders. */
-const WIDGET_CARD = 'section[data-testid^="widget-"]';
-
 function firstCardOf(column: HTMLElement): HTMLElement | null {
   const card = column.querySelector<HTMLElement>(WIDGET_CARD);
   if (card !== null) return card;
@@ -131,10 +142,9 @@ function firstCardOf(column: HTMLElement): HTMLElement | null {
 export function findWidgetGrid(doc: Document): WidgetGrid | null {
   const columns = doc.querySelector<HTMLElement>(COLUMNS);
   if (columns === null) return null;
-  const canvasColumns = [...columns.children].filter(
-    (child): child is HTMLElement =>
-      child.getAttribute('data-testid')?.startsWith(COLUMN_PREFIX) === true,
-  );
+  const canvasColumns = [
+    ...columns.querySelectorAll<HTMLElement>(`[data-testid^="${COLUMN_PREFIX}"]`),
+  ];
   if (canvasColumns.length === 0) return null;
   const firstCards = canvasColumns.flatMap((column) => firstCardOf(column) ?? []);
   return { columns, firstCards };
@@ -149,7 +159,6 @@ export function inEditMode(doc: Document): boolean {
 // The content of the widgets, for the dashboard fixes
 // -------------------------------------------------------------------------------------------------
 
-const WIDGET = 'section[data-testid^="widget-"]';
 const ANNOUNCEMENT_ITEM = '[data-testid^="announcement-item-"]';
 const READ_FILTER = '[data-testid="announcement-filter-select"]';
 const ANNOUNCEMENT_EMPTY = '[data-testid="no-announcements-message"]';
@@ -157,7 +166,7 @@ const GRADE_CARD = '[data-testid^="course-grade-card-"]';
 const PAGER = '[data-testid="pagination-container"]';
 
 function widgetOf(element: Element): HTMLElement | null {
-  return element.closest<HTMLElement>(WIDGET);
+  return element.closest<HTMLElement>(WIDGET_CARD);
 }
 
 function widgetsWith(doc: Document, selector: string): HTMLElement[] {

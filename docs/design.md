@@ -517,6 +517,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - Observer work runs once per frame and ignores unrelated body portals.
   - All grid anchors are in `src/shared/canvas/widgetDashboard.ts`, which says what each one is.
     A change of the Canvas markup needs an edit in that one file.
+  - No anchor depends on a tag.
+    The package draws its boxes as InstUI views, and the tag of a view differs between releases and hosts.
+    A local Canvas of April 2026 draws the grid, the column and the widget wrapper as `span`, and puts each column in a flex item that has no test id.
+    So the code finds the wrapper `widget-container-<id>`, the card `widget-<id>`, and the columns `widget-column-<n>` (also `-stacked`) by test id in any element, and looks for a column among all descendants of the grid.
+    The fixture pages draw the same boxes as the real page.
   - When the list unmounts, for example when the student switches to another Canvas address, remove the inline styles and the marker.
     A list that fails to mount does the same.
     The student cannot turn the list off.

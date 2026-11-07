@@ -34,7 +34,7 @@ test.beforeEach(async ({ background }) => {
 });
 
 const QUIZ_3 = 'Quiz 3: Cell membranes';
-const CANVAS_COLUMNS = '[data-testid="widget-columns"] > [data-testid^="widget-column-"]';
+const CANVAS_COLUMNS = '[data-testid="widget-columns"] [data-testid^="widget-column-"]';
 const CARDS = 'section[data-testid^="widget-"]';
 const VIEWPORT_HEIGHT = 800;
 const SHOTS = path.join(process.cwd(), 'screenshots', 'dashboard-column');
