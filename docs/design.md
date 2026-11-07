@@ -4638,7 +4638,9 @@ No verified public close API is available for that overlay, so the extension doe
 3. **Folder and search views.**
    Canvas pushes `/courses/:id/files/folder/:splat?preview=:file` and `/courses/:id/files/search?...&preview=:file` (`FilesApp.jsx`, `FilePreview.jsx`).
    A trusted click on a file name in these views opens the pane, as it does in the root view.
-   The matcher takes `/courses/:id/files`, `/courses/:id/files/folder/...` and `/courses/:id/files/search`, and no other path.
+   The matcher takes `/courses/:id/files`, `/courses/:id/files/folder/...` and `/courses/:id/files/search`, and the same three routes under `/groups/:id` and `/users/:id`, and under the root `/files` that Canvas uses for All My Files of the student.
+   A live Canvas pushes `/files/folder/users_:id?preview=:file` there, and it draws its own overlay for a click that the pane does not take (live facts, 2026-11-06).
+   The matcher takes no other path.
 4. **Tests.**
    The classic click test uses the link form `/courses/:id/files?preview=:file` that only the preview matcher takes.
    Click tests cover the files, folder and search views.
