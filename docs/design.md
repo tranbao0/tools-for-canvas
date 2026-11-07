@@ -3282,8 +3282,10 @@ With the pane read alone, the default run of the test failed before the fix.
      Escape cancels the typed number: the input shows the page in view again, no page change follows, and the pane stays open.
    - **Zoom.**
      The default is "Fit width".
-     The menu offers "Fit width", "Fit page", 50, 75, 100, 125, 150, 200, 300 and 400 percent.
-     The buttons step through 25, 50, 75, 100, 125, 150, 200, 300, 400 and 500 percent, from the zoom in view.
+     The menu offers "Fit width", "Fit page", 25, 50, 75, 100, 125, 150, 200, 300, 400 and 500 percent.
+     The buttons step through the same 25 to 500 percent, from the zoom in view, so the menu lists every zoom that a button reaches (one list in `zoom.ts`).
+     Ctrl and the wheel over the pages give the same steps, and keep the wheel from zooming the page of the browser.
+     A notch of a mouse wheel is one step, and the small events of a pinch on a touchpad add up to 40 px for a step (`createWheelZoom` in `zoom.ts`).
      100 percent means 96/72 CSS pixels for each point of the page.
      A resize of the pane keeps the position in the document.
    - **Saved position.**
