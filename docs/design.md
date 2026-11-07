@@ -341,7 +341,9 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     While the window minus the room that the lease holds is below that width, the `html` element carries the attribute `data-weekrow-stack`, and a style turns on the rules that Canvas drops below that width.
     The main content (`.ic-app-main-content`) is a block and not a flex row, and the right column (`.ic-app-main-content__secondary`) has an automatic width.
     These are the three rules of `shared-main-content`, `shared-primary` and `shared-secondary` in `app/stylesheets/base/_ic_app_layout.scss` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`).
-    While `data-weekrow-stack` is present, the course menu column is hidden and the content takes its room.
+    The course menu and its hamburger button (`#courseMenuToggle`) hide only when less than 768 px remains beside the pane.
+    At 768 px or more, the menu stays visible while the content uses one column.
+    A pane never changes the saved `collapse_course_nav` preference.
     The class on `body` stays as Canvas sets it, so the menu returns with the student's choice when the pane closes.
     The global navigation and its wrapper margin stay as they are.
     The attribute and the style go with the last holder of room.

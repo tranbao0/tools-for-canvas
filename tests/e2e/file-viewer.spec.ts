@@ -713,3 +713,27 @@ test('a resize key at the window clamp preserves the wider choice', async ({
   await page.setViewportSize({ width: 1920, height: 900 });
   await expect(host).toHaveCSS('width', '812px');
 });
+
+for (const width of [1280, 1366, 1440, 1600, 1200])
+  test(`the course menu follows available room at ${width}px`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openCoursePage(context, page, background);
+    await openFirstFile(page, 'Read notes');
+    const menu = page.locator('.ic-app-course-menu');
+    const toggle = page.locator('#courseMenuToggle');
+    if (width - 492 >= 768) {
+      await expect(menu).toBeVisible();
+      await expect(toggle).toBeVisible();
+    } else {
+      await expect(menu).toBeHidden();
+      await expect(toggle).toBeHidden();
+    }
+    await expect(page.locator('body')).toHaveClass(/course-menu-expanded/);
+    await closePane(page);
+    await expect(menu).toBeVisible();
+    await expect(toggle).toBeVisible();
+  });

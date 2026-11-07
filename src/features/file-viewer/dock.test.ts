@@ -175,7 +175,7 @@ describe('the room that Canvas gets beside a dock', () => {
         const file = dock('file', 480, true);
         file.open();
         expect(stacked()).toBe(true);
-        expect(style()?.textContent).toContain('.ic-app-course-menu{display:none!important}');
+        expect(html.hasAttribute('data-weekrow-hide-menu')).toBe(false);
         expect(style()?.textContent).toContain('.ic-Layout-columns{margin-left:0!important}');
         expect(document.body.classList.contains('course-menu-expanded')).toBe(true);
         window.innerWidth = 1700;
