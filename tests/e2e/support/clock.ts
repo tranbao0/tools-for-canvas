@@ -58,9 +58,10 @@ type SetTimeout = (handler: unknown, delay?: number, ...rest: unknown[]) => unkn
 type TimerScope = { setTimeout: SetTimeout };
 
 /**
- * Makes every `setTimeout` of the service worker that asks for exactly `fromMs` wait `toMs`
- * instead. A limit of the data owner, such as the two-minute cap on a delayed delete, then passes
- * in a moment of real time. Other timers keep their delay.
+ * Makes every `setTimeout` of the service worker that asks for `fromMs`, or up to a second less,
+ * wait `toMs` instead. A limit of the data owner, such as the two-minute cap on a delayed delete,
+ * then passes in a moment of real time. Other timers keep their delay. The owner computes some
+ * delays from two clock reads, so a delay can come out a few milliseconds short of the limit.
  */
 export async function shortenTimer(worker: Worker, fromMs: number, toMs: number): Promise<void> {
   await worker.evaluate(
@@ -68,7 +69,11 @@ export async function shortenTimer(worker: Worker, fromMs: number, toMs: number)
       const scope = globalThis as unknown as TimerScope;
       const real = scope.setTimeout.bind(scope);
       scope.setTimeout = (handler, delay, ...rest) =>
-        real(handler, delay === from ? to : delay, ...rest);
+        real(
+          handler,
+          delay !== undefined && delay <= from && delay > from - 1000 ? to : delay,
+          ...rest,
+        );
     },
     [fromMs, toMs] as const,
   );

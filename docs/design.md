@@ -889,6 +889,7 @@ A student now has one way to clear work: Done.
   Undo sends the flags of each item from before.
 - A check or uncheck of an item that already shows the target flags, or that has a waiting write to them, writes nothing and gives no Undo entry.
   The owner decides this for every caller, so a second click before the row redraws, a double send and a stale second surface cannot give a later Undo the flags of the first write as its "before".
+  The surface ends the notice of the first send when the second one starts, so a double click leaves no Undo notice.
 - A row action stays on the due line, at the right of the due text: "Move to today" for a custom task with a past date, and the Preview button (decision 26).
   A row with no due text, such as an undated item, shows its actions on a line of their own.
   The actions of a row always share that one line, so a past-due row has no separate row of action targets.
@@ -1400,7 +1401,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   A free request slot goes first to the days of a span that a surface shows, then to the past-due range of that view, refresh rounds and writes (the same level), then to weeks that load ahead.
   A load for a view that the surface no longer shows drops to the lowest level.
 - Every request of the queue has one limit in the transport: 25 seconds from the start of an attempt to the end of its body (`REQUEST_TIMEOUT_MS`).
-  A slow Canvas answers in well under 10 seconds, so 25 seconds is a wide margin for a bad link.
+  The reads that have their own limit already give one small answer 10 seconds, so 25 seconds leaves room for a slow Canvas and for a page of 100 items on a bad link.
   The limit stays below the 30 seconds after which Chrome stops a service worker that waits for a reply [24], because a stopped worker drops the writes that Canvas has not confirmed.
   A longer limit would let three stalled replies hold all three slots for that long.
   A request that passes the limit fails with `Couldn't reach Canvas` (not offline) and frees its slot, so the round fails as stale, Retry starts a new round, and the writes behind it go out.
