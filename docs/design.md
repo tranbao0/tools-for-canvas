@@ -325,11 +325,14 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   The media queries of Canvas see the width of the window, so a dock that takes room leaves a page that thinks it is wider than it is.
   A dock of 360 px in a window of 1000 px left Canvas's two column layout in 556 px: the right column pushed the main column down to 268 px, the "Switch to new dashboard view" button lay over the title, and "Recent Feedback" lay over the header (the visual test on the local Canvas, student dana, 2026-11-06).
   The room lease of the dock module (`file-viewer/dock.ts`) handles this for every pane and every page, with two rules.
-  - **A room below 768 px is not made.**
+  - **The weekly dock and its tab make no room below 768 px.**
     Canvas starts its mobile layout below 768 px (`tablet` in `app/stylesheets/base/mixins/_breakpoints.scss`), and a page cannot get that layout for a room.
-    A dock, a pane or a tab that would leave less than 768 px lies over the page at its own width and leaves the padding of the page alone.
+    The weekly dock or its tab that would leave less than 768 px lies over the page at its own width and leaves the padding of the page alone.
     This adds to the rule for a window below 900 px, which stretches the pane over the whole window.
-    So the default dock of 360 px takes room from a window of 1128 px, the default file pane of 480 px plus its 12 px gap from 1260 px, and a tab of 38 px from 900 px.
+    So the default dock of 360 px takes room from a window of 1128 px, and a tab of 38 px from 900 px.
+    A file pane and an assignment pane have no such rule.
+    They take their room from a window of 900 px, and the one column rule below gives the narrow room a layout that fits.
+    So the card and the rows of the Assignments list stay beside the pane, and the mouse can switch the pane to another row.
   - **A room below the width of the two column layout gets one column.**
     Canvas puts the right column beside the main content from 992 px (`desktop`), or from 1140 px on a page with the course menu open (`body.course-menu-expanded`, `desktop--nav-open`).
     While the window minus the room that the lease holds is below that width, the `html` element carries the attribute `data-weekrow-stack`, and a style turns on the rules that Canvas drops below that width.
@@ -3061,7 +3064,7 @@ With the pane read alone, the default run of the test failed before the fix.
    - The pane has a close button, and Escape closes it when focus is inside.
      In full view, Escape leaves full view first (see "Full view" below).
    - Below 900 px of window width, the pane covers the page instead, with the same close button, with no gap, no round corners and no Full view button.
-   - A pane that would leave the page less than 768 px of room lies over the page at its own width, with its gap and its corners, and takes no room (see "Canvas reads the window and not the room" under decision 4).
+   - A pane takes room from a window of 900 px, however narrow the room is, and the page gets the one column layout when the room is narrow (see "Canvas reads the window and not the room" under decision 4).
    - The weekly list dock of the classic dashboard (decision 4) uses the same dock module, with the role `weekly`, so the file pane and the dock sit in the same place.
      Only one of them shows at a time: while a file pane is open, the weekly dock and its tab are hidden, and they come back in the state they had when the pane closes.
      The two scripts share the room lease, and the weekly dock opens only when no file pane is open.

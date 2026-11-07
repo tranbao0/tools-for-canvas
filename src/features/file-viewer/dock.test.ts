@@ -18,7 +18,7 @@ import {
   type DockRole,
 } from './dock';
 
-// A dock lies over the page when it would leave Canvas less than 768 px, so these tests use a wide window.
+// The weekly dock lies over the page when it would leave Canvas less than 768 px, so these tests use a wide window.
 window.innerWidth = 1600;
 
 const padding = () => document.documentElement.style.getPropertyValue('padding-right');
@@ -109,7 +109,7 @@ describe('the room that Canvas gets beside a dock', () => {
     }
   }
 
-  it('lies over the page at its own width when it would leave less than 768 px, on a window of 900 px or more', () => {
+  it('lies over the page at its own width when the weekly dock would leave less than 768 px, on a window of 900 px or more', () => {
     inWindow(1000, () => {
       const weekly = dock('weekly', 360);
       weekly.open();
@@ -120,6 +120,20 @@ describe('the room that Canvas gets beside a dock', () => {
       window.dispatchEvent(new Event('resize'));
       expect(weekly.host.style.width).toBe('360px');
       expect(padding()).toBe('360px');
+    });
+  });
+
+  it('takes room in a pane on a window of 900 px or more, and leaves the narrow room to the one column layout', () => {
+    inWindow(1000, () => {
+      const file = dock('file', 480, true);
+      file.open();
+      expect(padding()).toBe('492px');
+      expect(stacked()).toBe(true);
+      file.close();
+      const turnIn = dock('turn-in', 480, true);
+      turnIn.open();
+      expect(padding()).toBe('492px');
+      turnIn.close();
     });
   });
 

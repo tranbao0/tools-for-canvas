@@ -14,10 +14,12 @@ import { normalizeWidth } from './width';
 const NARROW_PX = 900;
 
 /**
- * The least room that a dock leaves beside it. Canvas starts its mobile layout below 768 px
- * (`tablet` in `app/stylesheets/base/mixins/_breakpoints.scss`), but its media queries read the
- * window and not the room, so a room that small cannot get that layout. A dock that would leave
- * less lies over the page at its own width and leaves the padding of the page alone.
+ * The least room that the weekly dock and its tab leave beside them. Canvas starts its mobile
+ * layout below 768 px (`tablet` in `app/stylesheets/base/mixins/_breakpoints.scss`), but its media
+ * queries read the window and not the room, so a room that small cannot get that layout. The list
+ * is a side column, so it lies over the page at its own width and leaves the padding of the page
+ * alone when it would leave less. A file pane or an assignment pane keeps taking room, because the
+ * card and the rows of the page must stay beside it: the one column layout below handles the room.
  */
 const MIN_ROOM_PX = 768;
 
@@ -34,9 +36,9 @@ const STACK_ATTRIBUTE = 'data-weekrow-stack';
 const STACK_STYLE_ID = 'weekrow-stack-style';
 const STACK_CSS = `html[${STACK_ATTRIBUTE}] .ic-app-main-content{display:block!important}html[${STACK_ATTRIBUTE}] .ic-app-main-content__secondary{width:auto!important}`;
 
-/** Whether a dock that would take `px` of room leaves the page alone: the window is narrow, or the room would be. */
-function covers(win: Window, px: number): boolean {
-  return win.innerWidth < NARROW_PX || win.innerWidth - px < MIN_ROOM_PX;
+/** Whether a dock that would take `px` of room leaves the page alone: the window is narrow, or the room of the weekly dock would be. */
+function covers(win: Window, px: number, role: DockRole): boolean {
+  return win.innerWidth < NARROW_PX || (role === 'weekly' && win.innerWidth - px < MIN_ROOM_PX);
 }
 
 /**
@@ -317,7 +319,7 @@ export function leaseRoom(host: HTMLElement, width: number, doc: Document = docu
   claimRoom(page, holder);
   const layout = (): void => {
     if (!live || !host.isConnected) return;
-    writePadding(page, width, covers(win, width));
+    writePadding(page, width, covers(win, width, 'weekly'));
   };
   const stop = (): void => {
     live = false;
@@ -522,7 +524,7 @@ export function createDock(options: DockOptions): Dock {
     host.style.width = stretched ? '' : `${taken}px`;
     // A host that a page removed takes no room.
     if (hidden || !host.isConnected) return;
-    writePadding(page, taken, covers(win, taken));
+    writePadding(page, taken, covers(win, taken, options.role));
   };
   const setWidth = (next: number): void => {
     width = normalizeWidth(next, win.innerWidth);
