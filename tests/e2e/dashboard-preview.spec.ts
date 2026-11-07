@@ -760,3 +760,20 @@ test('a hand-in in the pane that the card opened moves the row at the close, tho
   await closeAssignment(page);
   await expect(rowOf(page, LAB_4)).toHaveCount(0, { timeout: 8000 });
 });
+
+test('a done mark after a hand-in reaches Canvas', async ({ context, page, background }) => {
+  const { canvas, state } = await open(context, page, background);
+  await preview(page, LAB_4).click();
+  state.submitted = true;
+  await closeAssignment(page);
+  await expect(rowOf(page, LAB_4)).toHaveCount(0);
+  await doneBox(inpageList(page), QUIZ_3).click();
+  await expect
+    .poll(
+      () =>
+        canvas.requests.filter(
+          (request) => request.method === 'POST' && request.path === '/api/v1/planner/overrides',
+        ).length,
+    )
+    .toBe(1);
+});

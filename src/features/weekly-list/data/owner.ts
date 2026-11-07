@@ -855,6 +855,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (cache === null || cache.limited || !isHandedIn(record)) return;
     const planner = withHandIn(cache.planner, courseId, assignmentId);
     if (planner === null) return;
+    const id = nextId();
     cache = {
       ...cache,
       planner,
@@ -862,7 +863,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         ...cache.patches,
         {
           kind: 'hand-in',
-          id: nextId(),
+          id,
           courseId,
           assignmentId,
           confirmedAt: clock.now(),

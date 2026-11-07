@@ -331,6 +331,34 @@ describe('a hand-in that the list does not show yet', () => {
     state.view.groups.find((group) => [...group.items, ...group.older].some((i) => i.key === key))
       ?.kind;
 
+  it.each(['done', 'edit'] as const)('sends a %s write after a hand-in', async (kind) => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    if (kind === 'done') {
+      await h.owner.act({
+        kind: 'setDone',
+        keys: [`assignment:${IDS.assignments.bioQuiz3Today}`],
+        done: true,
+      });
+    } else {
+      await h.owner.act({
+        kind: 'updateTask',
+        noteId: IDS.notes.libraryBooksToday,
+        input: {
+          title: 'Return books tomorrow',
+          date: '2026-10-30',
+          time: null,
+          courseId: null,
+          details: '',
+        },
+      });
+    }
+    await h.owner.settled();
+    expect(h.canvas.callsOf(kind === 'done' ? 'createOverride' : 'updateNote')).toHaveLength(1);
+  });
+
   it('keeps a hand-in when an older planner round lands', async () => {
     const h = await createHarness();
     await loadReady(h);
