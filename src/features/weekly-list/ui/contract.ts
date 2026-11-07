@@ -118,7 +118,7 @@ export interface AppProps {
   announcements?: AnnouncementsProps;
   /**
    * The data for the settings shown in place (decision 18). Missing until loaded; the gear then
-   * shows a short loading state.
+   * shows a short loading state. Courses stay empty until their list arrives.
    */
   settings?: {
     value: Settings;

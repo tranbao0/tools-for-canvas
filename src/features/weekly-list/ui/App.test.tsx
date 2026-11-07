@@ -1938,6 +1938,15 @@ describe('task form', () => {
       },
     );
 
+    it.each(['new', 'edit'] as const)('closes the %s form across a loading gap', (kind) => {
+      const view = open(kind);
+      view.rerender({ kind: 'loading' });
+      expect(screen.queryByRole('form')).toBeNull();
+      view.rerender(readyState());
+      expect(screen.queryByRole('form')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Add task' })).toBeTruthy();
+    });
+
     it.each([
       ['another student', { userId: '6603' }],
       ['another Canvas', { origin: 'https://canvas.state.edu' }],
@@ -2012,6 +2021,48 @@ describe('task form', () => {
     fireEvent.submit(form);
     await waitFor(() => expect(screen.queryByRole('form')).toBeNull());
     expect(actions.createTask).toHaveBeenCalledTimes(2);
+  });
+
+  describe('a create answer after its form leaves', () => {
+    function pendingCreate() {
+      const ui = setup();
+      let answer!: (saved: boolean) => void;
+      ui.actions.createTask.mockImplementation(
+        () =>
+          new Promise<boolean>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+      fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'First task' } });
+      fireEvent.submit(screen.getByRole('form'));
+      ui.rerender({ kind: 'loading' });
+      return { ...ui, answer };
+    }
+    it.each([false, true])('ignores a late create result of %s on a newer form', async (saved) => {
+      const ui = pendingCreate();
+      ui.rerender(readyState());
+      fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+      const form = screen.getByRole('form');
+      fireEvent.input(screen.getByLabelText('Title'), { target: { value: 'New draft' } });
+      await act(async () => {
+        ui.answer(saved);
+      });
+      expect(screen.getByRole('form')).toBe(form);
+      expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('New draft');
+      expect(within(form).queryByRole('alert')).toBeNull();
+      expect(ui.actions.createTask).toHaveBeenCalledTimes(1);
+    });
+    it('ignores the old create focus request on the next refresh', async () => {
+      const ui = pendingCreate();
+      await act(async () => {
+        ui.answer(true);
+      });
+      const gear = screen.getByRole('button', { name: 'Settings' });
+      gear.focus();
+      ui.rerender(readyState());
+      expect(document.activeElement).toBe(gear);
+    });
   });
 
   it('requires a title', () => {
@@ -2454,6 +2505,24 @@ describe('sticky header and dock', () => {
     expect(observer.disconnected).toBe(true);
     expect(root.style.getPropertyValue('--wr-inset-top')).toBe('');
     vi.unstubAllGlobals();
+  });
+
+  it('observes the dock that arrives after loading', () => {
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      const ui = setup({ kind: 'loading' });
+      ui.rerender(readyState({ undo: { kind: 'done', count: 1 } }));
+      const dock = document.querySelector('.wr-dock');
+      const observer = FakeResizeObserver.last!;
+      expect(observer.observed).toContain(dock);
+      setHeight(dock, 56);
+      observer.callback();
+      expect(
+        document.querySelector<HTMLElement>('.wr')?.style.getPropertyValue('--wr-inset-bottom'),
+      ).toBe('56px');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('counts only the dock in a Canvas page, where the header scrolls with the page', () => {
@@ -2969,5 +3038,23 @@ describe('progressive loading', () => {
 
     expect(actions.stepSpan.mock.calls).toEqual([[1], [-1]]);
     expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy();
+  });
+});
+
+describe('header identity', () => {
+  it('drops custom days when a failed Canvas changes through loading', () => {
+    const view = setupSaved(
+      { kind: 'cant_load', origin: 'https://x.instructure.com', offline: false, offer: null },
+      'panel',
+      { ...DEFAULT_SETTINGS, span: { kind: 'custom', days: 10 } },
+    );
+    const field = screen.getByRole('spinbutton') as HTMLInputElement;
+    field.focus();
+    field.value = '17';
+    view.rerender({ kind: 'loading' });
+    expect(screen.getByRole('spinbutton')).toBe(field);
+    view.rerender(readyState({ origin: 'https://y.instructure.com' }));
+    expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe('10');
+    expect(screen.getByRole('spinbutton')).not.toBe(field);
   });
 });

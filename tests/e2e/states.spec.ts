@@ -2,6 +2,7 @@
  * The list states of design decision 11, "States the UI must show": signed out, planner turned
  * off and can't refresh. Also the offer of design decision 4, which only the side panel shows.
  */
+import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import type { Page, Worker } from '@playwright/test';
 import { CANVAS_ERRORS } from '../fixtures/errors';
 import { errorReply } from './support/canvas-state';
@@ -17,6 +18,7 @@ import {
   openExtensionPage,
   serveScenario,
   settledList,
+  saveSettings,
   test,
 } from './support/weekrow';
 
@@ -323,4 +325,87 @@ test.describe('the offer to switch to another Canvas', () => {
     expect(markup).toContain(QUIZ_3);
     expect(markup).not.toContain('other.instructure');
   });
+});
+
+test('settings fields work before courses load', async ({ page, extensionUrl }) => {
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.wr-settings')).toBeVisible();
+});
+
+test('first failed dashboard load offers minimize', async ({ context, page, background }) => {
+  const canvas = await serveFakeCanvas(context, [
+    { path: '/', page: 'dashboard-card-view' },
+    { path: /^\/api\//, respond: () => errorReply(CANVAS_ERRORS.serverError) },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await openCanvasPage(page, canvas.origin);
+  const list = inpageList(page);
+  await expect(list.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+
+  await list.getByRole('button', { name: 'Minimize list', exact: true }).click();
+  await expect(page.locator('#tools-weekly-tab')).toBeVisible();
+});
+
+test('signed out settings screen shows fields', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const canvas = await serveFakeCanvas(context, [
+    { path: /^\/api\//, respond: () => errorReply(CANVAS_ERRORS.signedOut) },
+  ]);
+  await saveAddress(background, canvas.origin);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('.wr-settings')).toBeVisible();
+});
+
+test('custom days and focus survive the first list arrival', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { canvas } = await serveScenario(context, [], { latencyMs: 1500 });
+  await saveAddress(background, canvas.origin);
+  await saveSettings(background, { ...DEFAULT_SETTINGS, span: { kind: 'custom', days: 10 } });
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  const field = page.getByRole('spinbutton');
+  await field.fill('17');
+  await expect(page.locator('.wr-header')).toBeVisible();
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await expect(field).toHaveValue('17');
+  await expect(field).toBeFocused();
+});
+
+test('side panel inset follows the Undo dock after loading', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  await page.setViewportSize({ width: 400, height: 420 });
+  const { canvas } = await serveScenario(context, [], { latencyMs: 400 });
+  await addCsrfCookie(context, canvas.origin);
+  await saveAddress(background, canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await expect(page.locator('.wr')).toHaveAttribute('aria-busy', 'true');
+  await expect(doneBox(page, QUIZ_3)).toBeVisible();
+  await settledList(page);
+  await doneBox(page, QUIZ_3).click();
+  await expect(
+    page.locator('.wr-dock').getByRole('button', { name: 'Undo', exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.locator('.wr').evaluate((root) => ({
+        inset: parseFloat(getComputedStyle(root).getPropertyValue('--wr-inset-bottom')),
+        height: root.querySelector<HTMLElement>('.wr-dock')!.offsetHeight,
+      })),
+    )
+    .toEqual({ inset: 56, height: 56 });
 });

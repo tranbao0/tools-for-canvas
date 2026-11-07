@@ -11,7 +11,6 @@ import {
   DEFAULT_SPAN,
   type ItemView,
   type Settings,
-  type Span,
   type SurfaceState,
 } from '../model/types';
 import type { Actions, AppProps, SurfaceKind, TaskInput } from './contract';
@@ -26,7 +25,7 @@ import {
   staleText,
   type OneTimeNote,
 } from './Notices';
-import { Bar, newId, newIds, type HeadingLevel } from '../../../shared/ui/parts';
+import { Bar, MinimizeButton, newId, newIds, type HeadingLevel } from '../../../shared/ui/parts';
 import type { ListTab } from '../data/announcements';
 import { Announcements } from './Announcements';
 import { ListTabs, tabId } from './ListTabs';
@@ -47,8 +46,6 @@ import {
   OpenMemoryContext,
 } from './WeekList';
 import { captureFocus, firstRowControl, restoreFocus, usable, type FocusSnapshot } from './focus';
-
-type ReadyState = Extract<SurfaceState, { kind: 'ready' }>;
 
 /** How long focus follows a minimize or an expand that the student asked for. */
 const FOCUS_FOLLOW_MS = 1500;
@@ -252,6 +249,20 @@ export function App(props: AppProps) {
 
   const openSettings: OpenSettings = (opener) => setSettingsFrom(opener);
   const level = baseLevel(surface);
+  const origin = useRef<string | undefined>(undefined);
+  const user = useRef<string | undefined>(undefined);
+  const generation = useRef(0);
+  if ('origin' in state) {
+    if (origin.current !== undefined && origin.current !== state.origin) {
+      generation.current++;
+      user.current = undefined;
+    }
+    origin.current = state.origin;
+  }
+  if ('userId' in state) {
+    if (user.current !== undefined && user.current !== state.userId) generation.current++;
+    user.current = state.userId;
+  }
 
   let body: ComponentChildren;
   // The Undo notice shows with the list, and it also stays when another state replaces the list.
@@ -282,15 +293,16 @@ export function App(props: AppProps) {
         action={t('settings')}
         opener="note"
         onAction={() => openSettings('note')}
-      />
+      >
+        {onMinimize && <MinimizeButton onClick={onMinimize} />}
+      </NoticeLine>
     );
-  } else if (state.kind === 'ready') {
-    showDock = false;
+  } else if (state.kind === 'ready' || state.kind === 'loading' || state.kind === 'cant_load') {
+    showDock = state.kind !== 'ready' && state.undo != null;
     body = (
-      <ReadyView
-        // The view belongs to one student on one Canvas. Another student or Canvas mounts it again,
-        // so no open form, draft or notice crosses over.
-        key={`${state.origin}\n${state.userId}`}
+      <ListView
+        // The first identity keeps the loading header; a different identity drops forms and drafts.
+        key={generation.current}
         surface={surface}
         state={state}
         actions={actions}
@@ -301,30 +313,6 @@ export function App(props: AppProps) {
         settings={props.settings?.value}
         onSettings={openSettings}
         onMinimize={onMinimize}
-      />
-    );
-  } else if (state.kind === 'loading' || state.kind === 'cant_load') {
-    // After a failed load the header and the arrows stay, so the student can step to a span that
-    // is cached.
-    body = (
-      <LoadingView
-        surface={surface}
-        span={props.settings?.value.span ?? DEFAULT_SPAN}
-        settings={props.settings?.value}
-        actions={actions}
-        onSettings={openSettings}
-        onMinimize={onMinimize}
-        failed={
-          state.kind === 'cant_load' ? (
-            <StateBody
-              state={state}
-              actions={actions}
-              level={subLevel(level)}
-              context="surface"
-              offerView={props.offerView}
-            />
-          ) : undefined
-        }
       />
     );
   } else {
@@ -365,47 +353,6 @@ export function App(props: AppProps) {
 }
 
 /**
- * Loading before any data: the header keeps its final layout and works, and a spinner shows, as
- * in Canvas's To Do. The student can already pick a span or step to another one. After a failed
- * load, `failed` replaces the spinner, and the header works the same way, with Today on, because
- * the span on screen is not known.
- */
-function LoadingView(props: {
-  surface: SurfaceKind;
-  span: Span;
-  settings: Settings | undefined;
-  actions: Actions;
-  onSettings: OpenSettings;
-  onMinimize?: () => void;
-  failed?: ComponentChildren;
-}) {
-  const { settings, actions } = props;
-  return (
-    <>
-      <Header
-        view={null}
-        level={baseLevel(props.surface)}
-        refreshing={false}
-        addDisabledReason={null}
-        span={props.span}
-        onSpan={settings ? (span) => actions.saveSettings({ ...settings, span }) : null}
-        onStep={(delta) => actions.stepSpan(delta)}
-        todayEnabled={props.failed !== undefined}
-        onToday={() => actions.goToSpan(0)}
-        onAdd={() => undefined}
-        onSettings={() => props.onSettings('gear')}
-        onMinimize={props.onMinimize}
-      />
-      {props.failed ?? (
-        <div class="wr-state">
-          <Spinner text={t('loading')} />
-        </div>
-      )}
-    </>
-  );
-}
-
-/**
  * Keeps `--wr-inset-top` and `--wr-inset-bottom` on the root at the heights of the sticky header
  * (side panel only) and the sticky dock. The stylesheet turns them into scroll margins, so a
  * focused control never hides under either (WCAG 2.4.11).
@@ -435,9 +382,9 @@ function useStickyInsets(
   }, [rootRef, surface, enabled]);
 }
 
-function ReadyView(props: {
+function ListView(props: {
   surface: SurfaceKind;
-  state: ReadyState;
+  state: Extract<SurfaceState, { kind: 'ready' | 'loading' | 'cant_load' }>;
   actions: Actions;
   rootRef: RefObject<HTMLDivElement | null>;
   /** The scroll position of each tab, for the in-page list. The side panel scrolls as a page. */
@@ -451,7 +398,6 @@ function ReadyView(props: {
   onMinimize?: () => void;
 }) {
   const { surface, state, actions, rootRef } = props;
-  const { view } = state;
   const saved = props.settings;
   const level = baseLevel(surface);
   const [form, setForm] = useState<TaskFormMode | null>(null);
@@ -463,6 +409,16 @@ function ReadyView(props: {
     : null;
   /** A new task waits for Canvas, or the last try to save one failed. */
   const [save, setSave] = useState<'idle' | 'saving' | 'failed'>('idle');
+  const submission = useRef<TaskInput | null>(null);
+  useLayoutEffect(() => {
+    if (state.kind !== 'ready') {
+      setForm(null);
+      setSave('idle');
+    }
+    return () => {
+      submission.current = null;
+    };
+  }, [state.kind, form]);
   const [notes, setNotes] = useState<OneTimeNote[]>([]);
   const [limitedId] = useState(() => newId('limited'));
   const [tabIds] = useState(() => newIds('tab', ['tasks', 'announcements', 'panel'] as const));
@@ -521,7 +477,7 @@ function ReadyView(props: {
     restoredRow.current = null;
     control.focus();
   });
-  useStickyInsets(rootRef, surface, form === null);
+  useStickyInsets(rootRef, surface, form === null && state.kind === 'ready');
   // The side panel has no list that scrolls: its page does, so the task panel is the list there.
   // The card, the dock and the widgets pull in the lists that own the scroll, which mount and
   // leave with the view.
@@ -537,6 +493,45 @@ function ReadyView(props: {
     return () => root.removeEventListener('focusin', onFocusIn);
   }, [rootRef]);
 
+  const header = (
+    <Header
+      view={state.kind === 'ready' ? state.view : null}
+      level={level}
+      refreshing={state.kind === 'ready' && state.refreshing}
+      addDisabledReason={state.kind === 'ready' && state.view.limited ? t('limitedLine') : null}
+      addDescribedBy={limitedId}
+      span={saved?.span ?? (state.kind === 'ready' ? state.view.span : DEFAULT_SPAN)}
+      onSpan={saved ? (span) => actions.saveSettings({ ...saved, span }) : null}
+      onStep={(delta) => actions.stepSpan(delta)}
+      todayEnabled={state.kind === 'cant_load' ? true : undefined}
+      onToday={() => actions.goToSpan(0)}
+      onAdd={() => setForm({ kind: 'new' })}
+      onSettings={() => props.onSettings('gear')}
+      onMinimize={props.onMinimize}
+    />
+  );
+  if (state.kind !== 'ready') {
+    return (
+      <>
+        {header}
+        {state.kind === 'cant_load' ? (
+          <StateBody
+            state={state}
+            actions={actions}
+            level={subLevel(level)}
+            context="surface"
+            offerView={props.offerView}
+          />
+        ) : (
+          <div class="wr-state">
+            <Spinner text={t('loading')} />
+          </div>
+        )}
+      </>
+    );
+  }
+  const { view } = state;
+
   const showNote = (note: OneTimeNote) => {
     if (state.seenNotes[note]) return;
     setNotes((current) => (current.includes(note) ? current : [...current, note]));
@@ -546,8 +541,11 @@ function ReadyView(props: {
 
   /** Creates a task. The form stays open until Canvas answers, so a slow save is never sent twice. */
   const createTask = async (input: TaskInput) => {
+    submission.current = input;
     setSave('saving');
-    if (await actions.createTask(input)) closeForm(null);
+    const saved = await actions.createTask(input);
+    if (submission.current !== input) return;
+    if (saved) closeForm(null);
     else setSave('failed');
   };
   /** Closes the form and focuses the control that opened it, or the Add button. */
@@ -718,20 +716,7 @@ function ReadyView(props: {
 
   return (
     <>
-      <Header
-        view={view}
-        level={level}
-        refreshing={state.refreshing}
-        addDisabledReason={view.limited ? t('limitedLine') : null}
-        addDescribedBy={limitedId}
-        span={saved?.span ?? view.span}
-        onSpan={saved ? (span) => actions.saveSettings({ ...saved, span }) : null}
-        onStep={(delta) => actions.stepSpan(delta)}
-        onToday={() => actions.goToSpan(0)}
-        onAdd={() => openForm({ kind: 'new' })}
-        onSettings={() => props.onSettings('gear')}
-        onMinimize={props.onMinimize}
-      />
+      {header}
       <NoticeQueue notices={notices} />
       {/* The Add button names the limited line as its reason, also while that line waits. */}
       {view.limited && notices.length > 1 && (
