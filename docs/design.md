@@ -2466,7 +2466,11 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    So a copy has no eye button and no "Course settings" menu, which a card of the widget has.
    The eye writes the choice of the student to the `widget_dashboard_config` preference of Canvas, so an eye that changed only the copy would show the grade again after a reload.
    The menu holds the color picker and the nickname editor, which also write to Canvas.
-   The extension writes nothing to Canvas for these, so a student who wants either one goes to the page of the card that the widget draws.
+   The extension writes nothing to Canvas for these.
+   The eye, the color picker and the nickname editor exist only on the cards that the widget draws.
+   When the copies cover every page, the pager is hidden, so a card that the widget draws on another page cannot be reached on the dashboard, and neither can its eye, its color picker or its nickname editor.
+   The grade of a copy then follows the choice that the student saved earlier and the main toggle "Show all grades", which hides every copy.
+   Whether a copy gets an eye is a decision of the owner that is still open.
    Its header has the color that the widget draws: the saved color of the course (`custom_colors` of the student), or `#334451` for a course with no saved color.
    This is `courseColor ?? DEFAULT_COURSE_COLOR` of `CourseGradeCard.tsx`, with `courseColor` from `custom_colors[course.asset_string]` in `fetch_courses_with_grades` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`).
    It is not one of the colors that the rings pick for a course with no saved color, so a copy and a card of the widget look the same.
