@@ -89,8 +89,8 @@ test('checked work that Canvas marks missing is done, never late, and late again
   await settledList(page);
 
   // Uncheck: it is late again, with the red Missing chip.
+  // The Done group stays open over the span change, as the student left it.
   from = canvas.requests.length;
-  await group(page, 'done').getByRole('button').first().click();
   await doneBox(
     group(page, 'done').locator('li').filter({ hasText: PRE_LAB_7 }),
     PRE_LAB_7,
