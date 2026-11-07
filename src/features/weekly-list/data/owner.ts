@@ -3116,7 +3116,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentDetailsReply | NoSubmissionAccess> {
-    return readForAssignmentView(origin, tabId, async (api, entry) => {
+    const reply = await readForAssignmentView(origin, tabId, async (api, entry) => {
       const [assignment, submission] = await Promise.all([
         api.getAssignmentRecord(courseId, assignmentId),
         api.getOwnSubmissionRecord(courseId, assignmentId).catch(notFoundIsNull),
@@ -3131,9 +3131,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           : deps.browserTimeZone();
       if (!isCurrent(stamp)) throw new ViewerUnconfirmedError();
       const details = projectAssignmentView(assignment, submission);
-      applyHandIn(courseId, assignmentId, handInRecordOf(submission));
-      return { details, timeZone };
+      return { details, timeZone, handIn: handInRecordOf(submission), entry };
     });
+    if ('kind' in reply) return reply;
+    if (identityHolds(reply.entry)) applyHandIn(courseId, assignmentId, reply.handIn);
+    return { details: reply.details, timeZone: reply.timeZone };
   }
 
   async function assignmentOwner(
@@ -3149,12 +3151,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       if (record === null) return null;
       const user = record['user_id'];
       if (typeof user !== 'string' || !isCanvasId(user)) throw new Error('Not a submission record');
-      // The assignment page reads this record on each load, so a hand-in that reloads the page
-      // shows here.
-      if (identityHolds(entry)) applyHandIn(courseId, assignmentId, handInRecordOf(record));
-      return { userId: user, ...projectReports(record) };
+      return {
+        value: { userId: user, ...projectReports(record) },
+        handIn: handInRecordOf(record),
+        entry,
+      };
     });
-    return reply === null ? { kind: 'no_submission_access' } : reply;
+    if (reply === null) return { kind: 'no_submission_access' };
+    if (identityHolds(reply.entry) && reply.value.userId === cache?.session?.profile.id)
+      applyHandIn(courseId, assignmentId, reply.handIn);
+    return reply.value;
   }
 
   /**

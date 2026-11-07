@@ -331,6 +331,36 @@ describe('a hand-in that the list does not show yet', () => {
     state.view.groups.find((group) => [...group.items, ...group.older].some((i) => i.key === key))
       ?.kind;
 
+  it.each(['assignmentDetails', 'assignmentOwner'] as const)(
+    'does not cache a hand-in from a dropped %s reply',
+    async (method) => {
+      const h = await createHarness();
+      await loadReady(h);
+      handIn(h, '2026-11-02T10:00:00Z');
+      const read =
+        method === 'assignmentDetails' ? 'getOwnSubmissionRecord' : 'getOwnSubmissionUserRecord';
+      const release = h.canvas.hold(read);
+      const pending = h.owner[method](COURSE, ASSIGNMENT, ORIGIN, TAB);
+      const failed = expect(pending).rejects.toThrow();
+      await vi.waitFor(() => expect(h.canvas.callsOf(read)).toHaveLength(1));
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('changed-session');
+      release();
+      await failed;
+      await h.owner.settled();
+      const stored = await h.deps.store.cache.getValue();
+      expect(stored?.patches.some((patch) => patch.kind === 'hand-in')).toBe(false);
+    },
+  );
+
+  it('does not cache the hand-in of another submission owner', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentOwner(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(groupOf(expectReady(await h.owner.getState(PANEL)))).toBe('past_due');
+  });
+
   it.each(['done', 'edit'] as const)('sends a %s write after a hand-in', async (kind) => {
     const h = await createHarness();
     await loadReady(h);
@@ -451,6 +481,7 @@ describe('a hand-in that the assignment page shows', () => {
       assignment: { ...records.assignment, id: assignment },
       submission: {
         ...records.submission,
+        user_id: IDS.user,
         submitted_at: '2026-11-02T10:00:00Z',
         workflow_state: 'submitted',
       },
