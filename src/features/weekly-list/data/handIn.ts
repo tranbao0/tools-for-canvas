@@ -3,12 +3,13 @@
  *
  * The one assignment view and the assignment page read the submission of an assignment from
  * Canvas. When that read shows work handed in, and the cached planner items still show the
- * assignment as not handed in, the list is behind. A student made that change, so the round that
- * follows is one that somebody asked for, and it skips the 60-second limit, as a write does.
+ * assignment as not handed in, the list is behind. The read already holds the answer, so the data
+ * layer writes the hand-in into the cached planner items and the row moves with no round. The
+ * next round comes by the normal timers and replaces the items with what Canvas sends.
  */
 import { sameCanvasId } from '../../../shared/canvas/ids';
-import type { PlannerItem } from '../../../shared/canvas/types';
 import { plannerAssignmentId } from '../model/normalize';
+import type { PlannerCoverage } from './coverage';
 
 /** The fields of a submission record that tell a hand-in. */
 export interface HandInRecord {
@@ -40,29 +41,35 @@ export function isHandedIn(record: HandInRecord): boolean {
 }
 
 /**
- * Whether the cached planner items hold the assignment of a course and show no hand-in for it. An
- * assignment that no cached item holds is not behind: a round has nothing to correct for it.
+ * The coverage with the hand-in written into every cached planner item of the assignment that
+ * shows no hand-in, or `null` when no item changes. A handed-in item is not missing. An assignment
+ * that no cached item holds is not behind: a round has nothing to correct for it.
  */
-export function listShowsNoHandIn(
-  items: readonly PlannerItem[],
+export function withHandIn(
+  coverage: PlannerCoverage,
   courseId: string,
   assignmentId: string,
-): boolean {
-  return items.some((item) => {
-    const own = plannerAssignmentId(item);
-    const course = item.course_id ?? item.plannable.course_id;
-    return (
-      own !== null &&
-      sameCanvasId(own, assignmentId) &&
-      sameCanvasId(course, courseId) &&
-      typeof item.submissions === 'object' &&
-      item.submissions !== null &&
-      item.submissions.submitted !== true
-    );
-  });
-}
-
-/** The key of one hand-in: the assignment and the mark of its submission. */
-export function handInKey(courseId: string, assignmentId: string, record: HandInRecord): string {
-  return `${courseId}:${assignmentId}:${record.submitted_at ?? ''}:${record.attempt ?? ''}`;
+): PlannerCoverage | null {
+  let changed = false;
+  const items = Object.fromEntries(
+    Object.entries(coverage.items).map(([key, item]) => {
+      const own = plannerAssignmentId(item);
+      const course = item.course_id ?? item.plannable.course_id;
+      if (
+        own === null ||
+        !sameCanvasId(own, assignmentId) ||
+        !sameCanvasId(course, courseId) ||
+        typeof item.submissions !== 'object' ||
+        item.submissions === null ||
+        item.submissions.submitted === true
+      )
+        return [key, item];
+      changed = true;
+      return [
+        key,
+        { ...item, submissions: { ...item.submissions, submitted: true, missing: false } },
+      ];
+    }),
+  );
+  return changed ? { ...coverage, items } : null;
 }

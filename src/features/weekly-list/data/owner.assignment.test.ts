@@ -10,12 +10,15 @@ import { rawRecords } from '../../../../tests/fixtures/assignment-view';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import {
   ORIGIN,
+  PANEL,
   createHarness,
+  expectReady,
   loadReady,
   settleAll,
   signInOtherUser,
   useScenarioClock,
   type Harness,
+  type ReadyState,
 } from './testing/harness';
 
 const TAB = 9;
@@ -323,15 +326,37 @@ describe('a hand-in that the list does not show yet', () => {
     });
   }
 
-  it('starts a round at once, inside the 60 seconds after the last round', async () => {
+  const key = `assignment:${ASSIGNMENT}`;
+  const groupOf = (state: ReadyState): string | undefined =>
+    state.view.groups.find((group) => [...group.items, ...group.older].some((i) => i.key === key))
+      ?.kind;
+
+  it('moves the row with no round, inside the 60 seconds after the last round', async () => {
     const h = await createHarness();
-    await loadReady(h);
+    const before = await loadReady(h);
+    expect(groupOf(before)).toBe('past_due');
     handIn(h, '2026-11-02T10:00:00Z');
     h.canvas.resetCalls();
     await vi.advanceTimersByTimeAsync(10_000);
     await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
     await h.owner.settled();
-    expect(h.canvas.plannerRanges().length).toBeGreaterThan(0);
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+    const after = expectReady(await h.owner.getState(PANEL));
+    expect(groupOf(after)).not.toBe('past_due');
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+  });
+
+  it('keeps the moved row after the cache is stored and read again', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    const stored = await h.deps.store.cache.getValue();
+    const item = Object.values(stored?.planner.items ?? {}).find(
+      (candidate) => candidate.plannable_id === ASSIGNMENT,
+    );
+    expect(item?.submissions).toMatchObject({ submitted: true, missing: false });
   });
 
   it('starts no round for the same hand-in again, and none for work that the list shows as handed in', async () => {
@@ -345,7 +370,7 @@ describe('a hand-in that the list does not show yet', () => {
     await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
     await h.owner.settled();
     expect(h.canvas.plannerRanges()).toHaveLength(0);
-    // The list holds this assignment as handed in, so its read needs no round.
+    // The list holds this assignment as handed in, so its read changes nothing.
     const done = IDS.assignments.bioLabReport1;
     const records = rawRecords();
     h.canvas.setAssignmentView(COURSE, done, {
@@ -373,7 +398,7 @@ describe('a hand-in that the list does not show yet', () => {
 });
 
 describe('a hand-in that the assignment page shows', () => {
-  it('starts a round at once when the page reads the owner of a submission handed in', async () => {
+  it('moves the row with no round when the page reads the owner of a submission handed in', async () => {
     const h = await createHarness();
     await loadReady(h);
     const course = IDS.courses.biology;
@@ -391,6 +416,11 @@ describe('a hand-in that the assignment page shows', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await h.owner.assignmentOwner(course, assignment, ORIGIN, TAB);
     await h.owner.settled();
-    expect(h.canvas.plannerRanges().length).toBeGreaterThan(0);
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+    const after = expectReady(await h.owner.getState(PANEL));
+    const group = after.view.groups.find((g) =>
+      [...g.items, ...g.older].some((i) => i.key === `assignment:${assignment}`),
+    );
+    expect(group?.kind).not.toBe('past_due');
   });
 });
