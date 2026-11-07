@@ -93,6 +93,11 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
   let focusCourse: string | undefined;
 
   function blockWhileSaving(event: Event): void {
+    if (saving && event.target instanceof Element && event.target.closest('[data-wr-grades]')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     if (
       event.isTrusted &&
       event.target instanceof Element &&
@@ -100,10 +105,6 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
       !event.target.closest('[data-wr-card]')
     )
       nativeChangedAt = Date.now();
-    if (saving && event.target instanceof Element && event.target.closest('[data-wr-grades]')) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
   }
 
   /** Sets the text of the element with `suffix`, and removes it when there is no text. */
