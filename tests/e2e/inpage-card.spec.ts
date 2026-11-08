@@ -1723,3 +1723,71 @@ for (const fixture of ['dashboard-card-view', 'course-home', 'dashboard-widgets'
     if (fixture === 'dashboard-widgets') await expect(list).not.toHaveCSS('box-shadow', 'none');
     else await expect(list).toHaveCSS('box-shadow', 'none');
   });
+
+test('the dock clears the last row for Undo and a three-line failure at 400 px', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { width: 400, height: 900, settings: DEFAULT_SETTINGS });
+  const list = inpageList(page);
+  const toast = list.locator('.wr-toast');
+  await doneBox(list, QUIZ_3).click();
+  await expect(toast).toContainText('Marked done');
+  const measure = async () => {
+    const scroll = list.locator('.wr-scroll:not([hidden])');
+    await scroll.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    return toast.evaluate((element) => {
+      const root = element.getRootNode() as ShadowRoot;
+      const scroll = root.querySelector('.wr-scroll:not([hidden])') as HTMLElement;
+      const row = [...scroll.querySelectorAll('li')]
+        .filter((row) => row.getBoundingClientRect().height > 0)
+        .at(-1)!;
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height,
+        padding: style.padding,
+        border: style.borderWidth,
+        font: style.font,
+        rowBottom: row.getBoundingClientRect().bottom,
+        toastTop: element.getBoundingClientRect().top,
+        toastBottom: element.getBoundingClientRect().bottom,
+        barTop: root.querySelector('.wr-views')!.getBoundingClientRect().top,
+        bottomSpace: parseFloat(getComputedStyle(scroll).paddingBottom),
+      };
+    });
+  };
+  const undo = await measure();
+  expect(undo.height).toBe(40);
+  expect(undo.bottomSpace).toBe(64);
+  expect(undo.rowBottom).toBeLessThanOrEqual(undo.toastTop);
+  await toast.getByRole('button', { name: 'Close notice' }).click();
+  await context.route('**/api/v1/planner/overrides*', async (route) => {
+    if (route.request().method() === 'GET') return route.fallback();
+    await route.fulfill({ status: 500, body: 'Server error' });
+  });
+  await list
+    .getByRole('button', { name: /\d+ older/ })
+    .first()
+    .click();
+  await list.getByRole('button', { name: 'Mark all older done' }).click();
+  await expect(toast).toContainText("Couldn't mark those");
+  await expect
+    .poll(async () => {
+      const m = await measure();
+      return m.rowBottom - m.toastTop;
+    })
+    .toBeLessThanOrEqual(0);
+  const failure = await measure();
+  expect(failure.height).toBeGreaterThan(60);
+  expect(failure.rowBottom).toBeLessThanOrEqual(failure.toastTop);
+  expect(failure.toastBottom).toBeLessThan(failure.barTop);
+  expect(failure.bottomSpace).toBeGreaterThan(failure.height + 8);
+  expect({ padding: failure.padding, border: failure.border, font: failure.font }).toEqual({
+    padding: undo.padding,
+    border: undo.border,
+    font: undo.font,
+  });
+});

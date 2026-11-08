@@ -267,7 +267,12 @@ export function TaskForm(props: {
 
       <div class="wr-form-actions">
         {noteId !== null && (
-          <button type="button" class="wr-link-btn" onClick={() => props.onDelete(noteId)}>
+          <button
+            type="button"
+            class="wr-link-btn"
+            disabled={props.saving}
+            onClick={() => props.onDelete(noteId)}
+          >
             {t('deleteTask')}
           </button>
         )}

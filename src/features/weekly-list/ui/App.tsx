@@ -361,25 +361,30 @@ function useStickyInsets(
   rootRef: RefObject<HTMLDivElement | null>,
   surface: SurfaceKind,
   enabled: boolean,
+  notice: SurfaceState['undo'],
 ): void {
   useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root || !enabled) return;
     const header = surface === 'panel' ? root.querySelector<HTMLElement>('.wr-header') : null;
     const dock = root.querySelector<HTMLElement>('.wr-dock');
+    const toast = surface === 'inpage' ? dock?.querySelector<HTMLElement>('.wr-toast') : null;
     const update = () => {
       root.style.setProperty('--wr-inset-top', `${header?.offsetHeight ?? 0}px`);
-      root.style.setProperty('--wr-inset-bottom', `${dock?.offsetHeight ?? 0}px`);
+      root.style.setProperty(
+        '--wr-inset-bottom',
+        `${toast ? toast.getBoundingClientRect().height + 16 : (dock?.offsetHeight ?? 0)}px`,
+      );
     };
     update();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
-    for (const element of [header, dock]) if (element) observer?.observe(element);
+    for (const element of [header, dock, toast]) if (element) observer?.observe(element);
     return () => {
       observer?.disconnect();
       root.style.removeProperty('--wr-inset-top');
       root.style.removeProperty('--wr-inset-bottom');
     };
-  }, [rootRef, surface, enabled]);
+  }, [rootRef, surface, enabled, notice]);
 }
 
 function ListView(props: {
@@ -477,7 +482,7 @@ function ListView(props: {
     restoredRow.current = null;
     control.focus();
   });
-  useStickyInsets(rootRef, surface, form === null && state.kind === 'ready');
+  useStickyInsets(rootRef, surface, form === null && state.kind === 'ready', state.undo);
   // The side panel has no list that scrolls: its page does, so the task panel is the list there.
   // The card, the dock and the widgets pull in the lists that own the scroll, which mount and
   // leave with the view.

@@ -3087,3 +3087,46 @@ describe('header identity', () => {
     expect(screen.getByRole('spinbutton')).not.toBe(field);
   });
 });
+
+it.each([
+  ['done', "Couldn't mark that done."],
+  ['undone', "Couldn't mark that not done."],
+  ['moved', "Couldn't move the task."],
+  ['deleted', "Couldn't delete the task."],
+] as const)(
+  'shows the complete %s failure text and keeps Ctrl+Z out of Try again',
+  (failure, text) => {
+    const { actions } = setup(readyState({ undo: { kind: 'not_restored', failure, count: 1 } }));
+    const dock = document.querySelector('.wr-dock');
+    expect(screen.getByText(text)).toBeTruthy();
+    const retry = screen.getByRole('button', { name: 'Try again' });
+    expect(retry.getAttribute('aria-keyshortcuts')).toBeNull();
+    fireEvent.keyDown(retry, { key: 'z', ctrlKey: true });
+    expect(actions.undo).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+    expect(actions.undo).toHaveBeenCalledTimes(1);
+    expect(dock).not.toBeNull();
+  },
+);
+
+it('disables Delete task until the edit save finishes', async () => {
+  const { actions } = setup();
+  let answer!: (saved: boolean) => void;
+  actions.updateTask.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Edit task: Buy lab goggles' }));
+  fireEvent.submit(screen.getByRole('form', { name: 'Edit task' }));
+  expect((screen.getByRole('button', { name: 'Delete task' }) as HTMLButtonElement).disabled).toBe(
+    true,
+  );
+  expect(actions.deleteTask).not.toHaveBeenCalled();
+  answer(false);
+  await screen.findByRole('alert');
+  expect((screen.getByRole('button', { name: 'Delete task' }) as HTMLButtonElement).disabled).toBe(
+    false,
+  );
+});
