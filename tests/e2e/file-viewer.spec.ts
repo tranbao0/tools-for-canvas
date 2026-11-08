@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Page, Worker } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
-import { pageQuiet, requestsQuiet } from './support/settle';
+import { pageQuiet, requestsQuiet, watchPaneIdentityChecks } from './support/settle';
 import { test, expect, serveScenario, saveTools } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
 import {
@@ -834,7 +834,9 @@ test('a failed hello keeps typed work and offers a student link', async ({
   await page.screenshot({ path: testInfo.outputPath('hello-failure.png') });
   // The identity tick of each second leaves the keyboard on the link.
   await cdp.send('DOM.focus', { backendNodeId: link.backendDOMNodeId! });
-  await pageQuiet(page, 3, 1100);
+  const identityChecks = await watchPaneIdentityChecks(page);
+  const completed = await identityChecks();
+  await expect.poll(identityChecks).toBeGreaterThan(completed);
   const focused = await cdp.send('Accessibility.getFullAXTree');
   expect(
     focused.nodes

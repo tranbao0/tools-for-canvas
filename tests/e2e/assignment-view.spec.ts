@@ -1,4 +1,4 @@
-import { pageQuiet, requestsQuiet } from './support/settle';
+import { pageQuiet, requestsQuiet, stableValue } from './support/settle';
 import { contentScriptWorld } from './support/content-script';
 import { moveTabsToAnotherStore } from './support/pane-identity';
 /**
@@ -995,6 +995,46 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
     });
   const pageBefore = await listBox();
 
+  const sampleList = () =>
+    page.evaluate(() => {
+      const scope = window as unknown as {
+        __listSamples: Promise<{ x: number; y: number; width: number; height: number }[]>;
+      };
+      scope.__listSamples = new Promise((resolve) => {
+        const samples: { x: number; y: number; width: number; height: number }[] = [];
+        let active = true;
+        const sample = () => {
+          if (!active) return;
+          const rect = document.querySelector('ul.ig-list')!.getBoundingClientRect();
+          samples.push({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+          requestAnimationFrame(sample);
+        };
+        document.addEventListener(
+          'click',
+          () => {
+            sample();
+            setTimeout(() => {
+              active = false;
+              resolve(samples);
+            }, 500);
+          },
+          { capture: true, once: true },
+        );
+      });
+    });
+  const checkList = async () => {
+    const samples = await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __listSamples: Promise<{ x: number; y: number; width: number; height: number }[]>;
+          }
+        ).__listSamples,
+    );
+    expect(samples.length).toBeGreaterThan(1);
+    for (const sample of samples) expect(sample).toEqual(pageBefore);
+  };
+  await sampleList();
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
   const full = await geometry(page);
@@ -1010,7 +1050,7 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
   });
   // The page padding does not change, so the page behind does not move.
   expect(full.padding).toBe(before.padding);
-  await expect.poll(() => listBox()).toEqual(pageBefore);
+  await checkList();
   // The pane covers the page, and the row keeps its state.
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   await expect(rowOf(page, '101')).toHaveAttribute('data-av-open', '');
@@ -1023,6 +1063,7 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
   await expect.poll(() => frame.evaluate(() => window.scrollY)).toBe(240);
   expect(await frame.evaluate(() => window.innerWidth)).toBeGreaterThan(1100);
 
+  await sampleList();
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
   const after = await geometry(page);
@@ -1030,7 +1071,7 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
   expect(after.card).toEqual(before.card);
   expect(after.padding).toBe(before.padding);
   expect(after.button).toMatchObject({ text: 'Full view', focused: true, handleShown: true });
-  await expect.poll(() => listBox()).toEqual(pageBefore);
+  await checkList();
   expect(await paneFrame(page)).toBe(frame);
   expect(await frame.evaluate(() => (window as unknown as { __kept: string }).__kept)).toBe(
     'same document',
@@ -1890,8 +1931,8 @@ for (const [name, link, wanted] of [
     const frame = await openPane(page, 'Essay');
     await frame.locator(link).click();
     await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(wanted);
-    await expect.poll(() => headerOf(frame)).toEqual(EssayHeader);
-    await expect.poll(() => headerOf(frame)).toEqual(EssayHeader);
+    await frame.waitForLoadState('load');
+    expect(await stableValue(page, () => headerOf(frame), background)).toEqual(EssayHeader);
     await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
     // A Preview click on another row leaves that frame on its page, and the click back shows it.
     await preview(page, 'Reading').click();
@@ -1943,8 +1984,8 @@ for (const [name, title, extra, header] of [
       })
       .toBe(true);
     const frame = paneFrames(page).find((candidate) => framePath(candidate) === wanted)!;
-    await expect.poll(() => headerOf(frame)).toEqual(header);
-    await expect.poll(() => headerOf(frame)).toEqual(header);
+    await frame.waitForLoadState('load');
+    expect(await stableValue(page, () => headerOf(frame), background)).toEqual(header);
     await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
     expect(questions).toEqual([]);
     await expect(essay.locator('#marker')).toHaveValue('half a draft');
@@ -2745,14 +2786,10 @@ test('identity cover: keys leave the frame and cannot submit its form', async ({
   await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
   expect(state.submitted).toBe(false);
   await expect(page.locator(PANE_HOST)).toBeVisible();
+  const identityChecks = await watchIdentityChecks(page);
   await page.keyboard.press('Tab');
-  await expect
-    .poll(() =>
-      frame.evaluate(
-        () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.textContent,
-      ),
-    )
-    .toBe('Close');
+  const completed = await identityChecks();
+  await expect.poll(identityChecks).toBeGreaterThan(completed);
   expect(
     await frame.evaluate(
       () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.textContent,
