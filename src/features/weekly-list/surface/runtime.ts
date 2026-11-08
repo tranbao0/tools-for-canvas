@@ -579,7 +579,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
             ? { ...first, refused: true as const }
             : first;
         const data = replies.flatMap((r) => (r?.undo ? [r.undo] : []));
-        if (data.length > 0 && shows !== undefined) {
+        if (data.length > 0 && shows !== undefined && notice?.retry?.seq !== action.seq) {
           // A newer write or a stopped surface ends this notice before it shows.
           if (
             isWrite &&

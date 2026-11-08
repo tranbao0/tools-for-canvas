@@ -2567,6 +2567,59 @@ describe('write outcome events', () => {
     expect(sentActions(fake.sent).map((action) => action.kind)).toEqual(['deleteTask']);
     runtime.stop();
   });
+
+  it('keeps a failure that arrives before the same write replies with Undo', async () => {
+    const { fake, runtime, fail } = await start();
+    const reply = fake.reply;
+    let answer!: (value: unknown) => void;
+    fake.reply = (message) =>
+      message.type === 'weekrow:action'
+        ? new Promise((resolve) => {
+            answer = resolve;
+          })
+        : reply(message);
+    runtime.actions.setDone('assignment:1', true);
+    const action = sentActions(fake.sent)[0]!;
+    await fail(action.seq!);
+    expect(runtime.state().undo).toMatchObject({ failure: 'done' });
+    answer({
+      undo: {
+        kind: 'overrides',
+        userId: USER,
+        origin: ORIGIN,
+        entries: [{ key: 'assignment:1', previous: NOT_DONE }],
+      },
+    });
+    await settle();
+    expect(runtime.state().undo).toEqual({ kind: 'not_restored', failure: 'done', count: 1 });
+    fake.changed();
+    await settle();
+    expect(runtime.state().undo).toEqual({ kind: 'not_restored', failure: 'done', count: 1 });
+    runtime.stop();
+  });
+
+  it('keeps a pending failure when a state requested before the write arrives after its acknowledgement', async () => {
+    const { fake, runtime } = await start();
+    const reply = fake.reply;
+    const answers: ((value: unknown) => void)[] = [];
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state'
+        ? new Promise((resolve) => {
+            answers.push(resolve);
+          })
+        : reply(message);
+    fake.changed();
+    runtime.actions.moveTaskToToday('8');
+    await settle();
+    expect(answers).toHaveLength(2);
+    const action = sentActions(fake.sent)[0]!;
+    answers[0]!({ ...readyFor(USER), pendingWrites: [], failedWrites: [] });
+    await settle();
+    answers[1]!({ ...readyFor(USER), pendingWrites: [], failedWrites: [action.seq!] });
+    await settle();
+    expect(runtime.state().undo).toEqual({ kind: 'not_restored', failure: 'moved', count: 1 });
+    runtime.stop();
+  });
 });
 
 it('drops a visible failure on an identity change even after its outcome expires', async () => {
