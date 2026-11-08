@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sessionCacheItem } from './cache';
+import { commitUpdate } from './rounds';
 import { IDS } from '../../../../tests/fixtures/scenario';
 import { canvasError, type FakeMethod } from './testing/fakeCanvas';
 import {
@@ -184,5 +185,53 @@ describe('the session data reloads at most once per hour', () => {
     release();
     await h.owner.settled();
     expect(h.canvas.callsOf('listCourses')).toHaveLength(2);
+  });
+});
+
+describe('a commit after a reload', () => {
+  it('drops the teacher status names and the limited-mode work of a course that left', async () => {
+    await loaded();
+    const cache = await sessionCacheItem.getValue();
+    if (cache?.session === null || cache?.session === undefined) throw new Error('No session');
+    const left = IDS.courses.calculus;
+    const kept = cache.session.courses.find((course) => course.id !== left)?.id ?? '';
+    const before = {
+      ...cache,
+      gradeStatuses: { [left]: [], [kept]: [] },
+      allAssignments: { [left]: [], [kept]: [] },
+    };
+    const session = {
+      ...cache.session,
+      courses: cache.session.courses.filter((course) => course.id !== left),
+    };
+    const after = commitUpdate(
+      before,
+      {
+        session,
+        planner: null,
+        details: {},
+        undated: {},
+        overrides: undefined,
+        limited: true,
+        allAssignments: {},
+        failedCourses: [],
+      },
+      Date.now(),
+    );
+    expect(Object.keys(after.gradeStatuses)).toEqual([kept]);
+    expect(Object.keys(after.allAssignments)).toEqual([kept]);
+  });
+});
+
+describe('a clock that went back', () => {
+  it('counts the session data as due, so a full round reloads it', async () => {
+    const h = await loaded();
+    const cache = await sessionCacheItem.getValue();
+    const loadedAt = cache?.session?.loadedAt ?? 0;
+    // Under an hour by the difference, so only the check for a clock that went back reloads it.
+    vi.setSystemTime(loadedAt - 10 * 60_000);
+    await h.owner.refresh('visible');
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listCourses').length).toBeGreaterThan(0);
   });
 });

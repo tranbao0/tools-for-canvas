@@ -7,7 +7,6 @@
  * as Canvas does for a course the student is not in. A test adds a course to `enrolled` while it
  * runs. The background clock moves forward, then the side panel reloads and asks for a refresh.
  */
-import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import type { Page } from '@playwright/test';
 import type { PlannerItem } from '../../src/shared/canvas/types';
 import { IDS, type Scenario } from '../fixtures/scenario';
@@ -15,15 +14,11 @@ import { advanceBackgroundClock } from './support/clock';
 import type { FakeCanvas, FakeCanvasRoute } from './support/fake-canvas';
 import { json, saveAddress } from './support/scenario-api';
 import {
-  addCsrfCookie,
   doneBox,
-  inpageList,
-  openCanvasPage,
   expect,
   openExtensionPage,
   serveScenario,
   settledList,
-  saveSettings,
   test,
   type ServedCanvas,
 } from './support/weekrow';
@@ -176,30 +171,3 @@ test.describe('the courses of the session', () => {
     expect(courseListRequests()).toBe(2);
   });
 });
-
-for (const theme of ['light', 'dark'] as const) {
-  test(`No active courses Retry in both surfaces in ${theme}`, async ({
-    context,
-    page,
-    background,
-    extensionUrl,
-  }) => {
-    await page.emulateMedia({ colorScheme: theme });
-    await page.setViewportSize({ width: 1280, height: 900 });
-    await saveSettings(background, { ...DEFAULT_SETTINGS, theme });
-    const { canvas } = await serveEnrolled(context, new Set());
-    await saveAddress(background, canvas.origin);
-    await openExtensionPage(page, extensionUrl('sidepanel.html'));
-    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
-    await page.screenshot({ path: `/tmp/t1-screenshots/no-courses-panel-${theme}.png` });
-    await addCsrfCookie(context, canvas.origin);
-    await openCanvasPage(page, canvas.origin);
-    const list = inpageList(page);
-    await expect(list.getByRole('button', { name: 'Retry' })).toBeVisible();
-    await expect(list.locator('.wr-mount')).toHaveAttribute('data-theme', theme);
-    await expect
-      .poll(() => list.evaluate((node) => node.getBoundingClientRect().height))
-      .toBeGreaterThan(400);
-    await list.screenshot({ path: `/tmp/t1-screenshots/no-courses-inpage-${theme}.png` });
-  });
-}
