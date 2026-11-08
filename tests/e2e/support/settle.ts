@@ -118,3 +118,42 @@ export async function requestsQuiet(
 ): Promise<void> {
   await stableValue(page, () => requests.length, background);
 }
+
+/** Runs frames and a timer in the extension frame before draining the top page. */
+export async function frameQuiet(
+  frame: import('@playwright/test').Frame,
+  page: Page,
+): Promise<void> {
+  await frame.evaluate(async () => {
+    const paint = () =>
+      new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 100);
+        requestAnimationFrame(() => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    await paint();
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    await paint();
+  });
+  await pageQuiet(page);
+}
+
+/** Counts completed pane checks in the content script, including failed replies. */
+export async function watchPaneIdentityChecks(page: Page): Promise<() => Promise<number>> {
+  const { contentScriptWorld } = await import('./content-script');
+  const world = await contentScriptWorld(page);
+  await world.evaluate(`(() => {
+    const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+    const send = runtime.sendMessage.bind(runtime);
+    globalThis.__completedPaneChecks = 0;
+    runtime.sendMessage = async (message) => {
+      try { return await send(message); }
+      finally {
+        if (message.type === 'viewer:pane-check') globalThis.__completedPaneChecks++;
+      }
+    };
+  })()`);
+  return () => world.evaluate('globalThis.__completedPaneChecks') as Promise<number>;
+}
