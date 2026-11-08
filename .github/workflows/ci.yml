@@ -164,27 +164,35 @@ jobs:
           echo "GECKODRIVER_BIN=$GECKOWEBDRIVER/geckodriver" >> "$GITHUB_ENV"
 
       - name: Firefox smoke test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox
 
       - name: Firefox file check test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:file-check
 
       - name: Firefox submission pages test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:submission-pages
 
       - name: Firefox assignments preview test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:assignments-preview
 
       - name: Firefox announcements test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:announcements
 
       - name: Firefox People test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:people
 
       - name: Firefox dashboard dock test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:dashboard-dock
 
       - name: Firefox private and container tabs test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:private-tabs
 
   platforms:
