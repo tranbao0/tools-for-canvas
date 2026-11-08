@@ -1,3 +1,4 @@
+import { pageQuiet, requestsQuiet } from './support/settle';
 import { readFileSync } from 'node:fs';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
@@ -298,11 +299,11 @@ test('a click in the frame downloads the file after the File viewer switch goes 
     ).chrome;
     await api.storage.local.set({ toolsSettings: { fileViewer: false } });
   });
-  await page.waitForTimeout(1500);
+  await pageQuiet(page);
   const saved = page.waitForEvent('download');
   await link.click();
   await saved;
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
 });
 
