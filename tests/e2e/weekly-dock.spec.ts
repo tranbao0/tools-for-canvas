@@ -492,8 +492,8 @@ test.describe('minimize and the tab', () => {
     await tab(page).click();
     // At once: the room is taken and the dock shows in the same moment.
     await expect(page.locator(DOCK)).toBeVisible();
-    await expect.poll(() => padding(page)).toBe('360px');
-    await expect(page.locator(TAB)).toHaveCount(0);
+    expect(await padding(page)).toBe('360px');
+    expect(await page.locator(TAB).count()).toBe(0);
   });
 
   test('the focus goes to the tab after a minimize and to the minimize button after an open', async ({

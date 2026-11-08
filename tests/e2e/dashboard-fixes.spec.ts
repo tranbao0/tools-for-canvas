@@ -145,6 +145,31 @@ async function setReadFilter(page: Page, label: string): Promise<void> {
     }, label);
 }
 
+/** Samples each rendered height during an action, including a jump that comes back. */
+function sampleHeights(locator: Locator): Promise<number[]> {
+  return locator.evaluate(
+    (node) =>
+      new Promise<number[]>((resolve, reject) => {
+        const values = new Set<number>();
+        const start = performance.now();
+        let frameId = 0;
+        const timeout = setTimeout(() => {
+          cancelAnimationFrame(frameId);
+          reject(new Error('sampleHeights: animation frames never completed'));
+        }, 10_000);
+        const frame = () => {
+          values.add(node.getBoundingClientRect().height);
+          if (performance.now() - start < 500) frameId = requestAnimationFrame(frame);
+          else {
+            clearTimeout(timeout);
+            resolve([...values]);
+          }
+        };
+        frame();
+      }),
+  );
+}
+
 async function heightOf(locator: Locator): Promise<number> {
   return (await locator.boundingBox())?.height ?? -1;
 }
@@ -354,26 +379,29 @@ test.describe('announcements: one steady list', () => {
     expect(before.feed).toBe(576);
     const scrollHeight = await feed(page).evaluate((el) => el.scrollHeight);
 
+    const cardHeights = sampleHeights(card);
+    const feedHeights = sampleHeights(feed(page));
+    const filterHeights = sampleHeights(page.locator(`${WIDGET} [data-wr-filter]`));
     await articles(page).first().getByRole('button', { name: 'Read more' }).click();
     await expect(articles(page).first().locator('.wr-body')).toContainText('Science Hall 214');
-    await expect.poll(() => heightOf(card)).toBe(before.card);
-    await expect.poll(() => heightOf(feed(page))).toBe(before.feed);
+    expect(await cardHeights).toEqual([before.card]);
+    expect(await feedHeights).toEqual([before.feed]);
     // The message grows inside the scroll area only.
     await expect
       .poll(() => feed(page).evaluate((el) => el.scrollHeight))
       .toBeGreaterThan(scrollHeight);
     // The pager of the page and the filters did not move.
-    await expect
-      .poll(() => heightOf(page.locator(`${WIDGET} [data-wr-filter]`)))
-      .toBe(before.filters);
+    expect(await filterHeights).toEqual([before.filters]);
 
+    const loadingHeights = sampleHeights(card);
     await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
     await expect(articles(page)).toHaveCount(20);
-    await expect.poll(() => heightOf(card)).toBe(before.card);
+    expect(await loadingHeights).toEqual([before.card]);
 
+    const closingHeights = sampleHeights(card);
     await articles(page).first().getByRole('button', { name: 'Show less' }).click();
     await expect(articles(page).first().locator('.wr-body')).toHaveCount(0);
-    await expect.poll(() => heightOf(card)).toBe(before.card);
+    expect(await closingHeights).toEqual([before.card]);
   });
 
   test('keep the height of the card in the four states: list, open message, search and dates', async ({
@@ -594,6 +622,7 @@ test.describe('announcements: one steady list', () => {
     ).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => canvas.requests.filter((r) => r.method === 'PUT').length).toBe(1);
     await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(10);
     await expect(row).toBeVisible();
 
@@ -603,6 +632,7 @@ test.describe('announcements: one steady list', () => {
       .toEqual(['/api/v1/courses/101/discussion_topics/31901/read']);
     expect(state.readAnnouncements.has('101:31901')).toBe(false);
     await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(10);
   });
 
@@ -639,6 +669,7 @@ test.describe('announcements: one steady list', () => {
     const mark = page.locator(`${LIST} article[data-wr-row="${key}"] .wr-a-read`);
     await expect(mark).toHaveAttribute('aria-pressed', 'true');
     await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(count);
     await expect(mark).toBeVisible();
   });
@@ -659,6 +690,7 @@ test.describe('announcements: one steady list', () => {
     await expect.poll(() => canvas.requests.filter((r) => r.method === 'DELETE').length).toBe(1);
     // Well after the hold, the row is still there.
     await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(10);
     await expect(row).toBeVisible();
     expect(state.readAnnouncements.has('101:31901')).toBe(false);
@@ -832,6 +864,7 @@ test.describe('announcements: one steady list', () => {
     // The first row leaves. The second waits for Canvas, with its check.
     await expect(articles(page)).toHaveCount(9);
     await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(9);
     await expect(second).toBeVisible();
     await expect(second.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'true');
@@ -944,6 +977,7 @@ test.describe('announcements: one steady list', () => {
     await expect(rowsOf(0)).toHaveCount(9);
     await expect(rowsOf(1)).toHaveCount(9);
     await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 
@@ -1045,6 +1079,7 @@ test.describe('announcements: one steady list', () => {
     const widget = page.locator(WIDGET);
     await expect(widget.getByLabel('Course filter:')).toBeVisible();
     const height = await heightOf(widget);
+    const heights = sampleHeights(widget);
     await widget
       .getByLabel('Course filter:')
       .selectOption({ label: 'BIO 110: Principles of Biology' });
@@ -1059,7 +1094,7 @@ test.describe('announcements: one steady list', () => {
     expect(names.filter((text) => text.includes(':') && !text.includes('Sent by'))).toEqual(
       names.filter((text) => text === 'BIO 110: Principles of Biology'),
     );
-    await expect.poll(() => heightOf(widget)).toBe(height);
+    expect(await heights).toEqual([height]);
 
     await widget.getByLabel('Course filter:').selectOption({ label: 'All courses' });
     await expect(articles(page).filter({ hasText: 'Office hours move' })).toHaveCount(1);
