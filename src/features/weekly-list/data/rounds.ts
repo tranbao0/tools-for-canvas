@@ -145,7 +145,10 @@ export interface RoundUpdate {
   failedCourses: string[];
 }
 
+export const SESSION_MAX_AGE_MS = 3_600_000;
+
 interface RoundContext {
+  reloadSession?: boolean;
   api: CanvasApi;
   kind: RoundScope;
   /** The cache when the round starts. */
@@ -166,7 +169,7 @@ interface RoundContext {
   now: number;
 }
 
-async function loadSession(api: CanvasApi): Promise<SessionData> {
+async function loadSession(api: CanvasApi, now: number): Promise<SessionData> {
   const [profile, courses, groups, colors, positions] = await Promise.all([
     api.getProfile(),
     api.listCourses(),
@@ -174,7 +177,7 @@ async function loadSession(api: CanvasApi): Promise<SessionData> {
     api.getColors(),
     api.getDashboardPositions(),
   ]);
-  return toSessionData({ profile, courses, groups, colors, positions });
+  return toSessionData({ profile, courses, groups, colors, positions, loadedAt: now });
 }
 
 interface PerCourseResult<T> {
@@ -384,10 +387,30 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
   const overrideList = shared(() => api.listPlannerOverrides());
   // A round that loads the session gets the user from the profile, so it needs no check.
   const userCheck = cache.session !== null ? checkUser(self, cache.session) : null;
+  userCheck?.catch(() => undefined);
   let session = cache.session;
   if (session === null) {
-    session = await loadSession(api);
+    session = await loadSession(api, context.now);
     context.onSession?.(session);
+  } else if (
+    kind === 'full' &&
+    (context.reloadSession ||
+      session.loadedAt === undefined ||
+      session.loadedAt > context.now ||
+      context.now - session.loadedAt >= SESSION_MAX_AGE_MS)
+  ) {
+    try {
+      const fresh = await loadSession(api, context.now);
+      if (!sameCanvasId(fresh.profile.id, session.profile.id)) throw new UserChangedError();
+      session = fresh;
+    } catch (error) {
+      if (
+        error instanceof UserChangedError ||
+        isCanvasError(error, 'unauthorized') ||
+        isCanvasError(error, 'refused')
+      )
+        throw error;
+    }
   }
   const failedCourses = new Set<string>();
   const hidden = new Set(context.hiddenCourseIds);
@@ -479,15 +502,21 @@ export function commitUpdate(cache: SessionCache, update: RoundUpdate, now: numb
     : update.planner === null
       ? cache.planner
       : mergeFetched(cache.planner, update.planner.parts, update.planner.startedAt);
+  const courses = new Set(update.session.courses.map((course) => course.id));
+  const active = <T>(entries: Record<string, T>): Record<string, T> =>
+    Object.fromEntries(Object.entries(entries).filter(([id]) => courses.has(id)));
   return {
     ...cache,
     session: update.session,
     planner,
     details: { ...cache.details, ...update.details },
-    undated: { ...cache.undated, ...update.undated },
+    undated: active({ ...cache.undated, ...update.undated }),
+    gradeStatuses: active(cache.gradeStatuses),
     overrides: update.overrides ?? (limitedChanged ? null : cache.overrides),
     limited: update.limited,
-    allAssignments: update.limited ? { ...cache.allAssignments, ...update.allAssignments } : {},
+    allAssignments: update.limited
+      ? active({ ...cache.allAssignments, ...update.allAssignments })
+      : {},
     failedCourses: update.failedCourses,
     lastSuccessAt: now,
     failure: null,

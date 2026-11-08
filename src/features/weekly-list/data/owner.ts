@@ -1114,14 +1114,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * a chip, never where an item goes. It never starts itself again: a course whose names fail
    * waits for the next round.
    */
-  function loadStatusNames(settings: Settings, afterRound: boolean): void {
+  function loadStatusNames(settings: Settings, afterRound: boolean, reload = false): void {
     const origin = knownOrigin;
     const session = cache?.session;
     if (origin === null || cache === null || session == null) return;
     if (afterRound) statusesFailed.clear();
-    const ids = statusCoursesNeeded(cache, visibleCourseIds(session, settings)).filter(
-      (id) => !statusesInFlight.has(id) && !statusesFailed.has(id),
-    );
+    const ids = statusCoursesNeeded(
+      reload ? { ...cache, gradeStatuses: {} } : cache,
+      visibleCourseIds(session, settings),
+    ).filter((id) => !statusesInFlight.has(id) && !statusesFailed.has(id));
     if (ids.length === 0) return;
     ids.forEach((id) => statusesInFlight.add(id));
     const gen = generation;
@@ -1155,6 +1156,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
+  let sessionReload: object | null = null;
+
   async function runExecutedRound(job: RoundScope): Promise<void> {
     const origin = knownOrigin;
     if (origin === null || cache === null) return;
@@ -1172,6 +1175,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     const startedAt = context.now;
     const api = apiFor(origin);
+    const reloadSession = sessionReload;
+    const oldSession = cache.session;
     let update: RoundUpdate | null = null;
     // The first request of the round starts right after this read, so the round's own user
     // check binds to this fingerprint and to no later one. Without a readable cookie no request
@@ -1199,6 +1204,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       update = await runRound({
         api,
         kind,
+        reloadSession: reloadSession !== null,
         cache,
         hiddenCourseIds: context.settings.hiddenCourseIds,
         currentRange: (session) => plannerRangeForView(session, 0, context),
@@ -1248,7 +1254,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       cache = prune(settlePatches(commitUpdate(cache, update, clock.now()), startedAt), context);
       if (firstSession && cache.session !== null) startViewerClaim(cache.session.profile.id);
       recordUserCheck(binding.fingerprint);
-      loadStatusNames(context.settings, true);
+      const reloaded = update.session !== oldSession;
+      if (reloaded && sessionReload === reloadSession) sessionReload = null;
+      loadStatusNames(context.settings, true, reloaded);
     } else if (failure?.kind === 'signed_out') {
       signOut(failure);
     } else {
@@ -4198,6 +4206,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           await bump();
           return NO_RETRY;
         case 'retry':
+          sessionReload = {};
           plannerBackoff = [];
           retryAt = -Infinity;
           if (cache?.session != null && !(await signedInStudentOwnsCache(true))) return NO_RETRY;

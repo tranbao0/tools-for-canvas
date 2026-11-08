@@ -1536,6 +1536,11 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 
 **Refresh triggers:**
 
+- A full round reloads the session data at most once an hour, and Retry requests a reload.
+  A new profile id drops all cached data.
+  The cached work of a course that left is dropped, but assignment details and planner items stay.
+  A failed reload keeps the old session data unless Canvas refuses access or the user changes.
+
 - A "Canvas page loaded" message from the content script, or a window that gains focus, refreshes the planner items of the current-week range only.
   This covers sign-in, submissions and done marks made in Canvas itself.
 - A 5-minute timer refreshes the current-week range and everything else: the assignment details of its items, the undated work and the override list.
@@ -1614,16 +1619,16 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Data | Request | When |
 |---|---|---|
 | Sign-in check | `GET /api/v1/users/self` | Setup, every light and full round, after any 401, and before cached data goes out when the session cookie is not a confirmed one |
-| Time zone and language | `GET /api/v1/users/self/profile` | Once per session |
-| Courses | `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term&include[]=total_scores&per_page=100` | Once per session |
-| Groups | `GET /api/v1/users/self/groups?per_page=100` | Once per session |
-| Course colors | `GET /api/v1/users/self/colors` | Once per session |
-| Course order | `GET /api/v1/users/self/dashboard_positions` | Once per session |
+| Time zone and language | `GET /api/v1/users/self/profile` | At most once an hour, in a full round, and on Retry |
+| Courses | `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term&include[]=total_scores&per_page=100` | At most once an hour, in a full round, and on Retry |
+| Groups | `GET /api/v1/users/self/groups?per_page=100` | At most once an hour, in a full round, and on Retry |
+| Course colors | `GET /api/v1/users/self/colors` | At most once an hour, in a full round, and on Retry |
+| Course order | `GET /api/v1/users/self/dashboard_positions` | At most once an hour, in a full round, and on Retry |
 | Week items | `GET /api/v1/planner/items?start_date=...&end_date=...&per_page=100` | The parts of a view's range that the cache lacks, the days of the span first; the weeks before and after a shown view, ahead of time; the cached parts of the current-week range in each light and full round, in up to 3 chunks |
 | Assignment details | `GET /api/v1/courses/:id/assignments?assignment_ids[]=...&include[]=submission&per_page=100` | New planner items, after they show, per course with assignment items; the current-week items in each full round; a shown week's items after a full round |
 | Assignment (decision 26) | `GET /api/v1/courses/:id/assignments/:id` | The assignment pane shows an assignment, on each later read of the pane (each trusted load of a frame after the first, the assignment that the pane just left when it shows another, each assignment of its frames when it closes, every 20 seconds while it is open and the page is in view), and the Submission Details page loads |
 | Own submission (decision 26) | `GET /api/v1/courses/:id/assignments/:id/submissions/self` | With each assignment read above; alone, to learn the user of the submission and to get the report data for the scores beside the files, when an assignment page loads |
-| Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears |
+| Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears, and again with each reload of the session data |
 | All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
 | Undated work | `GET /api/v1/courses/:id/assignments?bucket=undated&...` | 5-minute timer, per course |
 | Overrides | `GET /api/v1/planner/overrides?per_page=100` | 5-minute timer, when No due date has items |
@@ -1673,7 +1678,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | No access | `permissions.contains` is false | An "Allow access" button |
 | Signed out | Any 401, then `GET /api/v1/users/self` returns 401 | An "Open Canvas to sign in" button and the saved address |
 | Planner turned off | `users/self` returns 200, and the planner returns 403 with JSON `status` `unauthorized` | The same list and chips, built from the "All assignments" request and the override list. One line says: "Your school limits the Canvas planner. Pages, ungraded discussions, ungraded quizzes, peer reviews, discussions with reply due dates and your own tasks can't show." The add-task button is disabled, with that reason. |
-| No active courses | The courses list is empty | "No active courses" |
+| No active courses | The courses list is empty | "No active courses" and a Retry button |
 | Nothing due | The span has no items | "Nothing due in these 7 days" |
 | Can't refresh | HTTP 429, 403 with "Rate Limit Exceeded", HTTP 5xx, or a network error | The last data, with one line: "Couldn't refresh. Showing your list from 3:05 pm." and a Retry button. On a network error while the browser reports no connection, the line also says "You're offline." |
 
