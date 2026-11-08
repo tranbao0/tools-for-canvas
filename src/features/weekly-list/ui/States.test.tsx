@@ -66,6 +66,21 @@ describe('every state renders', () => {
   }
 });
 
+it('uses the same Retry block for no courses and a load failure', () => {
+  for (const surface of ['panel', 'inpage'] as const) {
+    const blocks = ['no-courses', 'cant-load'].map((name) => {
+      const entry = nonReadyStates().find((entry) => entry.name === name);
+      if (!entry) throw new Error('Missing state');
+      setup(entry.state, surface);
+      const block = document.querySelector('.wr-state-actions')?.outerHTML;
+      expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+      cleanup();
+      return block;
+    });
+    expect(blocks[0]).toBe(blocks[1]);
+  }
+});
+
 describe('loading', () => {
   it('keeps the header layout and marks the surface busy', () => {
     setup({ kind: 'loading' });
