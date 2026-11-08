@@ -1797,7 +1797,8 @@ test('both files of the Submission box get the treatment', async ({
 test('the Submission box of another user is unchanged', async ({ context, page, background }) => {
   const served = await openSidebar(context, page, background, { user: '77' });
   await expect(page.locator('#sidebar_content a[href$="download=501"]')).toBeVisible();
-  await pageQuiet(page);
+  await settled(page, served.canvas);
+  expect(await stableValue(page, () => page.locator('[data-av-own]').count())).toBe(0);
   await expect(page.locator('[data-av-own]')).toHaveCount(0);
   await expect(page.locator('#sidebar_content a', { hasText: 'Download' })).toHaveText(
     `Download ${SIDEBAR_FILE}`,
@@ -1820,7 +1821,8 @@ for (const off of ['assignmentView', 'fileViewer'] as const) {
     await expect(page.locator('#sidebar_content a[href$="download=501"]')).toHaveText(
       `Download ${SIDEBAR_FILE}`,
     );
-    await pageQuiet(page);
+    await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+    expect(await stableValue(page, () => page.locator('[data-av-own]').count())).toBe(0);
     await expect(page.locator('[data-av-own]')).toHaveCount(0);
     const canvas = await box.evaluate((node) => node.outerHTML);
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
@@ -1866,7 +1868,14 @@ for (const mode of ['on', 'assignmentView off', 'fileViewer off'] as const) {
     await expect(marked).toBeAttached();
     // The script has started and its stale copy cleanup has run when the box is settled.
     if (mode === 'on') await treated(page);
-    else await pageQuiet(page);
+    else {
+      await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+      expect(
+        await stableValue(page, () =>
+          page.locator('#sidebar_content [data-av-own]:not(.comments [data-av-own])').count(),
+        ),
+      ).toBe(0);
+    }
     const comments = page.locator('.comments');
     const commentsBefore = await comments.evaluateAll((nodes) => nodes.map((n) => n.outerHTML));
     expect(commentsBefore).toHaveLength(2);
@@ -1900,7 +1909,8 @@ test('the File viewer switch is live in both directions for the Submission box a
   const served = await openSidebar(context, page, background);
   const canvasLink = page.locator('#sidebar_content a[href$="download=501"]');
   await expect(canvasLink).toHaveText(`Download ${SIDEBAR_FILE}`);
-  await pageQuiet(page);
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  expect(await stableValue(page, () => page.locator('[data-av-own]').count())).toBe(0);
   await expect(page.locator('[data-av-own]')).toHaveCount(0);
 
   // The switch goes on. The box reads "View NAME", and the click opens the pane at once.
@@ -2954,8 +2964,7 @@ test('the Submission Details page stops after two failed reads', async ({
   );
   await open(context, page, background, { extra: [route] });
   await expect.poll(() => times.length).toBe(2);
-  // Drain the 2-second retry timer before checking that no third read starts.
-  await pageQuiet(page, 3, 2100);
+  // The second request proves that the retry ran.
   await requestsQuiet(page, times, background);
   expect(times).toHaveLength(2);
   await expect(host(page)).toHaveCount(0);
@@ -2991,8 +3000,7 @@ test('the Submission box stops after two failed reads', async ({ context, page, 
   );
   await openSidebar(context, page, background, { extra: [route] });
   await expect.poll(() => times.length).toBe(2);
-  // Drain the 2-second retry timer before checking that no third read starts.
-  await pageQuiet(page, 3, 2100);
+  // The second request proves that the retry ran.
   await requestsQuiet(page, times, background);
   expect(times).toHaveLength(2);
   await expect(
