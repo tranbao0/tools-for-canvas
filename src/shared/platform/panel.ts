@@ -32,16 +32,14 @@ function unavailable(api: string): Promise<never> {
   return Promise.reject(new Error(`${api} is not available`));
 }
 
-const firefox = BROWSER_KIND === 'firefox';
-
 /** Whether this browser can close the panel from code. */
 export function canClosePanel(): boolean {
-  return typeof (firefox ? sidebarAction() : sidePanel())?.close === 'function';
+  return typeof (BROWSER_KIND === 'firefox' ? sidebarAction() : sidePanel())?.close === 'function';
 }
 
 /** Opens the panel in the window. Call it synchronously inside a user gesture handler. */
 export function openPanel(windowId: number): Promise<void> {
-  if (firefox) {
+  if (BROWSER_KIND === 'firefox') {
     const api = sidebarAction();
     return api === undefined ? unavailable('sidebarAction.open') : api.open();
   }
@@ -54,7 +52,7 @@ export function openPanel(windowId: number): Promise<void> {
  * Check `canClosePanel` first: without a close API the promise rejects.
  */
 export function closePanel(windowId: number): Promise<void> {
-  if (firefox) {
+  if (BROWSER_KIND === 'firefox') {
     const api = sidebarAction();
     return api === undefined ? unavailable('sidebarAction.close') : api.close();
   }
