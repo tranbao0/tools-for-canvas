@@ -44,6 +44,7 @@ import {
   emptyCoverage,
   itemTimes,
   mergeFetched,
+  mergeIntervals,
   intersectIntervals,
   toInterval,
   toRange,
@@ -276,7 +277,8 @@ export function roundChunks(
   probe: boolean,
 ): Interval[] {
   const interval = toInterval(current);
-  const held = intersectIntervals(coverage.spans, interval);
+  // Touching spans of different load times are one range here, so they share their chunks.
+  const held = mergeIntervals(intersectIntervals(coverage.spans, interval));
   const times = itemTimes(coverage);
   const chunks = held.flatMap((part) => chunkInterval(part, times));
   if (chunks.length > 0 || !probe) return chunks;

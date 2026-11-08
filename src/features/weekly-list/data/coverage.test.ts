@@ -325,6 +325,14 @@ describe('chunks', () => {
     expect(roundChunks(partial, current, false)).toEqual([span(0, 7)]);
   });
 
+  it('reloads touching parts of the current range that loaded at different times in one request', () => {
+    const current = toRange(span(0, 7));
+    const first = mergeFetched(emptyCoverage(), [{ interval: span(0, 3), items: [] }], 1);
+    const both = mergeFetched(first, [{ interval: span(3, 7), items: [] }], 2);
+    expect(both.spans).toHaveLength(2);
+    expect(roundChunks(both, current, false)).toEqual([span(0, 7)]);
+  });
+
   it('probes with one small request when a full round has nothing to reload', () => {
     const current = toRange(span(-112, 7));
     expect(roundChunks(emptyCoverage(), current, true)).toEqual([span(6, 7)]);
