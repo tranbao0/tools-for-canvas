@@ -324,6 +324,18 @@ async function paneBox(page: Page, selector: string) {
 
 /** Clicks a part of the assignment pane with the mouse, in its middle. */
 async function clickPane(page: Page, selector: string) {
+  await expect
+    .poll(async () => {
+      const frame = await paneFrame(page);
+      return frame.evaluate((query) => {
+        const root = window.frameElement!.getRootNode() as ShadowRoot;
+        const target = root.querySelector(query)!;
+        const rect = target.getBoundingClientRect();
+        const hit = root.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return hit !== null && target.contains(hit);
+      }, selector);
+    })
+    .toBe(true);
   const box = await paneBox(page, selector);
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
 }
