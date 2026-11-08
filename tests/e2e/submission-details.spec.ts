@@ -1,4 +1,4 @@
-import { pageQuiet, requestsQuiet, stableValue } from './support/settle';
+import { productTimerElapsed, pageQuiet, requestsQuiet, stableValue } from './support/settle';
 import { dropResetMessages } from './support/pane-identity';
 import { advanceBackgroundClock } from './support/clock';
 /**
@@ -2962,9 +2962,17 @@ test('the Submission Details page stops after two failed reads', async ({
     records.assignment,
     99,
   );
+  let failures = 0;
+  const secondFailure = new Promise<void>((resolve) => {
+    page.on('console', (message) => {
+      if (message.text().includes('[weekrow] submission details failed') && ++failures === 2)
+        resolve();
+    });
+  });
   await open(context, page, background, { extra: [route] });
   await expect.poll(() => times.length).toBe(2);
-  // The second request proves that the retry ran.
+  await secondFailure;
+  await productTimerElapsed(page, 2100);
   await requestsQuiet(page, times, background);
   expect(times).toHaveLength(2);
   await expect(host(page)).toHaveCount(0);
@@ -2998,9 +3006,17 @@ test('the Submission box stops after two failed reads', async ({ context, page, 
     records.submission,
     99,
   );
+  let failures = 0;
+  const secondFailure = new Promise<void>((resolve) => {
+    page.on('console', (message) => {
+      if (message.text().includes('[weekrow] submission sidebar failed') && ++failures === 2)
+        resolve();
+    });
+  });
   await openSidebar(context, page, background, { extra: [route] });
   await expect.poll(() => times.length).toBe(2);
-  // The second request proves that the retry ran.
+  await secondFailure;
+  await productTimerElapsed(page, 2100);
   await requestsQuiet(page, times, background);
   expect(times).toHaveLength(2);
   await expect(

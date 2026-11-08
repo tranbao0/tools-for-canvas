@@ -13,16 +13,21 @@ const TIMER_DRAIN_MS = 100;
 export async function pageQuiet(page: Page, frames = 3, drainMs = TIMER_DRAIN_MS): Promise<void> {
   // A navigation that starts during the wait destroys its context. The wait then starts again on
   // the new document, after that document has loaded.
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
     try {
       await quietRound(page, frames, drainMs);
       return;
     } catch (error) {
       if (!/Execution context was destroyed|navigation/i.test(String(error))) throw error;
-      await page.waitForLoadState('load', { timeout: 10_000 });
+      try {
+        await page.waitForLoadState('load', { timeout: Math.max(1, deadline - Date.now()) });
+      } catch (cause) {
+        throw new Error('pageQuiet: navigation never settled within 15 seconds', { cause });
+      }
     }
   }
-  throw new Error('pageQuiet: navigation never settled after 20 attempts');
+  throw new Error('pageQuiet: navigation never settled within 15 seconds');
 }
 
 async function quietRound(page: Page, frames: number, drainMs: number): Promise<void> {
@@ -82,8 +87,10 @@ export async function stableValue<T>(
 ): Promise<T> {
   let value = JSON.stringify(await read());
   let calm = 0;
-  for (let round = 0; calm < 2; round += 1) {
-    if (round >= 40) throw new Error('stableValue: observed value never settled after 40 rounds');
+  const deadline = Date.now() + 15_000;
+  while (calm < 2) {
+    if (Date.now() >= deadline)
+      throw new Error('stableValue: observed value never settled within 15 seconds');
     await pageQuiet(page);
     if (background !== undefined) await backgroundQuiet(background);
     const next = JSON.stringify(await read());
@@ -147,4 +154,9 @@ export async function watchPaneIdentityChecks(page: Page): Promise<() => Promise
     };
   })()`);
   return () => world.evaluate('globalThis.__completedPaneChecks') as Promise<number>;
+}
+
+/** Waits for a product timer that has no event when it does not fire. */
+export async function productTimerElapsed(page: Page, delay: number): Promise<void> {
+  await page.evaluate((delay) => new Promise<void>((resolve) => setTimeout(resolve, delay)), delay);
 }
