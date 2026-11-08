@@ -547,7 +547,6 @@ export async function startViewer(): Promise<void> {
       addresses.get(file.fileId) ??
       keptAddress(href, location.origin) ??
       canvasAddress(file.fileId, courseId);
-    let beforeOpen: Tabs | undefined;
     const open = async () => {
       // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
       // request also makes a pane that has not been told yet restore the stored tabs, so the files
@@ -582,7 +581,7 @@ export async function startViewer(): Promise<void> {
       keptTabs ??= stored.tabs;
     }
     const previous = [...addedTabs].reduce(openFile, stored?.tabs ?? tabs);
-    beforeOpen = previous;
+    const beforeOpen = previous;
     if (!previous.ids.includes(file.fileId)) {
       addedTabs.add(file.fileId);
     }
