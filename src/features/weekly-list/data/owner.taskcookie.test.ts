@@ -289,3 +289,23 @@ describe('a queued override write checks the cookie when its request gets a slot
     expect(h.canvas.callsOf('updateOverride')).toEqual([]);
   });
 });
+
+it.each([
+  ['move', { kind: 'moveTaskToToday', noteId: N.bioStudyGroup }, 'updateNote'],
+  ['mark', { kind: 'setDone', keys: [HOMEWORK_3], done: false }, 'updateOverride'],
+] as const)(
+  'reports a %s whose cookie guard refuses the request before Canvas sees it',
+  async (_name, action, method) => {
+    const h = await loaded({ maxConcurrency: 1 });
+    const release = h.canvas.hold('createOverride');
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
+    await vi.advanceTimersByTimeAsync(0);
+    await h.owner.act({ ...action, seq: 'cookie-refused' });
+    await vi.advanceTimersByTimeAsync(0);
+    unconfirmedCookie(h);
+    release();
+    await h.owner.settled();
+    expect(h.canvas.callsOf(method)).toEqual([]);
+    expect((await sessionCacheItem.getValue())?.failedWrites).toContain('cookie-refused');
+  },
+);

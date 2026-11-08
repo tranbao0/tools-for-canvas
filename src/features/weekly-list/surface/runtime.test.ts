@@ -2465,3 +2465,106 @@ it('retries a late failure with the original student and Canvas', async () => {
   expect(runtime.state().undo).toBeNull();
   runtime.stop();
 });
+
+describe('write outcome events', () => {
+  async function start() {
+    const fake = fakeHost();
+    let failures: string[] = [];
+    fake.reply = (message) => {
+      if (message.type === 'weekrow:get-state')
+        return { ...readyFor(USER), failedWrites: failures };
+      if (message.type === 'weekrow:action' && message.action.kind === 'setDone')
+        return {
+          undo: {
+            kind: 'overrides',
+            userId: USER,
+            origin: ORIGIN,
+            entries: message.action.keys.map((key) => ({ key, previous: NOT_DONE })),
+          },
+        };
+      return { undo: null };
+    };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    return {
+      fake,
+      runtime,
+      fail: async (seq: string) => {
+        failures = [...failures, seq];
+        fake.changed();
+        await settle();
+      },
+    };
+  }
+
+  it('shows an older write failure after a newer write and retries that older action', async () => {
+    const { fake, runtime, fail } = await start();
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    const first = sentActions(fake.sent)[0]!;
+    runtime.actions.setDone('assignment:2', true);
+    await settle();
+    expect(runtime.state().undo?.kind).toBe('done');
+    await fail(first.seq!);
+    expect(runtime.state().undo).toMatchObject({ failure: 'done' });
+    runtime.actions.undo();
+    await settle();
+    expect(sentActions(fake.sent).at(-1)).toEqual({ ...first, seq: expect.any(String) });
+    runtime.stop();
+  });
+
+  it('dismisses a failure once, even when later state replies repeat it', async () => {
+    const { fake, runtime, fail } = await start();
+    runtime.actions.setDone('assignment:1', false);
+    await settle();
+    await fail(sentActions(fake.sent)[0]!.seq!);
+    expect(runtime.state().undo).toMatchObject({ failure: 'undone' });
+    runtime.actions.dismissUndo();
+    fake.changed();
+    await settle();
+    expect(runtime.state().undo).toBeNull();
+    runtime.stop();
+  });
+
+  it('clears the failure immediately when retry waits for a reply', async () => {
+    const { fake, runtime, fail } = await start();
+    runtime.actions.moveTaskToToday('8');
+    await settle();
+    await fail(sentActions(fake.sent)[0]!.seq!);
+    let answer!: (reply: unknown) => void;
+    const old = fake.reply;
+    fake.reply = (message) =>
+      message.type === 'weekrow:action'
+        ? new Promise((resolve) => {
+            answer = resolve;
+          })
+        : old(message);
+    const shown: SurfaceState[] = [];
+    runtime.subscribe((state) => shown.push(state));
+    runtime.actions.undo();
+    expect(shown.at(-1)?.undo).toBeNull();
+    answer({ undo: null });
+    await settle();
+    runtime.stop();
+  });
+
+  it('keeps the delete Undo window if a non-ready state arrives before its reply', async () => {
+    const { fake, runtime } = await start();
+    let answer!: (reply: unknown) => void;
+    fake.reply = (message) =>
+      message.type === 'weekrow:action'
+        ? new Promise((resolve) => {
+            answer = resolve;
+          })
+        : { kind: 'loading' };
+    runtime.actions.deleteTask('8');
+    fake.changed();
+    await settle();
+    answer({ undo: { kind: 'delete', userId: USER, origin: ORIGIN, noteId: '8' } });
+    await settle();
+    expect(runtime.state().undo).toMatchObject({ kind: 'deleted' });
+    expect(sentActions(fake.sent).map((action) => action.kind)).toEqual(['deleteTask']);
+    runtime.stop();
+  });
+});

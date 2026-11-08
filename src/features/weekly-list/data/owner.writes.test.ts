@@ -1876,19 +1876,25 @@ it('reports an override failure after its Undo reply', async () => {
 
 it('reports no failure when a same-student abandoned queue has a successful write at Canvas', async () => {
   const h = await loaded();
-  const release = h.canvas.hold('deleteNote');
-  await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday, seq: 'saved-delete' });
-  await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+  const release = h.canvas.hold('updateNote');
+  const pending = h.owner.act({
+    kind: 'updateTask',
+    noteId: N.libraryBooksToday,
+    input: { ...input, title: 'Saved after abandon' },
+    seq: 'saved-edit',
+  });
   await vi.advanceTimersByTimeAsync(0);
-  expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
+  expect(h.canvas.callsOf('updateNote')).toHaveLength(1);
   h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
   await h.owner.act({ kind: 'createTask', input: secret });
   release();
-  await advance(h, MAX_DELETE_DELAY_MS);
+  expect((await pending).saved).toBe(true);
+  await advance(h, 1000);
   const state = await h.owner.getState(PANEL);
-  expect(state.failedWrites).not.toContain('saved-delete');
-  expect(findItem(expectReady(state), `planner_note:${N.libraryBooksToday}`)).toBeUndefined();
-  expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
+  expect(state.failedWrites).not.toContain('saved-edit');
+  expect(findItem(expectReady(state), `planner_note:${N.libraryBooksToday}`)?.title).toBe(
+    'Saved after abandon',
+  );
 });
 
 it('reports the original delayed delete failure after the worker restarts', async () => {
@@ -1903,4 +1909,100 @@ it('reports the original delayed delete failure after the worker restarts', asyn
   restarted.dispose();
   const again = h.restart();
   expect((await again.getState(PANEL)).failedWrites).toContain('delayed-delete');
+});
+
+it('records the failure of a request that was out when another write abandoned the queue', async () => {
+  const h = await loaded();
+  const release = h.canvas.hold('createOverride');
+  await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true, seq: 'out-fails' });
+  await vi.advanceTimersByTimeAsync(0);
+  h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+  await h.owner.act({ kind: 'createTask', input: secret });
+  h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
+  release();
+  await advance(h, 1000);
+  expect((await h.owner.getState(PANEL)).failedWrites).toContain('out-fails');
+});
+
+it('reports the queued marks that never run after an abandon, but not the successful request already out', async () => {
+  const h = await loaded();
+  const release = h.canvas.hold('createOverride');
+  await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true, seq: 'out-saves' });
+  await vi.advanceTimersByTimeAsync(0);
+  await h.owner.act({ kind: 'setDone', keys: [HOMEWORK_3], done: false, seq: 'skipped' });
+  h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+  await h.owner.act({ kind: 'createTask', input: secret });
+  expect((await h.owner.getState(PANEL)).pendingWrites).toEqual(
+    expect.arrayContaining(['out-saves', 'skipped']),
+  );
+  release();
+  await advance(h, 1000);
+  const state = await h.owner.getState(PANEL);
+  expect(state.failedWrites).toContain('skipped');
+  expect(state.failedWrites).not.toContain('out-saves');
+  expect(h.canvas.callsOf('updateOverride')).toHaveLength(0);
+  expect((await item(h, QUIZ_3))?.state).toBe('done');
+});
+
+it('limits the outcome history to the newest twenty failures', async () => {
+  const h = await loaded();
+  h.canvas.fail('createOverride', canvasError('server', 500), { times: 22 });
+  for (let i = 0; i < 22; i++) {
+    await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true, seq: `failure-${i}` });
+    await h.owner.settled();
+  }
+  expect((await h.owner.getState(PANEL)).failedWrites).toEqual(
+    Array.from({ length: 20 }, (_, i) => `failure-${i + 2}`),
+  );
+});
+
+it('clears a former student failure when the cache identity clears', async () => {
+  const h = await loaded();
+  h.canvas.fail('createOverride', canvasError('server', 500), { times: 1 });
+  await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true, seq: 'student-a-failure' });
+  await h.owner.settled();
+  expect((await h.owner.getState(PANEL)).failedWrites).toContain('student-a-failure');
+  signInOtherUser(h);
+  await advance(h, 61_000);
+  await h.owner.trigger('focus');
+  await h.owner.settled();
+  expect((await h.owner.getState(PANEL)).failedWrites).not.toContain('student-a-failure');
+});
+
+it('drops the cache when an edit answer names another user after the queue abandons', async () => {
+  const h = await loaded();
+  const cleared = vi.fn();
+  h.deps.onUserDataCleared = cleared;
+  const release = h.canvas.hold('updateNote');
+  const pending = h.owner.act({
+    kind: 'updateTask',
+    noteId: N.libraryBooksToday,
+    input: secret,
+    seq: 'foreign-edit',
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+  await h.owner.act({ kind: 'createTask', input: secret });
+  const releaseSelf = h.canvas.hold('getSelf');
+  signInOtherUser(h, { sameCookie: true });
+  release();
+  try {
+    const reply = await pending;
+    expect(cleared).toHaveBeenCalled();
+    expect(reply.saved).not.toBe(true);
+  } finally {
+    releaseSelf();
+    await h.owner.settled();
+  }
+});
+
+it('treats a task delete that answers 404 as saved', async () => {
+  const h = await loaded();
+  await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday, seq: 'already-deleted' });
+  h.canvas.fail('deleteNote', canvasError('not_found', 404), { times: 1, saved: true });
+  await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+  await h.owner.settled();
+  const state = await h.owner.getState(PANEL);
+  expect(state.failedWrites).not.toContain('already-deleted');
+  expect(findItem(expectReady(state), `planner_note:${N.libraryBooksToday}`)).toBeUndefined();
 });

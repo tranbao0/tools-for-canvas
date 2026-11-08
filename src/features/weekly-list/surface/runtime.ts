@@ -158,6 +158,7 @@ interface Notice {
   info: UndoInfo;
   /** One entry for each message that the action went out in. */
   data: UndoData[];
+  retry?: DataAction;
 }
 
 /** A mark with more keys than one message may carry goes out in parts. */
@@ -220,7 +221,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   let coursesOrigin: string | null = null;
   let courseFilter: string | null | undefined = undefined;
   let notice: Notice | null = null;
-  let pendingWrite: DataAction | null = null;
+  const pendingWrites = new Map<string, { action: DataAction; acknowledged?: number }>();
   /** The number of the last state request that went out before the notice showed. */
   let noticeSeq = 0;
   const tabsOption = options.announcementTabs ?? false;
@@ -393,12 +394,24 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       feed = null;
       listTab = 'tasks';
     }
-    if (pendingWrite !== null && reply.kind === 'ready') {
-      if (pendingWrite.userId !== reply.userId || pendingWrite.origin !== reply.origin) {
-        pendingWrite = null;
-        notice = null;
-      } else if (pendingWrite.seq !== undefined && reply.failedWrites?.includes(pendingWrite.seq)) {
-        const action = pendingWrite;
+    if (reply.kind === 'ready') {
+      for (const [token, pending] of pendingWrites) {
+        if (pending.action.userId !== reply.userId || pending.action.origin !== reply.origin) {
+          pendingWrites.delete(token);
+          if (notice?.retry?.seq === token) notice = null;
+        } else if (
+          reply.pendingWrites !== undefined &&
+          pending.acknowledged !== undefined &&
+          seq > pending.acknowledged &&
+          !reply.pendingWrites.includes(token) &&
+          !reply.failedWrites?.includes(token)
+        ) {
+          pendingWrites.delete(token);
+        }
+      }
+      for (const token of reply.failedWrites ?? []) {
+        const action = pendingWrites.get(token)?.action;
+        if (action === undefined || notice?.retry?.seq === token) continue;
         const failure =
           action.kind === 'setDone'
             ? action.done
@@ -409,7 +422,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
               : action.kind === 'deleteTask'
                 ? 'deleted'
                 : undefined;
-        if (failure !== undefined)
+        if (failure !== undefined) {
+          dropNotice();
           notice = {
             info: {
               kind: 'not_restored',
@@ -417,7 +431,9 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
               count: action.kind === 'setDone' ? action.keys.length : 1,
             },
             data: [],
+            retry: action,
           };
+        } else pendingWrites.delete(token);
       }
     }
     identity =
@@ -501,6 +517,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   function dropNotice(): void {
     const ended = notice;
     notice = null;
+    if (ended?.retry?.seq !== undefined) pendingWrites.delete(ended.retry.seq);
     for (const data of ended?.data ?? []) if (data.kind === 'delete') endDelete(data);
   }
 
@@ -545,14 +562,16 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       // The student acted again, so the last notice ends.
       endUndo();
       writeSeq += 1;
-      action.seq = `${host.clock.now()}-${Math.random()}`;
-      pendingWrite = action;
+      action.seq = crypto.randomUUID();
+      pendingWrites.set(action.seq, { action });
     }
     const seq = writeSeq;
     return Promise.all(
       inParts(action).map((part) => host.send({ type: 'weekrow:action', action: part })),
     )
       .then(async (sent) => {
+        const pending = action.seq === undefined ? undefined : pendingWrites.get(action.seq);
+        if (pending) pending.acknowledged = requestSeq;
         const replies = sent as (ActionReply | undefined)[];
         const first = replies[0];
         const reply =
@@ -564,10 +583,11 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
           // A newer write or a stopped surface ends this notice before it shows.
           if (
             isWrite &&
+            pending !== undefined &&
             seq === writeSeq &&
             !stopped &&
-            identity?.userId === action.userId &&
-            identity.origin === action.origin
+            (base.kind !== 'ready' ||
+              (identity?.userId === action.userId && identity.origin === action.origin))
           ) {
             const count = data.flatMap((d) => (d.kind === 'overrides' ? d.entries : [null])).length;
             const first = data[0];
@@ -575,6 +595,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
               first?.kind === 'announcement'
                 ? announcementKey(first.courseId, first.topicId)
                 : undefined;
+            dropNotice();
             notice = {
               info: target === undefined ? { kind: shows, count } : { kind: shows, count, target },
               data,
@@ -709,9 +730,10 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       );
     },
     undo() {
-      if (notice?.info.failure !== undefined && pendingWrite !== null) {
-        const action = pendingWrite;
-        notice = null;
+      if (notice?.retry !== undefined) {
+        const action = notice.retry;
+        dropNotice();
+        emit();
         void sendAction(
           action,
           action.kind === 'deleteTask'
@@ -767,7 +789,6 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         .catch(report('undo'));
     },
     dismissUndo() {
-      if (notice?.info.failure !== undefined) pendingWrite = null;
       endUndo();
     },
     async createTask(input: TaskInput) {

@@ -256,36 +256,37 @@ test.describe('custom tasks', () => {
   });
 });
 
-for (const action of ['edit', 'done', 'move', 'delete'] as const) {
+for (const action of ['edit', 'done', 'move', 'delete', 'delete-after-tick'] as const) {
   test(`failed ${action} keeps the task and permits a retry`, async ({
     context,
     page,
     background,
     extensionUrl,
   }) => {
+    const kind = action === 'delete-after-tick' ? 'delete' : action;
     await openPanel(context, page, background, extensionUrl('sidepanel.html'));
-    const pattern =
-      action === 'done' ? '**/api/v1/planner/overrides*' : '**/api/v1/planner_notes/*';
+    const pattern = kind === 'done' ? '**/api/v1/planner/overrides*' : '**/api/v1/planner_notes/*';
     await context.route(pattern, async (route) => {
       if (route.request().method() === 'GET') return route.fallback();
       await route.fulfill({ status: 500, body: 'Server error' });
     });
-    const title = action === 'move' ? 'Call financial aid office' : 'Return library books';
-    if (action === 'done') {
+    const title = kind === 'move' ? 'Call financial aid office' : 'Return library books';
+    if (kind === 'done') {
       await doneBox(page, title).click();
-    } else if (action === 'move') {
+    } else if (kind === 'move') {
       await page.getByRole('button', { name: `Move ${title} to today`, exact: true }).click();
     } else {
       await editButton(page, title).click();
-      if (action === 'edit') {
+      if (kind === 'edit') {
         await page.getByLabel('Title').fill('Keep my typed title');
         await page.getByRole('button', { name: 'Save', exact: true }).click();
       } else {
         await page.getByRole('button', { name: 'Delete task', exact: true }).click();
-        await page.getByRole('button', { name: 'Close notice', exact: true }).click();
+        if (action === 'delete-after-tick') await doneBox(page, 'Quiz 3: Cell membranes').click();
+        else await page.getByRole('button', { name: 'Close notice', exact: true }).click();
       }
     }
-    if (action === 'edit') {
+    if (kind === 'edit') {
       await expect(page.getByText("Couldn't save the task. Try again.")).toBeVisible();
       await expect(page.getByLabel('Title')).toHaveValue('Keep my typed title');
       await context.unroute(pattern);
@@ -293,18 +294,55 @@ for (const action of ['edit', 'done', 'move', 'delete'] as const) {
       await expect(editButton(page, 'Keep my typed title')).toBeVisible();
     } else {
       const message =
-        action === 'done'
+        kind === 'done'
           ? "Couldn't mark that done."
-          : action === 'move'
+          : kind === 'move'
             ? "Couldn't move the task."
             : "Couldn't delete the task.";
       await expect(page.locator('.wr-toast')).toContainText(message);
       await expect(editButton(page, title)).toBeVisible();
       await context.unroute(pattern);
       await page.getByRole('button', { name: 'Try again', exact: true }).click();
-      if (action === 'move') await expect(editButton(group(page, 'today'), title)).toBeVisible();
+      if (kind === 'move') await expect(editButton(group(page, 'today'), title)).toBeVisible();
       else await expect(editButton(page, title)).toHaveCount(0);
       await expect(page.getByText(message, { exact: true })).toHaveCount(0);
     }
   });
 }
+
+test('a failed earlier tick replaces the newer Undo and retries the earlier row', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { state } = await openPanel(context, page, background, extensionUrl('sidepanel.html'));
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const pattern = '**/api/v1/planner/overrides*';
+  await context.route(pattern, async (route) => {
+    if (
+      route.request().method() !== 'POST' ||
+      route.request().postDataJSON()?.plannable_id !== NOTES.libraryBooksToday
+    )
+      return route.fallback();
+    await held;
+    await route.fulfill({ status: 500, body: 'Server error' });
+  });
+  await doneBox(page, 'Return library books').click();
+  await doneBox(page, 'Quiz 3: Cell membranes').click();
+  await expect(page.locator('.wr-toast')).toContainText('Marked done');
+  release();
+  await expect(page.locator('.wr-toast')).toContainText("Couldn't mark that done.");
+  await expect(editButton(page, 'Return library books')).toBeVisible();
+  await context.unroute(pattern);
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect
+    .poll(() => state.overrideFor('planner_note', NOTES.libraryBooksToday)?.marked_complete)
+    .toBe(true);
+  await expect
+    .poll(() => state.overrideFor('quiz', IDS.quizzes.bioQuiz3Today)?.marked_complete)
+    .toBe(true);
+});

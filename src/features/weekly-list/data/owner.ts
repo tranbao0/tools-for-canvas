@@ -1823,20 +1823,28 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * resolves with whether Canvas may now differ from the cache, after a confirmed write or a
    * failed one, so a forced round syncs the list once the queues are empty.
    */
+  const writeJobs = new Set<WriteStamp>();
+
   function enqueueWrite(
     job: (stamp: WriteStamp) => Promise<boolean>,
     queue: keyof typeof chains,
     stamp: WriteStamp,
   ): Promise<void> {
+    stamp = { ...stamp };
+    writeJobs.add(stamp);
     pendingWrites += 1;
     const done = chains[queue].then(async () => {
       try {
-        if (!isCurrent(stamp)) return;
+        if (!isCurrent(stamp)) {
+          recordFailure(stamp);
+          return;
+        }
         if (await job(stamp)) syncAfterWrites = true;
       } catch (error) {
         deps.log('write', error);
         syncAfterWrites = true;
       } finally {
+        writeJobs.delete(stamp);
         pendingWrites -= 1;
         if (pendingWrites === 0 && syncAfterWrites) {
           syncAfterWrites = false;
@@ -1965,6 +1973,18 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return false;
   }
 
+  function recordFailure(stamp: WriteStamp, seq = stamp.actionIdentity?.seq): void {
+    if (!identityHolds(stamp) || cache === null || seq === undefined) return;
+    cache = {
+      ...cache,
+      failedWrites: [...(cache.failedWrites ?? []).filter((value) => value !== seq), seq].slice(
+        -20,
+      ),
+    };
+    persist();
+    bumpLater();
+  }
+
   /**
    * Removes a failed write and has the list sync with Canvas. The round that follows finds out
    * why the write failed: a limit, a server error or a task that is gone. Whatever the cause,
@@ -1979,10 +1999,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<boolean> {
     deps.log('write', error);
     if (!identityHolds(stamp)) return false;
-    const seq = patch !== undefined && 'seq' in patch ? patch.seq : stamp.actionIdentity?.seq;
-    if (seq !== undefined && cache !== null) {
-      cache = { ...cache, failedWrites: [...new Set([...(cache.failedWrites ?? []), seq])] };
-    }
+    recordFailure(
+      stamp,
+      patch !== undefined && 'seq' in patch ? patch.seq : stamp.actionIdentity?.seq,
+    );
     if (patch !== undefined) {
       dropPatch(patch.id);
       if (patch.kind === 'note' && patch.note === null) forgetDelete(patch.noteId);
@@ -2062,7 +2082,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           .catch((error: unknown) => deps.log('write', error));
         return userChanged(stamp);
       }
-      if (!isCurrent(stamp) || cache === null) return false;
+      if (!isCurrent(stamp) || cache === null) return identityHolds(stamp);
       const confirmed: OverridePatch = { ...patch, override: saved, confirmedAt: clock.now() };
       replacePatch(patchId, confirmed);
       cache = bake(
@@ -2073,7 +2093,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       return true;
     } catch (error) {
       // The guard refused the request and ended the queue, so there is nothing to sync.
-      if (isCanvasError(error, 'refused')) return false;
+      if (isCanvasError(error, 'refused')) {
+        recordFailure(stamp, patch.seq);
+        return false;
+      }
       if (error instanceof UserChangedError) return userChanged(stamp);
       const gone = await failWrite(patch, error, stamp);
       await finishWrite();
@@ -2210,7 +2233,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const created = await addCreated(noteValue(response), stamp);
       return { created, sync: created };
     } catch (error) {
-      if (isCanvasError(error, 'refused')) return { created: false, sync: false };
+      if (isCanvasError(error, 'refused')) {
+        recordFailure(stamp);
+        return { created: false, sync: false };
+      }
       if (isCanvasError(error, 'server') || isCanvasError(error, 'network')) {
         const saved = await findSavedNote(note, before, stamp);
         if (saved !== null) {
@@ -2252,8 +2278,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     );
     try {
       let saved: NoteValue | null = null;
-      if (operation === 'delete') await writer.deleteNote(patch.noteId);
-      else if (patch.note !== null) {
+      if (operation === 'delete') {
+        try {
+          await writer.deleteNote(patch.noteId);
+        } catch (error) {
+          if (!isCanvasError(error, 'not_found')) throw error;
+        }
+      } else if (patch.note !== null) {
         const response = await writer.updateNote(patch.noteId, noteInput(patch.note));
         if (identityHolds(stamp) && !sameCanvasId(response.user_id, stamp.userId))
           return userChanged(stamp);
@@ -2263,7 +2294,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       onSaved?.();
       // A DELETE that is out ended the task, whatever happened to the queue after it left.
       if (cache === null || !(operation === 'delete' ? sameStudent(stamp) : isCurrent(stamp))) {
-        return false;
+        return true;
       }
       if (operation === 'delete') forgetDelete(patch.noteId);
       // Patch ids start again with a new cache, so the id alone does not say whose patch it is.
@@ -2279,6 +2310,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       if (isCanvasError(error, 'refused')) {
         // The guard ended the queue before the request left. A DELETE waits for a confirmed
         // cookie, with its entry in `pendingDeletes`.
+        if (operation !== 'delete') recordFailure(stamp, patch.seq);
         if (operation === 'delete' && findDeletePatch(patch.noteId)?.id === patch.id) {
           queuedDeletes.delete(patch.noteId);
           startedDeletes.delete(patch.noteId);
@@ -4104,6 +4136,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       undo: null,
       openDeletes: openDeletes(),
       failedWrites: cache.failedWrites ?? [],
+      pendingWrites: [
+        ...cache.patches.flatMap((patch) =>
+          patch.kind !== 'hand-in' && patch.confirmedAt === null && patch.seq !== undefined
+            ? [patch.seq]
+            : [],
+        ),
+        ...[...writeJobs].flatMap((stamp) =>
+          identityHolds(stamp) ? (stamp.actionIdentity?.seq ?? []) : [],
+        ),
+      ],
       userId: session.profile.id,
       seenNotes: { firstDone: seenNotes.firstDone },
       taskCourses: courseChoices(

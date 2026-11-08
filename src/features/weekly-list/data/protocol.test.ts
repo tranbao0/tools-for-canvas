@@ -400,3 +400,9 @@ it('accepts a write with an outcome token', () => {
     }),
   ).toBe(true);
 });
+
+it('refuses an outcome token longer than the runtime can make', () => {
+  const action = { kind: 'deleteTask', noteId: '8', userId: '9', origin: 'https://a.edu' };
+  expect(isDataAction({ ...action, seq: 'x'.repeat(36) })).toBe(true);
+  expect(isDataAction({ ...action, seq: 'x'.repeat(37) })).toBe(false);
+});

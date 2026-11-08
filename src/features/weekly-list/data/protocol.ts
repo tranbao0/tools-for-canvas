@@ -45,6 +45,7 @@ export type StateReply = SurfaceState & {
   userId?: string;
   retryAt?: number;
   failedWrites?: string[];
+  pendingWrites?: string[];
 };
 
 /**
@@ -368,7 +369,7 @@ export function isDataAction(value: unknown): value is DataAction {
     !isString(value['kind']) ||
     !isNonEmptyString(value['userId']) ||
     !isNonEmptyString(value['origin']) ||
-    (value['seq'] !== undefined && !isNonEmptyString(value['seq']))
+    (value['seq'] !== undefined && (!isNonEmptyString(value['seq']) || value['seq'].length > 36))
   )
     return false;
   const kind = value['kind'] as DataActionKind;
