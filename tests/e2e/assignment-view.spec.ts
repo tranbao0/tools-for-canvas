@@ -264,9 +264,13 @@ const preview = (page: Page, title: string) =>
 const rowOf = (page: Page, id: string) => page.locator(`#assignment_${id}`);
 
 /** Waits until the buttons are there and the list has loaded, so the cookie is confirmed. */
-async function ready(page: Page, canvas: Parameters<typeof waitForListLoaded>[0]) {
+async function ready(
+  page: Page,
+  canvas: Parameters<typeof waitForListLoaded>[0],
+  background: Worker,
+) {
   await expect(preview(page, 'Essay')).toBeVisible();
-  await waitForListLoaded(canvas);
+  await waitForListLoaded(canvas, background);
 }
 
 /** Clicks Preview with a real click, as the student does, and returns the frame of the pane. */
@@ -400,7 +404,7 @@ test('each row has a Preview button at the end of its layout, and no row opens i
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await expect(page.locator('[data-av-preview]')).toHaveCount(3);
   for (const id of ['101', '102', '103']) {
     const last = rowOf(page, id).locator('.ig-row__layout > :last-child');
@@ -428,7 +432,7 @@ test('the Preview button has the size and the look of the mockup, and the colors
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const look = (title: string) =>
     preview(page, title).evaluate((node) => {
       const style = getComputedStyle(node);
@@ -504,7 +508,7 @@ test('Preview opens the pane, shows the frame of another row, and closes the pan
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   // A click that a page script makes opens nothing.
   await preview(page, 'Essay').evaluate((node) => (node as HTMLButtonElement).click());
   await pageQuiet(page);
@@ -557,7 +561,7 @@ test('the button follows the close button of the pane and a redraw of the rows',
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   await closeAssignment(page);
@@ -589,7 +593,7 @@ test('a graded discussion loads its redirect page with content_only once', async
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const essay = await openPane(page, 'Essay');
   await preview(
     page,
@@ -626,7 +630,7 @@ test('a page of another course loads with content_only like every page of the sa
       },
     ],
   });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.evaluate(() => location.assign('/courses/13/assignments/5'));
   await expect(frame.locator('#mode')).toHaveText('another course');
@@ -663,7 +667,7 @@ test('a row that redirects to a page of a group ends with content_only=1 in the 
   background,
 }) => {
   const { canvas } = await open(context, page, background, { extra: GROUP_CHAIN });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await preview(page, 'Reading').click();
   const frame = await paneFrame(page, GROUP_DISCUSSION);
   await expect(frame.locator('#mode')).toHaveText('group slim');
@@ -711,7 +715,7 @@ test('a row that lands on a plain page is rewritten before the load event of tha
     ],
   });
   try {
-    await ready(page, canvas);
+    await ready(page, canvas, background);
     await preview(page, 'Reading').click();
     await expect
       .poll(() => canvas.requests.some((request) => request.path === `${LANDING}?content_only=1`), {
@@ -735,7 +739,7 @@ test('a row that lands on a plain page is rewritten before the load event of tha
 
 test('the quiz take page keeps its address in the pane', async ({ context, page, background }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#to-take').click();
   await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(QUIZ_TAKE);
@@ -752,7 +756,7 @@ async function steady<T>(frame: Frame, read: () => T): Promise<T> {
       return await frame.evaluate(read);
     } catch (error) {
       if (attempt >= 30) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await frame.waitForLoadState('domcontentloaded');
     }
   }
 }
@@ -775,7 +779,7 @@ test('the pane is a card with a gap, and its header has a title, a second line a
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1615, height: 1053 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await expect(frame.locator('#mode')).toHaveText('slim');
   const header = await frame.evaluate(() => {
@@ -898,7 +902,7 @@ test('a row with no due text and no points gives a header with one line, and a l
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await page.evaluate(() => {
     document.querySelector('#assignment_102 .ig-details')!.remove();
     // Canvas draws the date for screen readers and for the eye. A long date shows once.
@@ -977,7 +981,7 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('a draft that stays');
   await frame.evaluate(() => {
@@ -1087,7 +1091,7 @@ test('screenshots of the pane and of its full view at 1400 by 930, in light and 
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   await page.evaluate(() => window.scrollTo(0, 0));
   for (const full of [false, true]) {
@@ -1111,7 +1115,7 @@ test('Escape leaves full view first, and a second Escape does what it did before
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
@@ -1140,7 +1144,7 @@ test('the close button closes the pane in full view and leaves full view', async
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
@@ -1161,7 +1165,7 @@ test('a file that opens over a full view pane shows in full view, and closing it
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('unsent words');
   await toggleFullView(page);
@@ -1192,7 +1196,7 @@ test('a narrow window has no Full view button, and the pane covers the page as b
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
@@ -1214,7 +1218,7 @@ test('the pane is the region Assignment, and a Canvas frame cannot reach the roo
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   const probe = () =>
     frame.evaluate(() => {
@@ -1238,7 +1242,7 @@ test('Escape in the frame, a synthetic Escape and a stray Escape leave the pane 
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('half a draft');
   await frame.locator('#marker').press('Escape');
@@ -1264,7 +1268,7 @@ test('Escape on the page leaves a file pane open, and Escape inside it closes it
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await addFileLinkToList(page);
   await openFileFromList(page);
   // The focus is on the page, outside the pane.
@@ -1293,7 +1297,7 @@ test('a link with a verifier in the pane keeps its address for the error card of
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   // A teacher's link to a file that the student can read only with its verifier.
   await frame.evaluate(() => {
@@ -1317,7 +1321,7 @@ test('a file link in the pane opens the file pane over it, and closing the file 
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('unsent words');
   await openFileFromPane(page, frame);
@@ -1344,7 +1348,7 @@ test('a file link in the page of a graded discussion opens the file pane too', a
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(
     page,
     'Weekly discussion with a title that is long enough to wrap in a narrow row',
@@ -1360,7 +1364,7 @@ test('the file catcher stays out of the pane while the File viewer switch is off
   background,
 }) => {
   const { canvas } = await open(context, page, background, { tools: { fileViewer: false } });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await expect(frame.locator('#mode')).toHaveText('slim');
   await pageQuiet(page);
@@ -1378,7 +1382,7 @@ test('every order of a file pane and the assignment pane keeps the page padding 
   // Several frame loads and pane transitions share this test under CI load.
   test.setTimeout(90_000);
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   // The page has a padding of its own, which every order must give back exactly.
   await page.evaluate(() => document.documentElement.style.setProperty('padding-right', '13px'));
   await addFileLinkToList(page);
@@ -1454,7 +1458,7 @@ test('Preview with a file pane open shows the pane first, and a file click cover
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await addFileLinkToList(page);
   await openFileFromList(page);
   const frame = await openPane(page, 'Essay');
@@ -1471,7 +1475,7 @@ test('Preview with a file pane open shows the pane first, and a file click cover
 
 test('the pane works with the File viewer switch off', async ({ context, page, background }) => {
   const { canvas } = await open(context, page, background, { tools: { fileViewer: false } });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await expect(frame.locator('#mode')).toHaveText('slim');
   await expect.poll(() => paddingRight(page)).toBeGreaterThan(0);
@@ -1487,7 +1491,7 @@ test('the close button of the pane hides it and gives the padding back', async (
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   // A click that the frame makes is not the click of a student.
   await frame.evaluate(() => {
@@ -1507,7 +1511,7 @@ test('the switch removes the buttons and the marks at once, keeps an open pane, 
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('unsent words');
   await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
@@ -1568,7 +1572,7 @@ test('on a small window the button stays in the row, beside the title', async ({
 }) => {
   const { canvas } = await open(context, page, background, { width: 1280 });
   await page.setViewportSize({ width: 1280, height: 800 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   const long = 'Weekly discussion with a title that is long enough to wrap in a narrow row';
   const measure = () =>
@@ -1623,7 +1627,7 @@ test('the list with the pane open at 1615 by 1053, in light and dark', async ({
 }) => {
   const { canvas } = await open(context, page, background, { width: 1615 });
   await page.setViewportSize({ width: 1615, height: 1053 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Reading');
   await page.mouse.move(2, 2);
   for (const theme of ['light', 'dark'] as const) {
@@ -1641,7 +1645,7 @@ test('a submission without a page load asks the list to refresh within one 20 se
   test.setTimeout(75_000);
   const refreshes = await watchRefreshes(background);
   const { canvas } = await open(context, page, background, { submitted: false });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   const loads = () =>
     canvas.requests.filter((request) => request.path.startsWith(`${ASSIGNMENT}?`)).length;
@@ -1663,7 +1667,7 @@ test('closing the pane reads the submission at once and asks the list to refresh
 }) => {
   const refreshes = await watchRefreshes(background);
   const { canvas, state } = await open(context, page, background, { submitted: false });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   // The first read has come, so the close can compare with it.
   await expect
@@ -1704,7 +1708,7 @@ test('the pane and every frame go when another student signs in', async ({
       },
     ],
   });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   await preview(page, 'Reading').click();
   await expect.poll(() => paneFrames(page).length).toBe(2);
@@ -1782,7 +1786,7 @@ test('Preview on another row asks no leave question and keeps the draft, and goi
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const essay = await openPane(page, 'Essay');
   await essay.locator('#marker').fill('half a draft');
   const questions: string[] = [];
@@ -1826,7 +1830,7 @@ test('each header matches the frame that shows, in every order of Preview clicks
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const headers = { Essay: EssayHeader, Reading: ReadingHeader, [LONG]: LongHeader };
   const frames = new Map<string, Frame>();
   for (const title of ['Essay', 'Reading', LONG, 'Essay', LONG, 'Reading', 'Essay']) {
@@ -1885,7 +1889,7 @@ test('the seventh Preview removes the frame that was shown longest ago', async (
   background,
 }) => {
   const { canvas } = await open(context, page, background, { extra: manyRows(5) });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const essay = await openPane(page, 'Essay');
   await essay.locator('#marker').fill('the oldest draft');
   for (const title of ['Reading', 'Extra 104', 'Extra 105', 'Extra 106', 'Extra 107']) {
@@ -1927,7 +1931,7 @@ for (const [name, link, wanted] of [
     background,
   }) => {
     const { canvas } = await open(context, page, background);
-    await ready(page, canvas);
+    await ready(page, canvas, background);
     const frame = await openPane(page, 'Essay');
     await frame.locator(link).click();
     await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(wanted);
@@ -1967,7 +1971,7 @@ for (const [name, title, extra, header] of [
     background,
   }) => {
     const { canvas } = await open(context, page, background, { extra: [...extra] });
-    await ready(page, canvas);
+    await ready(page, canvas, background);
     const essay = await openPane(page, 'Essay');
     await essay.locator('#marker').fill('half a draft');
     const questions: string[] = [];
@@ -1998,7 +2002,7 @@ test('a Preview click on the graded discussion that another frame shows keeps bo
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const essay = await openPane(page, 'Essay');
   await essay.locator('#to-discussion').click();
   await expect.poll(() => framePath(essay), { timeout: 15_000 }).toBe(DISCUSSION);
@@ -2020,7 +2024,7 @@ test('closing the pane removes every frame and the draft, and the next Preview s
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const essay = await openPane(page, 'Essay');
   await essay.locator('#marker').fill('half a draft');
   await essay.evaluate(() => {
@@ -2072,7 +2076,7 @@ test('closing the pane removes every frame and the draft, and the next Preview s
 
 test('one Preview makes one read of the assignment', async ({ context, page, background }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const reads = () =>
     canvas.requests.filter((request) => request.path === '/api/v1/courses/12/assignments/101')
       .length;
@@ -2092,7 +2096,7 @@ test('closing the pane reads the assignment of a hidden frame too', async ({
 }) => {
   const refreshes = await watchRefreshes(background);
   const { canvas, state } = await open(context, page, background, { submitted: false });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const essay = await openPane(page, 'Essay');
   await expect
     .poll(
@@ -2148,7 +2152,7 @@ test('a hidden frame that still loads does not stop the file catcher of the fram
     ],
   });
   try {
-    await ready(page, canvas);
+    await ready(page, canvas, background);
     // The slow row first: its frame still loads when the fast row shows.
     await preview(page, 'Reading').click();
     await expect.poll(() => slowRequests.length).toBeGreaterThan(0);
@@ -2167,7 +2171,7 @@ test('with two frames, every order of a file pane keeps the page padding and the
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await page.evaluate(() => document.documentElement.style.setProperty('padding-right', '13px'));
   await addFileLinkToList(page);
   const essay = await openPane(page, 'Essay');
@@ -2227,7 +2231,7 @@ test('with two frames, every order of a file pane keeps the page padding and the
 
 test('the Theme setting wins over the page background', async ({ context, page, background }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   await saveSetting(background, { theme: 'dark' });
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-theme', 'dark');
@@ -2268,7 +2272,7 @@ test('the header keeps its title on a narrow card: below 560 px the text buttons
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   for (const width of [360, 420, 480, 800]) {
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewerWidth: width });
@@ -2304,7 +2308,7 @@ test('the wrapper of the frame has wide room at the sides in full view only', as
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   const padding = async () => {
     const frame = await paneFrame(page);
@@ -2329,7 +2333,7 @@ test('the close button of the pane over a hidden file pane leaves full view, and
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await addFileLinkToList(page);
   await openFileFromList(page);
   const filePlace = (await page.locator(FILE_PANE).boundingBox())!;
@@ -2360,7 +2364,7 @@ test('Escape with the focus in the frame leaves full view, and only a real Escap
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1400, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   const pressed = async () => (await geometry(page)).button.pressed;
   // Not in full view, Escape in the frame does nothing.
@@ -2433,7 +2437,7 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
 }) => {
   const { canvas } = await open(context, page, background);
   await page.setViewportSize({ width: 1600, height: 930 });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   const hostBox = async () => (await page.locator(PANE_HOST).boundingBox())!;
   // Each save comes back to the pane as a change of the setting. A step that starts before the
@@ -2500,7 +2504,7 @@ test.describe('with the scroll bars of the page', () => {
   }) => {
     const { canvas } = await open(context, page, background);
     await page.setViewportSize({ width: 1400, height: 930 });
-    await ready(page, canvas);
+    await ready(page, canvas, background);
     await page.evaluate(() => {
       document.body.style.minHeight = '4000px';
     });
@@ -2556,7 +2560,7 @@ test.describe('a file pane that the assignment pane covers', () => {
           },
         ],
       });
-      await ready(page, canvas);
+      await ready(page, canvas, background);
       await addFileLinkToList(page);
       const filePane = page.locator(FILE_PANE);
       await expect(async () => {
@@ -2588,7 +2592,7 @@ test('identity verdict: a draft survives three cookie changes in thirty seconds'
 }) => {
   test.setTimeout(90000);
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('Keep this unsent draft');
   await advanceBackgroundClock(background, 60000);
@@ -2616,7 +2620,7 @@ test('identity verdict: a missing reply covers the pane within six seconds', asy
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('Keep this unsent draft');
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
@@ -2668,7 +2672,7 @@ test('identity verdict: Preview in another store stays open', async ({
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await moveTabsToAnotherStore(background);
   const frame = await openPane(page, 'Essay');
   const identityChecks = await watchIdentityChecks(page);
@@ -2696,7 +2700,7 @@ test('identity verdict: a 401 runs the full reset and removes the cover', async 
       },
     ],
   });
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('Draft before sign-out');
   await advanceBackgroundClock(background, 60000);
@@ -2715,7 +2719,7 @@ test('identity cover: Retry resumes a draft after a failed check', async ({
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('Keep this draft');
   await background.evaluate(() => {
@@ -2770,7 +2774,7 @@ test('identity cover: keys leave the frame and cannot submit its form', async ({
   background,
 }) => {
   const { canvas, state } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('Keep this draft');
   await holdPaneIdentity(page);
@@ -2803,7 +2807,7 @@ test('identity cover: restored focus keeps Escape in full view', async ({
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   const host = page.locator(PANE_HOST);
   await toggleFullView(page);
@@ -2832,7 +2836,7 @@ test('identity cover: a fullscreen frame exits before content can show', async (
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').click();
   await frame.evaluate(() => document.documentElement.requestFullscreen());
@@ -2849,7 +2853,7 @@ test('a second injection retires the old assignment view through later page chan
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await background.evaluate(async () => {
     const api = (
       globalThis as unknown as {
@@ -2882,7 +2886,7 @@ test('identity verdict: a late idle tick never flashes the cover', async ({
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   await openPane(page, 'Essay');
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
   const world = await contentScriptWorld(page);
@@ -2907,7 +2911,7 @@ test('identity verdict: losing site access preserves the frame and draft', async
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await ready(page, canvas);
+  await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('Keep this draft');
   const identityChecks = await watchIdentityChecks(page);

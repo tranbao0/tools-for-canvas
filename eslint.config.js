@@ -44,39 +44,54 @@ const testWaits = {
         messages: { sleep: 'Wait for a state or event, not a Node timer.' },
       },
       create(context) {
+        const promisedTimers = new Set();
+        const key = (node) =>
+          node?.name ??
+          node?.value ??
+          (node?.type === 'TemplateLiteral' && node.expressions.length === 0
+            ? node.quasis[0].value.cooked
+            : undefined);
+        const method = (node) =>
+          node?.type === 'MemberExpression' ? key(node.property) : undefined;
         return {
+          ImportDeclaration(node) {
+            if (!['node:timers/promises', 'timers/promises'].includes(node.source.value)) return;
+            for (const specifier of node.specifiers) {
+              if (key(specifier.imported) === 'setTimeout')
+                promisedTimers.add(specifier.local.name);
+            }
+          },
+          MemberExpression(node) {
+            if (key(node.property) === 'waitForTimeout')
+              context.report({ node, messageId: 'sleep' });
+          },
           CallExpression(node) {
             const timer =
               node.callee.type === 'Identifier'
-                ? node.callee.name === 'setTimeout'
-                : node.callee.type === 'MemberExpression' &&
-                  (node.callee.property.name === 'setTimeout' ||
-                    node.callee.property.value === 'setTimeout');
+                ? node.callee.name === 'setTimeout' || promisedTimers.has(node.callee.name)
+                : method(node.callee) === 'setTimeout';
             if (!timer) return;
             const ancestors = context.sourceCode.getAncestors(node);
-            const inPage = ancestors.some(
+            const exempt = ancestors.some(
               (parent) =>
                 parent.type === 'CallExpression' &&
-                parent.callee.type === 'MemberExpression' &&
-                ['evaluate', 'evaluateAll', 'addInitScript', 'executeScript'].includes(
-                  parent.callee.property.name ?? parent.callee.property.value,
-                ),
+                ([
+                  'evaluate',
+                  'evaluateAll',
+                  'evaluateHandle',
+                  'waitForFunction',
+                  'addInitScript',
+                  'executeScript',
+                  'route',
+                ].includes(method(parent.callee)) ||
+                  (method(parent.callee) === 'race' && parent.callee.object.name === 'Promise')),
             );
-            const inTest = ancestors.some(
-              (parent) =>
-                parent.type === 'CallExpression' &&
-                ((parent.callee.type === 'Identifier' && parent.callee.name === 'test') ||
-                  (parent.callee.type === 'MemberExpression' &&
-                    parent.callee.object.name === 'test' &&
-                    ['only', 'skip', 'fixme'].includes(parent.callee.property.name))),
-            );
-            const inPromise = ancestors.some(
-              (parent) =>
-                parent.type === 'NewExpression' &&
-                parent.callee.type === 'Identifier' &&
-                parent.callee.name === 'Promise',
-            );
-            if (inTest && inPromise && !inPage) context.report({ node, messageId: 'sleep' });
+            const promise =
+              promisedTimers.has(node.callee.name) ||
+              ancestors.some(
+                (parent) => parent.type === 'NewExpression' && parent.callee.name === 'Promise',
+              );
+            if (promise && !exempt) context.report({ node, messageId: 'sleep' });
           },
         };
       },
