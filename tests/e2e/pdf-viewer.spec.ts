@@ -1,4 +1,4 @@
-import { pageQuiet, requestsQuiet } from './support/settle';
+import { pageQuiet, requestsQuiet, watchPaneIdentityChecks, frameQuiet } from './support/settle';
 /**
  * The PDF viewer of the file pane (design decision 25, item 4). A fake Canvas serves the file
  * record. Its download route redirects once to a real HTTPS host, as Canvas redirects to its file
@@ -424,7 +424,7 @@ test('Escape on any control of the search bar closes the bar only, and the pane 
     await page.keyboard.press('Escape');
     await expect(field).toHaveCount(0);
     // The key would reach the document and close the pane a moment later.
-    await pageQuiet(page);
+    await frameQuiet(frame, page);
     await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
     await expect(frame.getByRole('tab')).toHaveCount(2);
   }
@@ -443,8 +443,8 @@ test('Escape in the page number field cancels the typed page and leaves the page
   await input.fill('3');
   await page.keyboard.press('Escape');
   await expect(input).toHaveValue('1');
-  await pageQuiet(page);
-  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0);
+  await frameQuiet(frame, page);
+  expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
   await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
 });
 
@@ -1680,6 +1680,8 @@ test('identity verdict: another store keeps the file error card and the click', 
   await expect(frame.getByRole('link', { name: 'Download', exact: true })).toBeVisible();
   await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
   // Drain a full identity watcher interval before checking that the card stays open.
-  await pageQuiet(page, 3, 1100);
+  const identityChecks = await watchPaneIdentityChecks(page);
+  const completed = await identityChecks();
+  await expect.poll(identityChecks).toBeGreaterThan(completed);
   await expect(page.locator('#tools-file-viewer')).toBeVisible();
 });
