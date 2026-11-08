@@ -142,6 +142,9 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await expect(page.locator(HOST)).toHaveCount(0);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
     await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
+    await expect((await pane(page)).getByRole('tab', { selected: true })).toContainText(
+      'Lecture photo',
+    );
   });
 
   test('Escape on the failure panel keeps the stored tab', async ({
@@ -163,6 +166,9 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await expect(page.locator(HOST)).toHaveCount(0);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
     await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
+    await expect((await pane(page)).getByRole('tab', { selected: true })).toContainText(
+      'Lecture photo',
+    );
   });
 
   test('the x during the connection keeps the stored tab', async ({
@@ -181,6 +187,9 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await expect(page.locator(HOST)).toHaveCount(0);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
     await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
+    await expect((await pane(page)).getByRole('tab', { selected: true })).toContainText(
+      'Lecture photo',
+    );
   });
 
   test('Escape during the connection keeps the stored tab', async ({
@@ -200,5 +209,8 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await expect(page.locator(HOST)).toHaveCount(0);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
     await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
+    await expect((await pane(page)).getByRole('tab', { selected: true })).toContainText(
+      'Lecture photo',
+    );
   });
 });
