@@ -120,10 +120,14 @@ jobs:
           retention-days: 7
 
   firefox:
-    name: Firefox tests
+    name: Firefox tests (${{ matrix.firefox }})
     # Every Firefox suite runs here, beside the Chromium tests, so neither job waits for the other.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        firefox: [runner, '140.0']
     steps:
       - name: Check out the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,7 +141,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache Firefox 140.0
+        if: matrix.firefox == '140.0'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/weekrow-test/firefox-140.0
+          key: firefox-140.0-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install Firefox 140.0
+        if: matrix.firefox == '140.0'
+        run: |
+          install_output="$(bash tests/firefox/install-firefox.sh 140.0)"
+          printf '%s\n' "$install_output"
+          printf '%s\n' "$install_output" | grep '^FIREFOX_BIN=' >> "$GITHUB_ENV"
+          echo "GECKODRIVER_BIN=$GECKOWEBDRIVER/geckodriver" >> "$GITHUB_ENV"
+
       - name: Find Firefox and geckodriver
+        if: matrix.firefox == 'runner'
         # The runner image ships Firefox and geckodriver; GECKOWEBDRIVER points to the driver folder.
         run: |
           echo "FIREFOX_BIN=$(command -v firefox)" >> "$GITHUB_ENV"
