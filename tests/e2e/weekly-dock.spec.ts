@@ -708,9 +708,12 @@ test.describe('one dock at a time with the file pane', () => {
     expect(await padding(page)).toBe('360px');
     await dragEdge(page, DOCK, 1347);
     await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(450);
-    const stored = await storedTools(background);
-    expect(stored['fileViewerWidth']).toBe(500);
-    expect(stored['weeklyDockWidth']).toBe(450);
+    await expect
+      .poll(() => storedTools(background))
+      .toMatchObject({
+        fileViewerWidth: 500,
+        weeklyDockWidth: 450,
+      });
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     expect((await boxOf(page, '#tools-file-viewer')).width).toBe(512);
     await closePane(page);

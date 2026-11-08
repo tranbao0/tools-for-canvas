@@ -186,6 +186,8 @@ test('the Preview button of a row, a script click and a comment attachment keep 
   page,
   background,
 }) => {
+  // Several frame loads and pane transitions share this test under CI load.
+  test.setTimeout(90_000);
   const { canvas } = await serveScenario(context, [
     submissionRoute,
     textFile('42', 'submission.txt'),

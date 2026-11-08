@@ -356,20 +356,24 @@ test.describe('announcements: one steady list', () => {
 
     await articles(page).first().getByRole('button', { name: 'Read more' }).click();
     await expect(articles(page).first().locator('.wr-body')).toContainText('Science Hall 214');
-    expect(await heightOf(card)).toBe(before.card);
-    expect(await heightOf(feed(page))).toBe(before.feed);
+    await expect.poll(() => heightOf(card)).toBe(before.card);
+    await expect.poll(() => heightOf(feed(page))).toBe(before.feed);
     // The message grows inside the scroll area only.
-    expect(await feed(page).evaluate((el) => el.scrollHeight)).toBeGreaterThan(scrollHeight);
+    await expect
+      .poll(() => feed(page).evaluate((el) => el.scrollHeight))
+      .toBeGreaterThan(scrollHeight);
     // The pager of the page and the filters did not move.
-    expect(await heightOf(page.locator(`${WIDGET} [data-wr-filter]`))).toBe(before.filters);
+    await expect
+      .poll(() => heightOf(page.locator(`${WIDGET} [data-wr-filter]`)))
+      .toBe(before.filters);
 
     await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
     await expect(articles(page)).toHaveCount(20);
-    expect(await heightOf(card)).toBe(before.card);
+    await expect.poll(() => heightOf(card)).toBe(before.card);
 
     await articles(page).first().getByRole('button', { name: 'Show less' }).click();
     await expect(articles(page).first().locator('.wr-body')).toHaveCount(0);
-    expect(await heightOf(card)).toBe(before.card);
+    await expect.poll(() => heightOf(card)).toBe(before.card);
   });
 
   test('keep the height of the card in the four states: list, open message, search and dates', async ({

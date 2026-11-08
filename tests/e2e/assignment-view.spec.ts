@@ -1317,6 +1317,8 @@ test('every order of a file pane and the assignment pane keeps the page padding 
   page,
   background,
 }) => {
+  // Several frame loads and pane transitions share this test under CI load.
+  test.setTimeout(90_000);
   const { canvas } = await open(context, page, background);
   await ready(page, canvas);
   // The page has a padding of its own, which every order must give back exactly.

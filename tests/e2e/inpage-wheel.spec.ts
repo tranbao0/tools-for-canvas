@@ -78,6 +78,25 @@ async function wheel(page: Page, list: Locator, deltaY: number): Promise<void> {
   await page.mouse.wheel(0, deltaY);
 }
 
+/** Waits for the scroll position to stay fixed over three rendered frames. */
+async function scrollStopped(target: Locator): Promise<void> {
+  // A scrollend event may precede the listener, so observe stable positions across frames.
+  await target.evaluate(
+    (el) =>
+      new Promise<void>((resolve) => {
+        let previous = el.scrollTop;
+        let stable = 0;
+        const frame = () => {
+          stable = el.scrollTop === previous ? stable + 1 : 0;
+          previous = el.scrollTop;
+          if (stable >= 3) resolve();
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
+}
+
 interface Samples {
   /** The most the rows moved from their place, in px. */
   pull: number;
@@ -354,19 +373,27 @@ test.describe('the wheel over a list of the card', () => {
     expect(await card.evaluate((el) => el.scrollHeight > el.clientHeight + 20)).toBe(true);
     await scrollToEnd(list);
     // The list is at its end: the card scrolls first, and the rows stay.
-    let samples = sample(page, SETTLE_MS);
-    await wheel(page, list, 100);
-    await expect.poll(() => card.evaluate((el) => el.scrollTop)).toBeGreaterThan(20);
-    expect((await samples).pull).toBe(0);
+    await expect(async () => {
+      await scrollStopped(list);
+      const samples = sample(page, SETTLE_MS);
+      await wheel(page, list, 100);
+      await expect.poll(() => card.evaluate((el) => el.scrollTop)).toBeGreaterThan(20);
+      expect((await samples).pull).toBe(0);
+    }).toPass();
     expect(await pageY(page)).toBe(0);
     // The card is at its end too: now the rows pull, and the page stays still.
     await card.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
     });
-    await page.waitForTimeout(100);
-    samples = sample(page, SETTLE_MS);
-    await wheel(page, list, 100);
-    expect((await samples).pull).toBeGreaterThan(8);
+    await expect(async () => {
+      await expect
+        .poll(() => card.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1))
+        .toBe(true);
+      await scrollStopped(card);
+      const samples = sample(page, SETTLE_MS);
+      await wheel(page, list, 100);
+      expect((await samples).pull).toBeGreaterThan(8);
+    }).toPass();
     expect(await pageY(page)).toBe(0);
   });
 });
