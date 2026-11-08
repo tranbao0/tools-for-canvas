@@ -504,8 +504,6 @@ export function serveBytesPort(
   },
   host: Pick<ViewerHost, 'savedOrigin' | 'isExtensionPage' | 'read' | 'tabUrl'>,
   fetchBytes: typeof fetchFileBytes = fetchFileBytes,
-  /** The port clones typed arrays (Firefox). Other ports send JSON, so the bytes go as base64. */
-  binary: boolean = BROWSER_KIND === 'firefox',
 ): void {
   if (port.name !== BYTES_PORT) return;
   const sender = port.sender;
@@ -592,7 +590,7 @@ export function serveBytesPort(
           if (controller.signal.aborted) return;
           // `slice` copies, because a clone of a view holds its whole buffer.
           const part = bytes.slice(offset, offset + BYTES_CHUNK);
-          port.postMessage({ chunk: binary ? part : toBase64(part) });
+          port.postMessage({ chunk: BROWSER_KIND === 'firefox' ? part : toBase64(part) });
           sent += 1;
         }
         port.postMessage({ done: true, mime, facts: fileReadFacts.get(bytes) });
