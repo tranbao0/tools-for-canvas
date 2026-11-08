@@ -448,7 +448,14 @@ describe('actions', () => {
 
     expect(fake.sent[0]).toEqual({
       type: 'weekrow:action',
-      action: { userId: USER, origin: ORIGIN, kind: 'setDone', keys: ['assignment:1'], done: true },
+      action: {
+        userId: USER,
+        origin: ORIGIN,
+        seq: expect.any(String),
+        kind: 'setDone',
+        keys: ['assignment:1'],
+        done: true,
+      },
     });
     expect(runtime.state()).toMatchObject({ kind: 'ready', undo: DONE_INFO });
     await vi.advanceTimersByTimeAsync(60 * 60_000);
@@ -622,7 +629,7 @@ describe('actions', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { userId: USER, origin: ORIGIN, kind: 'setDone', keys, done: true },
+      { userId: USER, origin: ORIGIN, seq: expect.any(String), kind: 'setDone', keys, done: true },
     ]);
     expect(runtime.state()).toMatchObject({ undo: { kind: 'done', count: keys.length } });
   });
@@ -687,6 +694,7 @@ describe('actions', () => {
       {
         userId: USER,
         origin: ORIGIN,
+        seq: expect.any(String),
         kind: 'setDone',
         keys: rest.map((item) => item.key),
         done: true,
@@ -845,7 +853,7 @@ describe('actions', () => {
     expect(runtime.state()).toMatchObject({ undo: null });
     await settle();
     expect(sentActions(fake.sent)).toEqual([
-      { userId: USER, origin: ORIGIN, kind: 'deleteTask', noteId: '8' },
+      { userId: USER, origin: ORIGIN, seq: expect.any(String), kind: 'deleteTask', noteId: '8' },
       { userId: USER, origin: ORIGIN, kind: 'sendDelete', noteId: '8' },
     ]);
 
@@ -855,7 +863,14 @@ describe('actions', () => {
     runtime.actions.dismissUndo();
     await settle();
     expect(sentActions(fake.sent)).toEqual([
-      { userId: USER, origin: ORIGIN, kind: 'setDone', keys: ['assignment:1'], done: true },
+      {
+        userId: USER,
+        origin: ORIGIN,
+        seq: expect.any(String),
+        kind: 'setDone',
+        keys: ['assignment:1'],
+        done: true,
+      },
     ]);
   });
 
@@ -868,9 +883,16 @@ describe('actions', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { userId: USER, origin: ORIGIN, kind: 'deleteTask', noteId: '8' },
+      { userId: USER, origin: ORIGIN, seq: expect.any(String), kind: 'deleteTask', noteId: '8' },
       { userId: USER, origin: ORIGIN, kind: 'sendDelete', noteId: '8' },
-      { userId: USER, origin: ORIGIN, kind: 'setDone', keys: ['assignment:2'], done: true },
+      {
+        userId: USER,
+        origin: ORIGIN,
+        seq: expect.any(String),
+        kind: 'setDone',
+        keys: ['assignment:2'],
+        done: true,
+      },
     ]);
     expect(runtime.state()).toMatchObject({ undo: DONE_INFO });
   });
@@ -942,6 +964,7 @@ describe('actions', () => {
 
     expect(sentActions(fake.sent).slice(1)).toEqual([
       {
+        seq: expect.any(String),
         kind: 'restore',
         userId: USER,
         origin: ORIGIN,
@@ -959,8 +982,8 @@ describe('actions', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { userId: USER, origin: ORIGIN, kind: 'deleteTask', noteId: '8' },
-      { userId: USER, origin: ORIGIN, kind: 'cancelDelete', noteId: '8' },
+      { userId: USER, origin: ORIGIN, seq: expect.any(String), kind: 'deleteTask', noteId: '8' },
+      { userId: USER, origin: ORIGIN, seq: expect.any(String), kind: 'cancelDelete', noteId: '8' },
     ]);
   });
 
@@ -1089,9 +1112,22 @@ describe('actions', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { userId: USER, origin: ORIGIN, kind: 'updateTask', noteId: '8', input },
-      { userId: USER, origin: ORIGIN, kind: 'moveTaskToToday', noteId: '8' },
-      { userId: USER, origin: ORIGIN, kind: 'createTask', input },
+      {
+        userId: USER,
+        origin: ORIGIN,
+        seq: expect.any(String),
+        kind: 'updateTask',
+        noteId: '8',
+        input,
+      },
+      {
+        userId: USER,
+        origin: ORIGIN,
+        seq: expect.any(String),
+        kind: 'moveTaskToToday',
+        noteId: '8',
+      },
+      { userId: USER, origin: ORIGIN, seq: expect.any(String), kind: 'createTask', input },
     ]);
   });
 
@@ -1988,7 +2024,14 @@ describe('the Announcements tab', () => {
     await settle();
 
     expect(sentActions(fake.sent)).toEqual([
-      { userId: USER, origin: ORIGIN, kind: 'markAnnouncement', courseId: '101', topicId: '31901' },
+      {
+        userId: USER,
+        origin: ORIGIN,
+        seq: expect.any(String),
+        kind: 'markAnnouncement',
+        courseId: '101',
+        topicId: '31901',
+      },
     ]);
     expect(runtime.state()).toMatchObject({
       undo: { kind: 'announcement_read', count: 1, target: '101:31901' },
@@ -2009,6 +2052,7 @@ describe('the Announcements tab', () => {
 
     expect(sentActions(fake.sent).slice(1)).toEqual([
       {
+        seq: expect.any(String),
         kind: 'restoreAnnouncement',
         userId: USER,
         origin: ORIGIN,
@@ -2368,4 +2412,56 @@ describe('header availability through the runtime', () => {
       runtime.stop();
     },
   );
+});
+
+it.each(['user', 'origin'] as const)(
+  'drops a late write failure after the %s changes',
+  async (change) => {
+    const fake = fakeHost();
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    runtime.start();
+    await settle();
+    runtime.actions.setDone('assignment:1', true);
+    await settle();
+    const action = sentActions(fake.sent).find((action) => action.kind === 'setDone')!;
+    expect(action.seq).toEqual(expect.any(String));
+    if (change === 'user') fake.user = 'student-b';
+    else fake.origin = 'https://other.instructure.com';
+    fake.changed();
+    await settle();
+    fake.reply = (message) =>
+      message.type === 'weekrow:get-state'
+        ? { ...readyFor(fake.user, { origin: fake.origin }), failedWrites: [action.seq] }
+        : { undo: null };
+    fake.changed();
+    await settle();
+    expect(runtime.state().undo).toBeNull();
+    runtime.actions.undo();
+    await settle();
+    expect(sentActions(fake.sent)).toHaveLength(1);
+    runtime.stop();
+  },
+);
+
+it('retries a late failure with the original student and Canvas', async () => {
+  const fake = fakeHost();
+  const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+  runtime.start();
+  await settle();
+  runtime.actions.moveTaskToToday('8');
+  await settle();
+  const original = sentActions(fake.sent)[0]!;
+  fake.reply = (message) =>
+    message.type === 'weekrow:get-state'
+      ? { ...readyFor(USER), failedWrites: [original.seq] }
+      : { undo: null };
+  fake.changed();
+  await settle();
+  expect(runtime.state().undo).toMatchObject({ failure: 'moved' });
+  runtime.actions.undo();
+  await settle();
+  expect(sentActions(fake.sent)[1]).toEqual({ ...original, seq: expect.any(String) });
+  expect(sentActions(fake.sent)[1]!.seq).not.toBe(original.seq);
+  expect(runtime.state().undo).toBeNull();
+  runtime.stop();
 });

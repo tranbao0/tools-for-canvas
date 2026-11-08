@@ -562,7 +562,13 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         const data = replies.flatMap((r) => (r?.undo ? [r.undo] : []));
         if (data.length > 0 && shows !== undefined) {
           // A newer write or a stopped surface ends this notice before it shows.
-          if (isWrite && seq === writeSeq && !stopped) {
+          if (
+            isWrite &&
+            seq === writeSeq &&
+            !stopped &&
+            identity?.userId === action.userId &&
+            identity.origin === action.origin
+          ) {
             const count = data.flatMap((d) => (d.kind === 'overrides' ? d.entries : [null])).length;
             const first = data[0];
             const target =

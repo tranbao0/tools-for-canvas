@@ -515,6 +515,7 @@ export function clearData(cache: SessionCache): SessionCache {
     failedCourses: [],
     lastSuccessAt: null,
     patches: [],
+    failedWrites: [],
     pendingDeletes: {},
     announcements: null,
     announcementMarks: {},

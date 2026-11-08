@@ -382,3 +382,21 @@ describe('the messages of the in-page script', () => {
     expect(isDataMessage({ type: 'weekrow:changed' })).toBe(false);
   });
 });
+
+it.each([null, 1, {}, ''])('rejects a write with an invalid outcome token %j', (seq) => {
+  expect(
+    isDataAction({ kind: 'deleteTask', noteId: '8', userId: '9', origin: 'https://a.edu', seq }),
+  ).toBe(false);
+});
+
+it('accepts a write with an outcome token', () => {
+  expect(
+    isDataAction({
+      kind: 'deleteTask',
+      noteId: '8',
+      userId: '9',
+      origin: 'https://a.edu',
+      seq: 'surface:1',
+    }),
+  ).toBe(true);
+});

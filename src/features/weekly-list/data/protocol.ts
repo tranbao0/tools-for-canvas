@@ -367,7 +367,8 @@ export function isDataAction(value: unknown): value is DataAction {
     !isObject(value) ||
     !isString(value['kind']) ||
     !isNonEmptyString(value['userId']) ||
-    !isNonEmptyString(value['origin'])
+    !isNonEmptyString(value['origin']) ||
+    (value['seq'] !== undefined && !isNonEmptyString(value['seq']))
   )
     return false;
   const kind = value['kind'] as DataActionKind;

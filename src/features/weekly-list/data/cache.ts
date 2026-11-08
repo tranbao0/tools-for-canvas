@@ -62,6 +62,8 @@ export interface RoundLimits {
 }
 
 export interface SessionCache {
+  /** Failed actions for this cache identity, including replies after a worker restart. */
+  failedWrites?: string[];
   origin: string;
   /** The student of the cache, the last good check, and the session fingerprints it confirmed. */
   userCheck?: { userId: string; at: number; fingerprints: string[] };

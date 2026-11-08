@@ -114,11 +114,12 @@ describe('a task update, move or delete', () => {
     await h.owner.act({ kind: 'setDone', keys: [QUIZ_3], done: true });
     await vi.advanceTimersByTimeAsync(0);
     expect(h.canvas.callsOf('createOverride')).toHaveLength(1);
-    await h.owner.act(action);
+    const pending = h.owner.act(action);
     await vi.advanceTimersByTimeAsync(0);
 
     unconfirmedCookie(h);
     release();
+    await pending;
     await h.owner.settled();
 
     expect(h.canvas.callsOf('updateNote')).toEqual([]);

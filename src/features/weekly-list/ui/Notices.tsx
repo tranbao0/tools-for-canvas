@@ -238,7 +238,7 @@ export function Dock(props: { undo: UndoInfo | null; onUndo(): void; onClose(): 
               type="button"
               class="wr-link-btn wr-toast-action"
               data-part="undo"
-              aria-keyshortcuts="Control+Z Meta+Z"
+              aria-keyshortcuts={props.undo.failure === undefined ? 'Control+Z Meta+Z' : undefined}
               onClick={props.onUndo}
             >
               {t(props.undo.failure !== undefined ? 'tryAgain' : 'undo')}

@@ -1095,10 +1095,12 @@ describe('optimistic updates', () => {
     const h = await loaded();
     const release = h.canvas.hold(method);
 
-    await h.owner.act(action);
+    const pending = h.owner.act(action);
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(await item(h, key)).toMatchObject(shows);
     release();
+    await pending;
     await h.owner.settled();
     expect(h.canvas.callsOf(method).length).toBeGreaterThan(0);
     expect(await item(h, key)).toMatchObject(shows);
@@ -1870,4 +1872,35 @@ it('reports an override failure after its Undo reply', async () => {
   release();
   await h.owner.settled();
   expect((await h.owner.getState(PANEL)).failedWrites).toContain('late');
+});
+
+it('reports no failure when a same-student abandoned queue has a successful write at Canvas', async () => {
+  const h = await loaded();
+  const release = h.canvas.hold('deleteNote');
+  await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday, seq: 'saved-delete' });
+  await h.owner.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
+  h.canvas.fail('getSelf', canvasError('server', 500), { times: 1 });
+  await h.owner.act({ kind: 'createTask', input: secret });
+  release();
+  await advance(h, MAX_DELETE_DELAY_MS);
+  const state = await h.owner.getState(PANEL);
+  expect(state.failedWrites).not.toContain('saved-delete');
+  expect(findItem(expectReady(state), `planner_note:${N.libraryBooksToday}`)).toBeUndefined();
+  expect(h.canvas.callsOf('deleteNote')).toHaveLength(1);
+});
+
+it('reports the original delayed delete failure after the worker restarts', async () => {
+  const h = await loaded();
+  await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday, seq: 'delayed-delete' });
+  h.owner.dispose();
+  const restarted = h.restart();
+  h.canvas.fail('deleteNote', canvasError('server', 500), { times: 1 });
+  await restarted.act({ kind: 'sendDelete', noteId: N.libraryBooksToday });
+  await restarted.settled();
+  expect((await restarted.getState(PANEL)).failedWrites).toContain('delayed-delete');
+  restarted.dispose();
+  const again = h.restart();
+  expect((await again.getState(PANEL)).failedWrites).toContain('delayed-delete');
 });

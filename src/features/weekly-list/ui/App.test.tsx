@@ -2123,6 +2123,35 @@ describe('task form', () => {
     );
   });
 
+  it('keeps edited text while saving and after a failure, then closes after a successful retry', async () => {
+    const { actions } = setup();
+    let answer!: (saved: boolean) => void;
+    actions.updateTask.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit task: Buy lab goggles' }));
+    const form = screen.getByRole('form', { name: 'Edit task' });
+    const title = within(form).getByLabelText('Title') as HTMLInputElement;
+    fireEvent.input(title, { target: { value: 'Keep this edited title' } });
+    fireEvent.submit(form);
+    expect(
+      (within(form).getByRole('button', { name: 'Saving' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(title.value).toBe('Keep this edited title');
+    answer(false);
+    expect((await within(form).findByRole('alert')).textContent).toBe(
+      "Couldn't save the task. Try again.",
+    );
+    expect(title.value).toBe('Keep this edited title');
+    fireEvent.submit(form);
+    answer(true);
+    await waitFor(() => expect(screen.queryByRole('form')).toBeNull());
+    expect(actions.updateTask).toHaveBeenCalledTimes(2);
+  });
+
   it('edits a custom task from its title', () => {
     const { actions } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Edit task: Study group, library room 2' }));

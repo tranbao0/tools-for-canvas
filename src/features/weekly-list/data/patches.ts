@@ -30,6 +30,7 @@ export interface OverrideFlags {
 
 export interface OverridePatch {
   kind: 'override';
+  seq?: string;
   id: number;
   /** The item key, as `Item.key`. */
   key: string;
@@ -52,6 +53,7 @@ export interface NoteValue {
 
 export interface NotePatch {
   kind: 'note';
+  seq?: string;
   id: number;
   noteId: string;
   /** `null` when the task is deleted. */

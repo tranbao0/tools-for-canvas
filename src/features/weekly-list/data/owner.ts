@@ -1972,9 +1972,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * another student. Resolves with whether the queue ended, after a sign-out, another student or
    * a failed check.
    */
-  const writeActions = new Map<number, ActionIdentity>();
-  const failedWrites = new Map<string, ActionIdentity>();
-
   async function failWrite(
     patch: Patch | undefined,
     error: unknown,
@@ -1982,8 +1979,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<boolean> {
     deps.log('write', error);
     if (!identityHolds(stamp)) return false;
-    const action = patch === undefined ? stamp.actionIdentity : writeActions.get(patch.id);
-    if (action?.seq !== undefined) failedWrites.set(action.seq, action);
+    const seq = patch !== undefined && 'seq' in patch ? patch.seq : stamp.actionIdentity?.seq;
+    if (seq !== undefined && cache !== null) {
+      cache = { ...cache, failedWrites: [...new Set([...(cache.failedWrites ?? []), seq])] };
+    }
     if (patch !== undefined) {
       dropPatch(patch.id);
       if (patch.kind === 'note' && patch.note === null) forgetDelete(patch.noteId);
@@ -2229,6 +2228,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     patchId: number,
     operation: NoteOperation,
     stamp: WriteStamp,
+    onSaved?: () => void,
   ): Promise<boolean> {
     const patch = findPatch(patchId);
     if (stamp.origin === null || patch === undefined || patch.kind !== 'note') return false;
@@ -2255,11 +2255,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       if (operation === 'delete') await writer.deleteNote(patch.noteId);
       else if (patch.note !== null) {
         const response = await writer.updateNote(patch.noteId, noteInput(patch.note));
-        if (isCurrent(stamp) && !sameCanvasId(response.user_id, stamp.userId))
+        if (identityHolds(stamp) && !sameCanvasId(response.user_id, stamp.userId))
           return userChanged(stamp);
         saved = noteValue(response);
       }
       if (!identityHolds(stamp)) return false;
+      onSaved?.();
       // A DELETE that is out ended the task, whatever happened to the queue after it left.
       if (cache === null || !(operation === 'delete' ? sameStudent(stamp) : isCurrent(stamp))) {
         return false;
@@ -2282,6 +2283,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           queuedDeletes.delete(patch.noteId);
           startedDeletes.delete(patch.noteId);
         }
+        return false;
+      }
+      // A delete in an abandoned queue waits for a confirmed session before it retries.
+      if (operation === 'delete' && sameStudent(stamp) && !isCurrent(stamp)) {
+        deps.log('write', error);
+        requeueDelete(patch.noteId);
         return false;
       }
       const gone = await failWrite(patch, error, stamp);
@@ -2307,6 +2314,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<boolean> {
     const patch: OverridePatch = {
       kind: 'override',
+      seq: stamp.actionIdentity?.seq,
       id: nextId(),
       key,
       target,
@@ -2314,7 +2322,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       confirmedAt: null,
     };
     addPatch(patch);
-    if (stamp.actionIdentity) writeActions.set(patch.id, stamp.actionIdentity);
     return enqueueWrite(
       (stamp) => runOverrideWrite(patch.id, previous, stamp),
       'writes',
@@ -2325,8 +2332,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     });
   }
 
-  function addNotePatch(noteId: string, note: NoteValue | null): NotePatch {
-    const patch: NotePatch = { kind: 'note', id: nextId(), noteId, note, confirmedAt: null };
+  function addNotePatch(noteId: string, note: NoteValue | null, seq?: string): NotePatch {
+    const patch: NotePatch = { kind: 'note', seq, id: nextId(), noteId, note, confirmedAt: null };
     addPatch(patch);
     return patch;
   }
@@ -2516,6 +2523,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     build: (write: WriteContext, timeZone: string, current: Item) => NoteValue | null,
     operation: NoteOperation,
     stamp: WriteStamp,
+    waitForSave = false,
   ): Promise<ActionReply> {
     // A task write is a write for the student of the cache, so the cookie check comes first.
     if (!(await signedInStudentOwnsCache())) return NO_UNDO;
@@ -2526,11 +2534,22 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (current === undefined) return NO_UNDO;
     const note = build(write, canvasTimeZone(write.session, write.context), current);
     if (operation === 'update' && note === null) return NO_UNDO;
-    const patch = addNotePatch(noteId, note === null ? null : { ...note, id: noteId });
-    if (stamp.actionIdentity) writeActions.set(patch.id, stamp.actionIdentity);
+    const patch = addNotePatch(
+      noteId,
+      note === null ? null : { ...note, id: noteId },
+      stamp.actionIdentity?.seq,
+    );
+    let saved = false;
     let written: Promise<void> | undefined;
     if (operation === 'update') {
-      written = enqueueWrite((stamp) => runNoteWrite(patch.id, 'update', stamp), 'writes', stamp);
+      written = enqueueWrite(
+        (stamp) =>
+          runNoteWrite(patch.id, 'update', stamp, () => {
+            saved = true;
+          }),
+        'writes',
+        stamp,
+      );
     } else {
       const deleteAt = clock.now() + MAX_DELETE_DELAY_MS;
       setPendingDelete(noteId, deleteAt);
@@ -2539,10 +2558,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     persist();
     if (operation === 'delete') await persistChain;
     if (identityHolds(stamp)) bumpLater();
+    if (operation === 'update' && !waitForSave) return NO_UNDO;
     if (operation === 'update') {
       await written;
-      const saved = findPatch(patch.id);
-      return { undo: null, saved: saved?.confirmedAt != null };
+      return { undo: null, saved };
     }
     return {
       deleteToken: patch.id,
@@ -2619,6 +2638,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           (_write, timeZone, current) => taskNote(current.plannableId, action.input, timeZone),
           'update',
           stamp,
+          true,
         );
       case 'deleteTask':
         return writeNote(action.noteId, () => null, 'delete', stamp);
@@ -4083,9 +4103,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       // The surface holds its own Undo notice.
       undo: null,
       openDeletes: openDeletes(),
-      failedWrites: [...failedWrites]
-        .filter(([, action]) => action.userId === session.profile.id && action.origin === origin)
-        .map(([seq]) => seq),
+      failedWrites: cache.failedWrites ?? [],
       userId: session.profile.id,
       seenNotes: { firstDone: seenNotes.firstDone },
       taskCourses: courseChoices(
