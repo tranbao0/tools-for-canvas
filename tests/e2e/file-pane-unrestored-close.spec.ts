@@ -4,7 +4,7 @@
  * never connects), closes the pane in one way, then reloads with the hello allowed and expects the
  * tab back.
  */
-import type { CDPSession, Page } from '@playwright/test';
+import type { CDPSession, Page, Worker } from '@playwright/test';
 import { test, expect } from './support/weekrow';
 import { FILE_NAME, openCoursePage, openFirstFile, pane } from './support/file-viewer';
 
@@ -92,6 +92,28 @@ async function reloadAllowedExpectTab(page: Page): Promise<void> {
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
 }
 
+async function expectInactive(background: Worker): Promise<void> {
+  await expect
+    .poll(() =>
+      background.evaluate(async () => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              storage: {
+                session: { get(keys: null): Promise<Record<string, { active?: string | null }>> };
+              };
+            };
+          }
+        ).chrome;
+        const stored = await api.storage.session.get(null);
+        return Object.entries(stored)
+          .filter(([key]) => /^viewer:https?:/.test(key))
+          .map(([, value]) => value.active);
+      }),
+    )
+    .toEqual([null]);
+}
+
 test.describe('a close of a pane that did not restore the stored tabs', () => {
   test.setTimeout(75_000);
 
@@ -114,7 +136,12 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     const close = await buttonCenter(cdp, 'Close');
     await page.mouse.click(close.x, close.y);
     await expect(page.locator(HOST)).toHaveCount(0);
-    await reloadAllowedExpectTab(page);
+    await expectInactive(background);
+    await setBlock(page, false);
+    await page.reload();
+    await expect(page.locator(HOST)).toHaveCount(0);
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
   });
 
   test('Escape on the failure panel keeps the stored tab', async ({
@@ -130,7 +157,12 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await cdp.send('DOM.focus', { backendNodeId: close.id });
     await page.keyboard.press('Escape');
     await expect(page.locator(HOST)).toHaveCount(0);
-    await reloadAllowedExpectTab(page);
+    await expectInactive(background);
+    await setBlock(page, false);
+    await page.reload();
+    await expect(page.locator(HOST)).toHaveCount(0);
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
   });
 
   test('the x during the connection keeps the stored tab', async ({
@@ -143,7 +175,12 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     const x = await buttonCenter(cdp, 'Close file viewer');
     await page.mouse.click(x.x, x.y);
     await expect(page.locator(HOST)).toHaveCount(0);
-    await reloadAllowedExpectTab(page);
+    await expectInactive(background);
+    await setBlock(page, false);
+    await page.reload();
+    await expect(page.locator(HOST)).toHaveCount(0);
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
   });
 
   test('Escape during the connection keeps the stored tab', async ({
@@ -157,6 +194,11 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await cdp.send('DOM.focus', { backendNodeId: x.id });
     await page.keyboard.press('Escape');
     await expect(page.locator(HOST)).toHaveCount(0);
-    await reloadAllowedExpectTab(page);
+    await expectInactive(background);
+    await setBlock(page, false);
+    await page.reload();
+    await expect(page.locator(HOST)).toHaveCount(0);
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
   });
 });

@@ -186,7 +186,11 @@ export function normalizeTabs(value: unknown): Tabs {
   return {
     ids,
     active:
-      typeof raw.active === 'string' && ids.includes(raw.active) ? raw.active : (ids[0] ?? null),
+      raw.active === null
+        ? null
+        : typeof raw.active === 'string' && ids.includes(raw.active)
+          ? raw.active
+          : (ids[0] ?? null),
   };
 }
 /** Closes a tab. The tab that takes its place becomes active, or the one before it at the end. */

@@ -335,3 +335,15 @@ describe('the address of a link that carries a verifier or a location', () => {
     expect(keptAddress(`/files/5?verifier=${'a'.repeat(2100)}`, origin)).toBeUndefined();
   });
 });
+
+describe('stored inactive tabs', () => {
+  it('keeps an explicit null with a nonempty list', () => {
+    expect(normalizeTabs({ ids: ['42'], active: null })).toEqual({ ids: ['42'], active: null });
+  });
+  it('uses the first tab when active is missing', () => {
+    expect(normalizeTabs({ ids: ['42'] })).toEqual({ ids: ['42'], active: '42' });
+  });
+  it('uses the first tab when active is unknown', () => {
+    expect(normalizeTabs({ ids: ['42'], active: '99' })).toEqual({ ids: ['42'], active: '42' });
+  });
+});

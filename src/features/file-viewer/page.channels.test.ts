@@ -122,6 +122,38 @@ describe('the same end of an open gives the same outcome on both channels', () =
     await vi.waitFor(() => expect(removeListener).toHaveBeenCalled());
   };
 
+  it('a removed host gives the link on both channels', async () => {
+    const results: boolean[] = [];
+    for (const channel of ['top', 'frame'] as const) {
+      prepare();
+      let releaseRead: (() => void) | undefined;
+      let reads = 0;
+      sendMessage.mockImplementation(async (message: { type: string }) => {
+        if (message.type === 'viewer:tabs-get' && ++reads > 1)
+          await new Promise<void>((resolve) => {
+            releaseRead = resolve;
+          });
+        return reply(message);
+      });
+      const seen = followed();
+      await startViewer();
+      const respond = vi.fn();
+      if (channel === 'top') click();
+      else background()({ type: 'viewer:open-from-frame', fileId: '5' }, fromBackground, respond);
+      await vi.waitFor(() => expect(releaseRead).toBeDefined());
+      document.getElementById('tools-file-viewer')!.remove();
+      releaseRead!();
+      await quiet();
+      results.push(
+        channel === 'top'
+          ? seen.length > 0
+          : respond.mock.calls.some(([value]) => (value as { opened: boolean }).opened === false),
+      );
+      scope.__weekrowViewer?.();
+    }
+    expect(results).toEqual([true, true]);
+  });
+
   it('a reset ends the open: both channels follow the link', async () => {
     const top = await outcome('top', reset);
     const frame = await outcome('frame', reset);
@@ -131,6 +163,6 @@ describe('the same end of an open gives the same outcome on both channels', () =
   it('the File viewer switch goes off during the open: both channels give the same outcome', async () => {
     const top = await outcome('top', switchOff);
     const frame = await outcome('frame', switchOff);
-    expect({ top, frame }).toEqual({ top: frame, frame });
+    expect({ top, frame }).toEqual({ top: true, frame: true });
   });
 });
