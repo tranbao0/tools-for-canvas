@@ -490,16 +490,23 @@ export async function startViewer(): Promise<void> {
       addresses.get(file.fileId) ??
       keptAddress(href, location.origin) ??
       canvasAddress(file.fileId, courseId);
-    const open = () => {
+    const open = async () => {
       // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
-      // request also makes a pane that has not been told yet restore the stored tabs.
+      // request also makes a pane that has not been told yet restore the stored tabs, so the files
+      // that waited for the pane join the store first.
+      if (!synced && addedTabs.size > 0) {
+        await writeTabs(tabs).catch(() => undefined);
+        if (ended()) return 'ended' as const;
+      }
       synced = true;
       waitingFile = null;
       addedTabs.clear();
       port?.postMessage(openMessage(file.fileId));
       return 'opened' as const;
     };
-    if (paneOpen() && port) return open();
+    // A pane that has been told owns the tabs. A pane that has not been told gets this file with
+    // the files that wait for it, below.
+    if (paneOpen() && port && synced) return open();
     const stored = await readTabs().catch(() => null);
     if (ended()) return 'ended';
     if (failedConnection) return connected ? { connected } : 'timeout';

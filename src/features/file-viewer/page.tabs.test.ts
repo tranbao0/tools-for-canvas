@@ -142,6 +142,30 @@ describe('the stored tabs of a click that waits for the pane', () => {
     expect(writes[0]).toMatchObject({ tabs: { ids: ['5'], active: '5' }, token: '4:7' });
   });
 
+  it('keeps a waiting file when the next click comes while the pane connects', async () => {
+    await start();
+    let release: () => void = () => undefined;
+    let reads = 0;
+    const answer = sendMessage.getMockImplementation()!;
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-get' && ++reads === 2)
+        await new Promise<void>((resolve) => (release = resolve));
+      return answer(message);
+    });
+    click('file');
+    await settle();
+    // The pane connects, and its first read of the stored tabs is slow.
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'viewer-hello' } }));
+    await settle();
+    ports.at(-1)!.onmessage!({ data: {} });
+    await settle();
+    click('other');
+    await settle();
+    release();
+    await settle();
+    expect(stored).toEqual({ ids: ['5', '6'], active: '6' });
+  });
+
   it('keeps both files when two clicks come before the pane connects', async () => {
     await start();
     click('file');
