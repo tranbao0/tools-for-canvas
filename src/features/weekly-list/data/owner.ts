@@ -4096,7 +4096,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         retryAt: cache.limits.lastRoundAt + REFRESH_LIMIT_MS,
       };
     }
-    if (session.courses.length === 0) return { kind: 'no_courses', origin, offer, allCourses: [] };
+    if (session.courses.length === 0)
+      return blocksLoads(failure)
+        ? { kind: 'cant_load', origin, offline, offer }
+        : { kind: 'no_courses', origin, offer, allCourses: [] };
 
     stamp = writeStamp();
     const context = await viewContext(origin);
