@@ -155,8 +155,13 @@ export function claimDashboardLayout(
   let minimizedSeen = false;
   let revealCard = false;
   const minimizeObserver = new MutationObserver(() => {
-    if (isMinimized() !== minimizedSeen) {
-      revealCard = true;
+    const minimized = isMinimized();
+    if (minimized !== minimizedSeen) {
+      minimizedSeen = minimized;
+      const until = Number(
+        cardRoot()?.querySelector('.wr')?.getAttribute('data-minimize-follow-until'),
+      );
+      revealCard = until > Date.now();
       schedule(false);
     }
   });
@@ -234,8 +239,7 @@ export function claimDashboardLayout(
     const { marginTop, marginRight, marginBottom, marginLeft } = view.getComputedStyle(slot.widget);
     setInlineStyles(wrapper, { position: 'relative' });
     const first = wrapper.firstChild === container ? container.nextSibling : wrapper.firstChild;
-    minimizedSeen = isMinimized();
-    if (minimizedSeen) {
+    if (isMinimized()) {
       clearInlineStyle(wrapper, 'min-height');
       setInlineStyles(slot.widget, { display: 'none' });
       moveContainer(container, wrapper, first);
@@ -317,12 +321,11 @@ export function claimDashboardLayout(
     setPanelMode(container, 'area');
   }
 
-  function arrange(grid: WidgetGrid | null, slot: CourseWorkSlot | null): void {
+  function arrange(grid: WidgetGrid | null, slot: CourseWorkSlot | null, reveal: boolean): void {
     keepCardScroll(container, () => arrangeWidget(grid, slot, pageWidth()));
     trackCard();
     restoreScroll();
-    if (revealCard) {
-      revealCard = false;
+    if (reveal && slot !== null) {
       const card = cardRoot()?.querySelector<HTMLElement>('.wr');
       const top = card?.getBoundingClientRect().top;
       if (top !== undefined && (top < 0 || top >= view.innerHeight))
@@ -354,7 +357,7 @@ export function claimDashboardLayout(
     deadline = undefined;
   }
 
-  function place(force: boolean): void {
+  function place(force: boolean, reveal: boolean): void {
     const grid = findWidgetGrid(doc);
     const slot = findCourseWorkSlot(doc);
     if (slot === null) waitExpired = false;
@@ -379,7 +382,7 @@ export function claimDashboardLayout(
       return;
     }
     if (!force && sameKey(keyOf(grid, slot), applied)) return;
-    arrange(grid, slot);
+    arrange(grid, slot, reveal);
     applied = keyOf(grid, slot);
   }
 
@@ -465,6 +468,8 @@ export function claimDashboardLayout(
   }
 
   function keep(force = false): void {
+    const reveal = revealCard;
+    revealCard = false;
     if (!body.hasAttribute(LAYOUT_ATTRIBUTE)) {
       stop();
       return;
@@ -475,7 +480,7 @@ export function claimDashboardLayout(
     if (!container.isConnected) {
       detached = true;
     }
-    place(force || !container.isConnected);
+    place(force || !container.isConnected, reveal);
     stick();
     // The card places itself by the size of the content box and of the grid, so a change in
     // either one, such as a window or zoom change that the grid answers, places it again.

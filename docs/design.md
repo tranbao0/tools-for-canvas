@@ -497,6 +497,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     If Canvas replaces the wrapper or the section, the card moves into the new wrapper and keeps its scroll positions.
     Minimize to the header in the same flow, with no reserved space: the card leaves the overlay and stays in the flow of the wrapper, and the section is not displayed, so the column closes up.
     Restoring the card goes back to the overlay.
+    Only a slot card scrolls into view after a minimize or expand, only within the focus follow window for the student’s own toggle on this page, and only on the next layout pass.
     Release restores the inline styles of the wrapper and the section and removes the marker.
     The scroll regions of the card turn the browser's scroll anchoring off, and the layout code ignores the scroll event of a card that is not rendered, so a move of the card keeps the scroll positions.
   - **The rows of the slot card** have the look of the items of the Course work widget: the check box, a block in the course color with the type icon, the text column, and a right column with the due pill and the row actions (Preview, Move to today) under it.
