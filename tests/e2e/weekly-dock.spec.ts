@@ -186,7 +186,7 @@ test.describe('the dock on the classic dashboard', () => {
     await open(context, page, background);
     const dock = await boxOf(page, DOCK);
     expect(dock).toMatchObject({ x: 1437, y: 0, width: 360, height: 1074 });
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
     await expect(page.locator('#weekrow-sentinel')).toHaveCount(0);
     // The list stands in the dock and not in the right column.
     await expect(page.locator('#right-side-wrapper #weekrow-inpage')).toHaveCount(0);
@@ -226,7 +226,7 @@ test.describe('the dock on the classic dashboard', () => {
     expect(open_['#wrapper']).toEqual([54, 1420]);
     await minimize(page);
     // The tab keeps 38 px of room, and a window this wide has more than that to spare.
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
     const minimized = await canvasEdges(page);
     expect(minimized).toEqual(open_);
     expect(
@@ -262,10 +262,10 @@ test.describe('the dock on the classic dashboard', () => {
     expect(open_['#wrapper']![1]).toBe(920);
     await page.setViewportSize({ width: 880, height: 800 });
     await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(880);
-    expect(await padding(page)).toBe('');
+    await expect.poll(() => padding(page)).toBe('');
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(360);
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
   });
 
   test('keeps the header and the columns of Canvas apart at every window width, because Canvas reads the window and not the room', async ({
@@ -366,7 +366,7 @@ test.describe('the dock on the classic dashboard', () => {
       height: 900,
       settings: { minimized: true },
     });
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
     const tabBox = await boxOf(page, TAB);
     expect(tabBox.x).toBe(1330);
     const textRight = await page.evaluate(() => {
@@ -458,7 +458,7 @@ test.describe('minimize and the tab', () => {
   }) => {
     await open(context, page, background);
     await minimize(page);
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
     // The tab: 38 px wide, 96 px from the top, on the right edge, about 140 px high.
     const box = await boxOf(page, TAB);
     expect(box.x + box.width).toBe(1797);
@@ -492,7 +492,7 @@ test.describe('minimize and the tab', () => {
     await tab(page).click();
     // At once: the room is taken and the dock shows in the same moment.
     await expect(page.locator(DOCK)).toBeVisible();
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
     await expect(page.locator(TAB)).toHaveCount(0);
   });
 
@@ -529,7 +529,7 @@ test.describe('minimize and the tab', () => {
     await page.reload();
     await expect(tab(page)).toBeVisible();
     await expect(page.locator(DOCK)).toHaveCount(0);
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
     expect(await tab(page).getAttribute('aria-label')).toBe(label);
     await tab(page).click();
     await expect(page.locator(DOCK)).toBeVisible();
@@ -600,7 +600,7 @@ test.describe('minimize and the tab', () => {
     await open(context, page, background);
     await dragEdge(page, DOCK, 1300);
     await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(497);
-    expect(await padding(page)).toBe('497px');
+    await expect.poll(() => padding(page)).toBe('497px');
     await expect.poll(async () => (await storedTools(background))['weeklyDockWidth']).toBe(497);
     expect((await storedTools(background))['fileViewerWidth']).toBe(
       DEFAULT_TOOLS_SETTINGS.fileViewerWidth,
@@ -645,12 +645,12 @@ test.describe('one dock at a time with the file pane', () => {
     // Only the file pane shows: no dock, no tab, one resize handle, and the room of the file pane.
     await expect(page.locator(DOCK)).toBeHidden();
     await expect(page.locator(TAB)).toHaveCount(0);
-    expect(await padding(page)).toBe('492px');
+    await expect.poll(() => padding(page)).toBe('492px');
     const file = await boxOf(page, '#tools-file-viewer');
     expect(file.x + file.width).toBe(1797);
     await closePane(page);
     await expect(page.locator(DOCK)).toBeVisible();
-    expect(await padding(page)).toBe('497px');
+    await expect.poll(() => padding(page)).toBe('497px');
     expect(await boxOf(page, DOCK)).toMatchObject({ x: 1300, width: 497 });
     // The same list: its state is intact.
     await expect(page.locator(`#weekrow-inpage[data-instance="${mark}"]`)).toHaveCount(1);
@@ -660,15 +660,15 @@ test.describe('one dock at a time with the file pane', () => {
   test('minimized, file open, file close', async ({ context, page, background }) => {
     await open(context, page, background, { withFile: true, settings: { minimized: true } });
     await expect(tab(page)).toBeVisible();
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(TAB)).toHaveCount(0);
     await expect(page.locator(DOCK)).toHaveCount(0);
-    expect(await padding(page)).toBe('492px');
+    await expect.poll(() => padding(page)).toBe('492px');
     await closePane(page);
     await expect(tab(page)).toBeVisible();
     await expect(page.locator(DOCK)).toHaveCount(0);
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
     // The tab never sat on the file pane: it is at the edge of the window again.
     const box = await boxOf(page, TAB);
     expect(box.x + box.width).toBe(1797);
@@ -682,13 +682,13 @@ test.describe('one dock at a time with the file pane', () => {
     await open(context, page, background, { withFile: true });
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await saveSettings(background, { ...DEFAULT_SETTINGS, minimized: true });
-    await page.waitForTimeout(300);
+    await pageQuiet(page);
     await expect(page.locator(TAB)).toHaveCount(0);
-    expect(await padding(page)).toBe('492px');
+    await expect.poll(() => padding(page)).toBe('492px');
     await closePane(page);
     await expect(tab(page)).toBeVisible();
     await expect(page.locator(DOCK)).toBeHidden();
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
   });
 
   test('a resize of each dock changes only its own width', async ({
@@ -702,10 +702,10 @@ test.describe('one dock at a time with the file pane', () => {
     await page.keyboard.press('ArrowLeft');
     // The card is 500 px wide, and the host holds the 12 px gap beside it.
     await expect.poll(async () => (await boxOf(page, '#tools-file-viewer')).width).toBe(512);
-    expect(await padding(page)).toBe('512px');
+    await expect.poll(() => padding(page)).toBe('512px');
     await closePane(page);
     expect(await boxOf(page, DOCK)).toMatchObject({ width: 360 });
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
     await dragEdge(page, DOCK, 1347);
     await expect.poll(async () => (await boxOf(page, DOCK)).width).toBe(450);
     await expect
@@ -726,7 +726,7 @@ test.describe('one dock at a time with the file pane', () => {
     await pressEscapeToClosePane(page);
     await expect(page.locator(DOCK)).toBeVisible();
     await expect(page.locator(TAB)).toHaveCount(0);
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
     // And with no file pane, Escape leaves the dock alone.
     await minimizeButton(page).focus();
     await page.keyboard.press('Escape');
@@ -745,12 +745,12 @@ test.describe('one dock at a time with the file pane', () => {
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(DOCK)).toBeHidden();
-    expect(await padding(page)).toBe('492px');
+    await expect.poll(() => padding(page)).toBe('492px');
     // The switch goes off while the file is open: the pane closes and the dock comes back.
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
     await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
     await expect(page.locator(DOCK)).toBeVisible();
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
     await page.screenshot({ path: '/tmp/ticket-d/e2e-after-switch.png' });
   });
 });
@@ -791,17 +791,18 @@ test.describe('the load order with a file pane that opens at the start', () => {
     await page.reload();
     await expect(page.locator('#tools-file-viewer')).toBeVisible();
     await pageQuiet(page);
-    await page.waitForTimeout(400);
+    await expect.poll(() => padding(page)).toBe('492px');
+    await pageQuiet(page);
     const values = await page.evaluate(
       () => (window as unknown as { paddings: string[] }).paddings,
     );
     expect(values).toContain('492px');
     expect(values).not.toContain('360px');
     await expect(page.locator(DOCK)).toBeHidden();
-    expect(await padding(page)).toBe('492px');
+    await expect.poll(() => padding(page)).toBe('492px');
     await closePane(page);
     await expect(page.locator(DOCK)).toBeVisible();
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
   });
 
   test('the dock shows with no wait when the File viewer switch is off', async ({
@@ -812,7 +813,7 @@ test.describe('the load order with a file pane that opens at the start', () => {
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
     await open(context, page, background);
     await expect(page.locator(DOCK)).toBeVisible();
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
   });
 });
 
@@ -829,7 +830,7 @@ test.describe('a page that removes the host of a pane', () => {
     await page.evaluate(() => document.getElementById('tools-weekly')?.remove());
     await closePane(page);
     await expect(page.locator(DOCK)).toBeVisible();
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
     expect(await boxOf(page, DOCK)).toMatchObject({ x: 1437, width: 360 });
   });
 
@@ -841,7 +842,7 @@ test.describe('a page that removes the host of a pane', () => {
     await open(context, page, background, { withFile: true, settings: { minimized: true } });
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(TAB)).toHaveCount(0);
-    expect(await padding(page)).toBe('492px');
+    await expect.poll(() => padding(page)).toBe('492px');
     // A click that the helper repeated on a slow machine ends before the page removes the host.
     await expect((await pane(page)).locator('[data-part="download"]')).toBeVisible();
     await page.evaluate(() => document.getElementById('tools-file-viewer')?.remove());
@@ -891,11 +892,11 @@ test.describe('a new copy of the script', () => {
     await settledList(page);
     await pageQuiet(page);
     await expect(page.locator(DOCK)).toHaveCount(1);
-    expect(await padding(page)).toBe('360px');
+    await expect.poll(() => padding(page)).toBe('360px');
     expect(await boxOf(page, DOCK)).toMatchObject({ x: 1437, width: 360 });
     // The page padding of the new copy is the padding of the page, not the room of the old dock.
     await minimize(page);
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
   });
 
   test('the old copy writes no padding when the window changes size', async ({
@@ -909,10 +910,10 @@ test.describe('a new copy of the script', () => {
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
     await settledList(page);
     await minimize(page);
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
     await page.setViewportSize({ width: 1700, height: 1074 });
     await pageQuiet(page);
-    expect(await padding(page)).toBe('38px');
+    await expect.poll(() => padding(page)).toBe('38px');
   });
 });
 
@@ -948,7 +949,7 @@ test.describe('the Courses tab of the new dashboard', () => {
     await expect(page.locator('weekrow-list')).toBeHidden();
     await expect(page.locator('#tools-weekly, #tools-weekly-tab')).toHaveCount(0);
     // Nothing of the list takes room, even after the page settles.
-    await page.waitForTimeout(300);
+    await pageQuiet(page);
     await expect(inpageList(page)).toBeHidden();
     await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
     await expect(inpageList(page)).toBeVisible();
@@ -977,7 +978,7 @@ test.describe('the Courses tab of the new dashboard', () => {
     );
     // The Courses tab has no grid, so the wait of the card for the grid ends here. The fallback of
     // the layout then places the card, and the Courses tab must still show nothing.
-    await page.waitForTimeout(GRID_WAIT_MS + 1500);
+    await pageQuiet(page, 3, GRID_WAIT_MS + 100);
     await expect(inpageList(page)).toBeHidden();
     await expect(page.locator('weekrow-list')).toBeHidden();
     await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
