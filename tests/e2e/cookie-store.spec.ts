@@ -1,3 +1,4 @@
+import { requestsQuiet } from './support/settle';
 /**
  * A cookie store that cannot be read, and a tab in another cookie store (design decision 11).
  * Neither one gets a list: the surface shows "Couldn't load your list" with Retry, and a tab in
@@ -102,7 +103,7 @@ test('a tab in another cookie store gets the error at once, not a spinner, while
     release();
   }
   // The list of the default store never reaches the tab, also after the load ends.
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   await expect(page.getByRole('heading', { name: "Couldn't load your list" })).toBeVisible();
   await expect(doneBox(page, 'Quiz 3: Cell membranes')).toHaveCount(0);
 });

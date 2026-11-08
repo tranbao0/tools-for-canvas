@@ -1,3 +1,4 @@
+import { pageQuiet } from './support/settle';
 /**
  * The mouse wheel over the lists of the in-page card (design decision 4, "In-page rules"): a list
  * with nothing to scroll hands the wheel to the page, a list at its top or end keeps the page
@@ -158,7 +159,7 @@ async function scrollPage(page: Page, top: number | 'end'): Promise<void> {
     window.scrollTo(0, to === 'end' ? document.documentElement.scrollHeight : to);
   }, top);
   await expect.poll(() => pageY(page)).toBeGreaterThanOrEqual(top === 'end' ? 1 : top);
-  await page.waitForTimeout(100);
+  await pageQuiet(page);
 }
 
 /** Long enough for the rows to hold, spring back and settle. */
@@ -186,8 +187,8 @@ test.describe('the wheel over a list of the card', () => {
     const list = listOf(page);
     await expect(list.locator('[data-row-key]').first()).toBeVisible();
     // The list is short: it has nothing to scroll.
-    expect(await list.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
-    expect(await pageY(page)).toBe(0);
+    await expect.poll(() => list.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+    await expect.poll(() => pageY(page)).toBe(0);
     const samples = sample(page, SETTLE_MS);
     await wheel(page, list, 300);
     await expect.poll(() => pageY(page)).toBeGreaterThan(100);
@@ -214,7 +215,7 @@ test.describe('the wheel over a list of the card', () => {
       // The content ends 4 px above the bottom padding of the area.
       inner.style.height = `${el.clientHeight - 12 - inner.offsetTop}px`;
     });
-    expect(await list.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+    await expect.poll(() => list.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
 
     // At the bottom of the page, wheel down: the rows move up and come back.
     await scrollPage(page, 'end');
@@ -226,9 +227,9 @@ test.describe('the wheel over a list of the card', () => {
     expect(seen.pull).toBeLessThanOrEqual(28);
     expectOnlyRowsMoved(seen);
     expect(seen.scrollbars).not.toContain(true);
-    expect(await pageY(page)).toBe(bottom);
+    await expect.poll(() => pageY(page)).toBe(bottom);
     await expect(list).not.toHaveClass(/wr-pulling/);
-    expect(await list.evaluate((el) => el.style.overflowY)).toBe('');
+    await expect.poll(() => list.evaluate((el) => el.style.overflowY)).toBe('');
 
     // At the top of the page, wheel up: the rows move down, and no scroll bar shows.
     await scrollPage(page, 0);
@@ -238,7 +239,7 @@ test.describe('the wheel over a list of the card', () => {
     expect(seen.pull).toBeGreaterThan(8);
     expectOnlyRowsMoved(seen);
     expect(seen.scrollbars).not.toContain(true);
-    expect(await pageY(page)).toBe(0);
+    await expect.poll(() => pageY(page)).toBe(0);
   });
 
   test('pulls the rows of a long list at its top and its end, and keeps the page still', async ({
@@ -249,7 +250,9 @@ test.describe('the wheel over a list of the card', () => {
     await openCard(context, page, background, { page: 'dashboard-card-view', settings: {} });
     const list = listOf(page);
     await expect(list.locator('[data-row-key]').first()).toBeVisible();
-    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight + 200)).toBe(true);
+    await expect
+      .poll(() => list.evaluate((el) => el.scrollHeight > el.clientHeight + 200))
+      .toBe(true);
 
     // At the end of the list, with a page that could scroll down.
     await scrollToEnd(list);
@@ -259,7 +262,7 @@ test.describe('the wheel over a list of the card', () => {
     expect(seen.pull).toBeGreaterThan(8);
     expect(seen.pull).toBeLessThanOrEqual(28);
     expectOnlyRowsMoved(seen);
-    expect(await pageY(page)).toBe(0);
+    await expect.poll(() => pageY(page)).toBe(0);
 
     // At the top of the list, with a page that could scroll up.
     await scrollPage(page, 300);
@@ -271,7 +274,7 @@ test.describe('the wheel over a list of the card', () => {
     seen = await samples;
     expect(seen.pull).toBeGreaterThan(8);
     expectOnlyRowsMoved(seen);
-    expect(await pageY(page)).toBe(300);
+    await expect.poll(() => pageY(page)).toBe(300);
   });
 
   test('leaves no pull behind on either list when the view changes between two wheel turns', async ({
@@ -294,7 +297,7 @@ test.describe('the wheel over a list of the card', () => {
         if (index > 0) section.style.display = 'none';
       });
     });
-    expect(await days.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+    await expect.poll(() => days.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
     await scrollPage(page, 'end');
     const parts = ['todo', 'no_due_date'].map((kind) =>
       card.locator(`.wr-pinned [data-group="${kind}"] input`),
@@ -305,10 +308,10 @@ test.describe('the wheel over a list of the card', () => {
     await aim(page, days);
     await parts[0]!.focus();
     await page.mouse.wheel(0, 100);
-    await page.waitForTimeout(30);
+    await expect(days).toHaveClass(/wr-pulling/);
     await page.keyboard.press('ArrowRight');
     await page.mouse.wheel(0, 100);
-    await page.waitForTimeout(30);
+    await expect(group).toHaveClass(/wr-pulling/);
     await page.keyboard.press('ArrowLeft');
     await expect(days).toBeVisible();
 
@@ -337,7 +340,7 @@ test.describe('the wheel over a list of the card', () => {
     await wheel(page, list, 100);
     await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
     expect((await samples).pull).toBe(0);
-    expect(await pageY(page)).toBe(0);
+    await expect.poll(() => pageY(page)).toBe(0);
   });
 
   test('makes no pull when the student asks for less motion, and still keeps the page still', async ({
@@ -353,7 +356,7 @@ test.describe('the wheel over a list of the card', () => {
     const samples = sample(page, SETTLE_MS);
     await wheel(page, list, 100);
     expect((await samples).pull).toBe(0);
-    expect(await pageY(page)).toBe(0);
+    await expect.poll(() => pageY(page)).toBe(0);
   });
 
   test('scrolls a card that scrolls as a whole before it pulls', async ({
@@ -370,7 +373,9 @@ test.describe('the wheel over a list of the card', () => {
     const list = listOf(page);
     const card = inpageList(page).locator('.wr');
     await expect(list.locator('[data-row-key]').first()).toBeVisible();
-    expect(await card.evaluate((el) => el.scrollHeight > el.clientHeight + 20)).toBe(true);
+    await expect
+      .poll(() => card.evaluate((el) => el.scrollHeight > el.clientHeight + 20))
+      .toBe(true);
     await scrollToEnd(list);
     // The list is at its end: the card scrolls first, and the rows stay.
     await expect(async () => {
@@ -380,7 +385,7 @@ test.describe('the wheel over a list of the card', () => {
       await expect.poll(() => card.evaluate((el) => el.scrollTop)).toBeGreaterThan(20);
       expect((await samples).pull).toBe(0);
     }).toPass();
-    expect(await pageY(page)).toBe(0);
+    await expect.poll(() => pageY(page)).toBe(0);
     // The card is at its end too: now the rows pull, and the page stays still.
     await card.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
@@ -394,6 +399,6 @@ test.describe('the wheel over a list of the card', () => {
       await wheel(page, list, 100);
       expect((await samples).pull).toBeGreaterThan(8);
     }).toPass();
-    expect(await pageY(page)).toBe(0);
+    await expect.poll(() => pageY(page)).toBe(0);
   });
 });
