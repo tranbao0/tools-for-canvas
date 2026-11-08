@@ -500,7 +500,7 @@ test('Preview opens the pane, shows the frame of another row, and closes the pan
 
   const frame = await openPane(page, 'Essay');
   await expect(frame.locator('#mode')).toHaveText('slim');
-  expect(await paddingRight(page)).toBeGreaterThan(0);
+  await expect.poll(() => paddingRight(page)).toBeGreaterThan(0);
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   await expect(rowOf(page, '101')).toHaveAttribute('data-av-open', '');
   // The first read of the assignment is the baseline of the later reads.
@@ -526,14 +526,16 @@ test('Preview opens the pane, shows the frame of another row, and closes the pan
   expect(page.frames()).toContain(frame);
   expect(framePath(frame)).toBe(ASSIGNMENT);
   expect(framePath(reading)).toBe('/courses/12/assignments/102');
-  expect(await paddingRight(page)).toBe((await page.locator(PANE_HOST).boundingBox())!.width);
+  await expect
+    .poll(() => paddingRight(page))
+    .toBe((await page.locator(PANE_HOST).boundingBox())!.width);
 
   // A click on the open row closes the pane and removes every frame.
   await preview(page, 'Reading').click();
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
   await expect.poll(() => paneFrames(page).length).toBe(0);
 });
 
@@ -821,7 +823,7 @@ test('the pane is a card with a gap, and its header has a title, a second line a
   expect(header.cardStyle.shadow).not.toBe('none');
   expect(header.cardStyle.overflow).toBe('hidden');
   // The room of the page is the width of the card and the gap.
-  expect(await paddingRight(page)).toBe(header.host.width);
+  await expect.poll(() => paddingRight(page)).toBe(header.host.width);
   expect(header.host.width).toBe(header.card.width + 12);
   // The header: padding 16 16 14 32, and a bold 18 px title with an ellipsis. The card has a 1 px border.
   expect(header.barPadding).toBe('16px 16px 14px 32px');
@@ -862,11 +864,13 @@ test('the pane is a card with a gap, and its header has a title, a second line a
   expect(header.frame.height).toBe(header.wrapper.height - 20);
   // The pane never reads the DOM of the frame, so the frame content is what Canvas drew.
   await expect(frame.locator('h1')).toHaveText('Essay');
-  expect(await headerOf(frame)).toEqual({
-    title: 'Essay',
-    href: ASSIGNMENT,
-    frameTitle: 'Assignment Essay',
-  });
+  await expect
+    .poll(() => headerOf(frame))
+    .toEqual({
+      title: 'Essay',
+      href: ASSIGNMENT,
+      frameTitle: 'Assignment Essay',
+    });
   await page.evaluate(() => window.scrollTo(0, 0));
   for (const theme of ['light', 'dark'] as const) {
     await saveSetting(background, { theme });
@@ -994,7 +998,7 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
   });
   // The page padding does not change, so the page behind does not move.
   expect(full.padding).toBe(before.padding);
-  expect(await listBox()).toEqual(pageBefore);
+  await expect.poll(() => listBox()).toEqual(pageBefore);
   // The pane covers the page, and the row keeps its state.
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   await expect(rowOf(page, '101')).toHaveAttribute('data-av-open', '');
@@ -1004,7 +1008,7 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
     'same document',
   );
   await expect(frame.locator('#marker')).toHaveValue('a draft that stays');
-  expect(await frame.evaluate(() => window.scrollY)).toBe(240);
+  await expect.poll(() => frame.evaluate(() => window.scrollY)).toBe(240);
   expect(await frame.evaluate(() => window.innerWidth)).toBeGreaterThan(1100);
 
   await toggleFullView(page);
@@ -1014,13 +1018,13 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
   expect(after.card).toEqual(before.card);
   expect(after.padding).toBe(before.padding);
   expect(after.button).toMatchObject({ text: 'Full view', focused: true, handleShown: true });
-  expect(await listBox()).toEqual(pageBefore);
+  await expect.poll(() => listBox()).toEqual(pageBefore);
   expect(await paneFrame(page)).toBe(frame);
   expect(await frame.evaluate(() => (window as unknown as { __kept: string }).__kept)).toBe(
     'same document',
   );
   await expect(frame.locator('#marker')).toHaveValue('a draft that stays');
-  expect(await frame.evaluate(() => window.scrollY)).toBe(240);
+  await expect.poll(() => frame.evaluate(() => window.scrollY)).toBe(240);
 });
 
 test('screenshots of the pane and of its full view at 1400 by 930, in light and dark', async ({
@@ -1064,11 +1068,11 @@ test('Escape leaves full view first, and a second Escape does what it did before
       target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
   await pageQuiet(page);
-  expect((await geometry(page)).button.pressed).toBe('true');
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
   // The focus is on the button, and a real Escape leaves full view.
   await page.keyboard.press('Escape');
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
-  expect((await geometry(page)).host.width).toBeLessThan(1000);
+  await expect.poll(async () => (await geometry(page)).host.width).toBeLessThan(1000);
   // The second Escape leaves the pane open, as it did before.
   await page.keyboard.press('Escape');
   await pageQuiet(page);
@@ -1089,7 +1093,7 @@ test('the close button closes the pane in full view and leaves full view', async
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
   await closeAssignment(page);
   await expect(page.locator(PANE_HOST)).toBeHidden();
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
   // The next pane starts in its place, not in full view.
   await openPane(page, 'Reading');
   const next = await geometry(page);
@@ -1116,7 +1120,7 @@ test('a file that opens over a full view pane shows in full view, and closing it
   await expect(filePane.getByRole('button', { name: 'Exit full view' })).toBeVisible();
   const box = (await page.locator(FILE_PANE).boundingBox())!;
   expect(box).toMatchObject({ x: 0, y: 0, width: 1400, height: 930 });
-  expect(await paddingRight(page)).toBe(padding);
+  await expect.poll(() => paddingRight(page)).toBe(padding);
   await closePane(page);
   await expect(page.locator(FILE_PANE)).toHaveCount(0);
   await expect(page.locator(PANE_HOST)).toBeVisible();
@@ -1147,8 +1151,8 @@ test('a narrow window has no Full view button, and the pane covers the page as b
   // The window is wide again: the pane is still in full view, as the student left it.
   await page.setViewportSize({ width: 1400, height: 930 });
   await expect.poll(async () => (await geometry(page)).button.hidden).toBe(false);
-  expect((await geometry(page)).button.pressed).toBe('true');
-  expect((await geometry(page)).host.width).toBe(1400);
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
+  await expect.poll(async () => (await geometry(page)).host.width).toBe(1400);
 });
 
 test('the pane is the region Assignment, and a Canvas frame cannot reach the root of the file pane', async ({
@@ -1198,7 +1202,7 @@ test('Escape in the frame, a synthetic Escape and a stray Escape leave the pane 
   await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect(frame.locator('#marker')).toHaveValue('half a draft');
-  expect(await paddingRight(page)).toBeGreaterThan(0);
+  await expect.poll(() => paddingRight(page)).toBeGreaterThan(0);
 });
 
 test('Escape on the page leaves a file pane open, and Escape inside it closes it', async ({
@@ -1417,11 +1421,11 @@ test('the pane works with the File viewer switch off', async ({ context, page, b
   await ready(page, canvas);
   const frame = await openPane(page, 'Essay');
   await expect(frame.locator('#mode')).toHaveText('slim');
-  expect(await paddingRight(page)).toBeGreaterThan(0);
+  await expect.poll(() => paddingRight(page)).toBeGreaterThan(0);
   await expect(page.locator(FILE_PANE)).toHaveCount(0);
   await closeAssignment(page);
   await expect(page.locator(PANE_HOST)).toBeHidden();
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
 });
 
 test('the close button of the pane hides it and gives the padding back', async ({
@@ -1441,7 +1445,7 @@ test('the close button of the pane hides it and gives the padding back', async (
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await closeAssignment(page);
   await expect(page.locator(PANE_HOST)).toBeHidden();
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
 });
 
 test('the switch removes the buttons and the marks at once, keeps an open pane, and brings them back', async ({
@@ -1458,7 +1462,7 @@ test('the switch removes the buttons and the marks at once, keeps an open pane, 
   await expect(page.locator('style#av-styles')).toHaveCount(0);
   // The host of the open pane is the one node of the view that stays.
   await expect(page.locator('[data-av-own]')).toHaveCount(1);
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   // The open pane stays, with its unsent work, by the rule of the pane.
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect(frame.locator('#marker')).toHaveValue('unsent words');
@@ -1475,7 +1479,7 @@ test('with the switch off, the Assignments list has no controls', async ({
 }) => {
   await open(context, page, background, { switchOff: true });
   await expect(page.locator('#assignment_101')).toBeVisible();
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   await expect(page.locator('[data-av-preview], [data-av-own]')).toHaveCount(0);
   await page.locator('a.ig-title').first().click();
   await expect(page).toHaveURL(/\/courses\/12\/assignments\/101$/);
@@ -1499,7 +1503,7 @@ test('the Grades list and the assignment page get no buttons', async ({
   for (const route of ['/courses/12/grades', '/courses/12/assignments/101']) {
     await page.goto(`${served.canvas.origin}${route}`);
     await expect(page.locator('main')).toBeVisible();
-    await page.waitForTimeout(500);
+    await pageQuiet(page);
     await expect(page.locator('[data-av-preview]')).toHaveCount(0);
   }
 });
@@ -1689,7 +1693,7 @@ test('the pane and every frame go when another student signs in', async ({
   await panel.close();
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
   expect(paneFrames(page)).toHaveLength(0);
   // The next student starts with no frame: a Preview click makes a new one.
   await preview(page, 'Essay').click();
@@ -1736,22 +1740,22 @@ test('Preview on another row asks no leave question and keeps the draft, and goi
   await preview(page, 'Reading').click();
   const reading = await paneFrame(page, '/courses/12/assignments/102');
   await expect(reading.locator('#mode')).toHaveText('reading');
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   expect(questions).toEqual([]);
   // The first frame is the one from before, on its page, with the typed words, and it is hidden.
   expect(page.frames()).toContain(essay);
   expect(framePath(essay)).toBe(ASSIGNMENT);
   await expect(essay.locator('#marker')).toHaveValue('half a draft');
-  expect(await shows(essay)).toBe(false);
-  expect(await shows(reading)).toBe(true);
-  expect(await headerOf(reading)).toEqual(ReadingHeader);
+  await expect.poll(() => shows(essay)).toBe(false);
+  await expect.poll(() => shows(reading)).toBe(true);
+  await expect.poll(() => headerOf(reading)).toEqual(ReadingHeader);
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
   // Going back shows the first frame as it was.
   await preview(page, 'Essay').click();
   await expect.poll(() => shows(essay)).toBe(true);
-  expect(await shows(reading)).toBe(false);
-  expect(await headerOf(essay)).toEqual(EssayHeader);
+  await expect.poll(() => shows(reading)).toBe(false);
+  await expect.poll(() => headerOf(essay)).toEqual(EssayHeader);
   await expect(essay.locator('#marker')).toHaveValue('half a draft');
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   expect(questions).toEqual([]);
@@ -1789,8 +1793,9 @@ test('each header matches the frame that shows, in every order of Preview clicks
       })
       .toBe(true);
     const frame = frames.get(title)!;
-    expect(await headerOf(frame)).toEqual(header);
-    for (const other of paneFrames(page)) expect(await shows(other)).toBe(other === frame);
+    await expect.poll(() => headerOf(frame)).toEqual(header);
+    for (const other of paneFrames(page))
+      await expect.poll(() => shows(other)).toBe(other === frame);
     for (const row of ['Essay', 'Reading', LONG])
       await expect(preview(page, row)).toHaveAttribute('aria-pressed', String(row === title));
     await expect(page.locator('[data-av-open]')).toHaveCount(1);
@@ -1855,7 +1860,7 @@ test('the seventh Preview removes the frame that was shown longest ago', async (
   await expect(again.locator('#mode')).toHaveText('reading');
   expect(again).not.toBe(reading);
   await expect.poll(() => paneFrames(page).length).toBe(6);
-  expect(await shows(again)).toBe(true);
+  await expect.poll(() => shows(again)).toBe(true);
 });
 
 for (const [name, link, wanted] of [
@@ -1873,8 +1878,8 @@ for (const [name, link, wanted] of [
     const frame = await openPane(page, 'Essay');
     await frame.locator(link).click();
     await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(wanted);
-    await page.waitForTimeout(500);
-    expect(await headerOf(frame)).toEqual(EssayHeader);
+    await expect.poll(() => headerOf(frame)).toEqual(EssayHeader);
+    await expect.poll(() => headerOf(frame)).toEqual(EssayHeader);
     await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
     // A Preview click on another row leaves that frame on its page, and the click back shows it.
     await preview(page, 'Reading').click();
@@ -1882,7 +1887,7 @@ for (const [name, link, wanted] of [
     expect(framePath(frame)).toBe(wanted);
     await preview(page, 'Essay').click();
     await expect.poll(() => shows(frame)).toBe(true);
-    expect(await headerOf(frame)).toEqual(EssayHeader);
+    await expect.poll(() => headerOf(frame)).toEqual(EssayHeader);
   });
 }
 
@@ -1926,8 +1931,8 @@ for (const [name, title, extra, header] of [
       })
       .toBe(true);
     const frame = paneFrames(page).find((candidate) => framePath(candidate) === wanted)!;
-    await page.waitForTimeout(500);
-    expect(await headerOf(frame)).toEqual(header);
+    await expect.poll(() => headerOf(frame)).toEqual(header);
+    await expect.poll(() => headerOf(frame)).toEqual(header);
     await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'false');
     expect(questions).toEqual([]);
     await expect(essay.locator('#marker')).toHaveValue('half a draft');
@@ -1949,11 +1954,11 @@ test('a Preview click on the graded discussion that another frame shows keeps bo
   await expect.poll(() => paneFrames(page).length).toBe(2);
   const graded = paneFrames(page).find((frame) => frame !== essay)!;
   await expect.poll(() => framePath(graded), { timeout: 15_000 }).toBe(DISCUSSION);
-  expect(await headerOf(graded)).toEqual(LongHeader);
-  expect(await shows(essay)).toBe(false);
+  await expect.poll(() => headerOf(graded)).toEqual(LongHeader);
+  await expect.poll(() => shows(essay)).toBe(false);
   await preview(page, 'Essay').click();
   await expect.poll(() => shows(essay)).toBe(true);
-  expect(await headerOf(essay)).toEqual(EssayHeader);
+  await expect.poll(() => headerOf(essay)).toEqual(EssayHeader);
 });
 
 test('closing the pane removes every frame and the draft, and the next Preview starts fresh', async ({
@@ -1984,7 +1989,7 @@ test('closing the pane removes every frame and the draft, and the next Preview s
   });
   await closeAssignment(page);
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
   await expect(page.locator('[data-av-open]')).toHaveCount(0);
   await expect.poll(() => paneFrames(page).length).toBe(0);
   expect(page.frames()).not.toContain(essay);
@@ -2005,7 +2010,7 @@ test('closing the pane removes every frame and the draft, and the next Preview s
   const again = await paneFrame(page, ASSIGNMENT);
   expect(again).not.toBe(essay);
   await expect(again.locator('#marker')).toHaveValue('');
-  expect(await again.evaluate(() => window.scrollY)).toBe(0);
+  await expect.poll(() => again.evaluate(() => window.scrollY)).toBe(0);
   expect(paneFrames(page)).toHaveLength(1);
   await expect(preview(page, 'Essay')).toHaveAttribute('aria-pressed', 'true');
   // Closing asks nothing, although the first draft was never sent.
@@ -2023,7 +2028,7 @@ test('one Preview makes one read of the assignment', async ({ context, page, bac
   await expect(frame.locator('#mode')).toHaveText('slim');
   await expect.poll(reads).toBe(before + 1);
   // A load of the frame would add a read within a moment, and the poll waits 20 seconds.
-  await page.waitForTimeout(2000);
+  await requestsQuiet(page, canvas.requests, background);
   expect(reads()).toBe(before + 1);
 });
 
@@ -2125,8 +2130,8 @@ test('with two frames, every order of a file pane keeps the page padding and the
   await closePane(page);
   await expectPadding(page, PANE_HOST);
   await expect(preview(page, 'Reading')).toHaveAttribute('aria-pressed', 'true');
-  expect(await shows(reading)).toBe(true);
-  expect(await shows(essay)).toBe(false);
+  await expect.poll(() => shows(reading)).toBe(true);
+  await expect.poll(() => shows(essay)).toBe(false);
 
   // 1b. A frame that was hidden and shows again has the file catcher too.
   await preview(page, 'Essay').click();
@@ -2255,13 +2260,13 @@ test('the wrapper of the frame has wide room at the sides in full view only', as
       return getComputedStyle(root.querySelector('.frame')!).padding;
     });
   };
-  expect(await padding()).toBe('20px 16px 0px 32px');
+  await expect.poll(() => padding()).toBe('20px 16px 0px 32px');
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
-  expect(await padding()).toBe('24px 96px 0px');
+  await expect.poll(() => padding()).toBe('24px 96px 0px');
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
-  expect(await padding()).toBe('20px 16px 0px 32px');
+  await expect.poll(() => padding()).toBe('20px 16px 0px 32px');
 });
 
 test('the close button of the pane over a hidden file pane leaves full view, and the file pane comes back in its place', async ({
@@ -2292,7 +2297,7 @@ test('the close button of the pane over a hidden file pane leaves full view, and
   // A new pane starts out of full view too.
   await closePane(page);
   await openPane(page, 'Reading');
-  expect((await geometry(page)).button.pressed).toBe('false');
+  await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
 });
 
 test('Escape with the focus in the frame leaves full view, and only a real Escape in full view does', async ({
@@ -2308,7 +2313,7 @@ test('Escape with the focus in the frame leaves full view, and only a real Escap
   // Not in full view, Escape in the frame does nothing.
   await frame.locator('#marker').focus();
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(200);
+  await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await toggleFullView(page);
   await expect.poll(pressed).toBe('true');
@@ -2319,7 +2324,7 @@ test('Escape with the focus in the frame leaves full view, and only a real Escap
       target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
   await frame.locator('#marker').press('Enter');
-  await page.waitForTimeout(200);
+  await pageQuiet(page);
   expect(await pressed()).toBe('true');
   await frame.locator('#marker').focus();
   await page.keyboard.press('Escape');
@@ -2328,7 +2333,7 @@ test('Escape with the focus in the frame leaves full view, and only a real Escap
   expect(await paneFrame(page)).toBe(frame);
   await expect(frame.locator('#marker')).toHaveValue('words in the frame');
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(200);
+  await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toBeVisible();
 
   // A new page in the frame gets the listener too.
@@ -2383,7 +2388,7 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   // the echo.
   const saved = async (width: number) => {
     await expect.poll(async () => (await storedTools(background))['fileViewerWidth']).toBe(width);
-    await page.waitForTimeout(400);
+    await expect.poll(async () => (await hostBox()).width).toBe(width + 12);
   };
   const start = await hostBox();
   expect(start.width).toBe(DEFAULT_TOOLS_SETTINGS.fileViewerWidth + 12);
@@ -2395,9 +2400,9 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   await page.mouse.move(900, start.y + start.height / 2, { steps: 4 });
   await page.mouse.up();
   await saved(688);
-  expect((await hostBox()).width).toBe(700);
-  expect(await paddingRight(page)).toBe(700);
-  expect((await geometry(page)).card.width).toBe(688);
+  await expect.poll(async () => (await hostBox()).width).toBe(700);
+  await expect.poll(() => paddingRight(page)).toBe(700);
+  await expect.poll(async () => (await geometry(page)).card.width).toBe(688);
 
   // The arrow keys move the edge by 20 px, with the focus on the handle.
   const dragged = await hostBox();
@@ -2405,13 +2410,13 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   await saved(688);
   await page.keyboard.press('ArrowLeft');
   await saved(708);
-  expect((await hostBox()).width).toBe(720);
+  await expect.poll(async () => (await hostBox()).width).toBe(720);
   await page.keyboard.press('ArrowRight');
   await saved(688);
   await page.keyboard.press('ArrowRight');
   await saved(668);
-  expect((await hostBox()).width).toBe(680);
-  expect(await paddingRight(page)).toBe(680);
+  await expect.poll(async () => (await hostBox()).width).toBe(680);
+  await expect.poll(() => paddingRight(page)).toBe(680);
 
   // The card never gets narrower than 360 px.
   const narrow = await hostBox();
@@ -2420,16 +2425,16 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   await page.mouse.move(1590, narrow.y + narrow.height / 2, { steps: 4 });
   await page.mouse.up();
   await saved(360);
-  expect((await hostBox()).width).toBe(372);
+  await expect.poll(async () => (await hostBox()).width).toBe(372);
 
   // Full view has no handle, and leaving it gives the handle back.
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('true');
-  expect((await geometry(page)).button.handleShown).toBe(false);
+  await expect.poll(async () => (await geometry(page)).button.handleShown).toBe(false);
   await toggleFullView(page);
   await expect.poll(async () => (await geometry(page)).button.pressed).toBe('false');
-  expect((await geometry(page)).button.handleShown).toBe(true);
-  expect((await hostBox()).width).toBe(372);
+  await expect.poll(async () => (await geometry(page)).button.handleShown).toBe(true);
+  await expect.poll(async () => (await hostBox()).width).toBe(372);
 });
 
 test.describe('with the scroll bars of the page', () => {
@@ -2587,6 +2592,23 @@ test('identity verdict: a missing reply covers the pane within six seconds', asy
   await expect(frame.locator('#marker')).toHaveValue('Keep this unsent draft');
 });
 
+/** Counts completed identity checks after the observer starts. */
+async function watchIdentityChecks(page: Page) {
+  const world = await contentScriptWorld(page);
+  await world.evaluate(`(() => {
+    const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+    const send = runtime.sendMessage.bind(runtime);
+    globalThis.__completedIdentityChecks = 0;
+    runtime.sendMessage = async (message) => {
+      try { return await send(message); }
+      finally {
+        if (message.type === 'viewer:pane-check') globalThis.__completedIdentityChecks++;
+      }
+    };
+  })()`);
+  return () => world.evaluate('globalThis.__completedIdentityChecks') as Promise<number>;
+}
+
 test('identity verdict: Preview in another store stays open', async ({
   context,
   page,
@@ -2596,8 +2618,9 @@ test('identity verdict: Preview in another store stays open', async ({
   await ready(page, canvas);
   await moveTabsToAnotherStore(background);
   const frame = await openPane(page, 'Essay');
+  const identityChecks = await watchIdentityChecks(page);
   await frame.locator('#marker').fill('Container draft');
-  await page.waitForTimeout(6500);
+  await expect.poll(identityChecks).toBeGreaterThanOrEqual(6);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect(frame.locator('#marker')).toHaveValue('Container draft');
 });
@@ -2657,7 +2680,7 @@ test('identity cover: Retry resumes a draft after a failed check', async ({
     { name: 'canvas_session', value: 'retry-cookie', url: canvas.origin, secure: true },
   ]);
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
-  await page.waitForTimeout(1000);
+  await requestsQuiet(page, canvas.requests, background);
   await background.evaluate(() =>
     (globalThis as unknown as { restoreFetch(): void }).restoreFetch(),
   );
@@ -2711,7 +2734,13 @@ test('identity cover: keys leave the frame and cannot submit its form', async ({
   expect(state.submitted).toBe(false);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await page.keyboard.press('Tab');
-  await page.waitForTimeout(1200);
+  await expect
+    .poll(() =>
+      frame.evaluate(
+        () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.textContent,
+      ),
+    )
+    .toBe('Close');
   expect(
     await frame.evaluate(
       () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.textContent,
@@ -2786,13 +2815,13 @@ test('a second injection retires the old assignment view through later page chan
     )!;
     await api.scripting.executeScript({ target: { tabId: tab.id }, files: ['assignment-view.js'] });
   });
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   await page.evaluate(() => {
     const list = document.querySelector('.assignment-list') ?? document.querySelector('#content')!;
     list.innerHTML = list.innerHTML.replace(/<button[^>]*data-av-preview[^]*?<\/button>/g, '');
   });
   await expect(page.locator('[data-av-preview]')).toHaveCount(3);
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   await expect(page.locator('[data-av-preview]')).toHaveCount(3);
   await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   await expect(page.locator('[data-av-preview]')).toHaveCount(0);
@@ -2808,6 +2837,7 @@ test('identity verdict: a late idle tick never flashes the cover', async ({
   await openPane(page, 'Essay');
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
   const world = await contentScriptWorld(page);
+  const identityChecks = await watchIdentityChecks(page);
   await world.evaluate(`(() => {
     globalThis.__lateCovers = 0;
     const host = document.querySelector('#tools-turn-in');
@@ -2817,7 +2847,8 @@ test('identity verdict: a late idle tick never flashes the cover', async ({
     const now = Date.now;
     Date.now = () => now() + 60000;
   })()`);
-  await page.waitForTimeout(2200);
+  await expect.poll(identityChecks).toBeGreaterThanOrEqual(2);
+  await pageQuiet(page);
   expect(await world.evaluate('globalThis.__lateCovers')).toBe(0);
 });
 
@@ -2830,6 +2861,7 @@ test('identity verdict: losing site access preserves the frame and draft', async
   await ready(page, canvas);
   const frame = await openPane(page, 'Essay');
   await frame.locator('#marker').fill('Keep this draft');
+  const identityChecks = await watchIdentityChecks(page);
   await background.evaluate(() => {
     const api = (
       globalThis as unknown as {
@@ -2843,7 +2875,8 @@ test('identity verdict: losing site access preserves the frame and draft', async
     api.permissions.contains = async () => false;
   });
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
-  await page.waitForTimeout(2200);
+  await expect.poll(identityChecks).toBeGreaterThanOrEqual(2);
+  await pageQuiet(page);
   await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
   expect(frame.isDetached()).toBe(false);
 });
