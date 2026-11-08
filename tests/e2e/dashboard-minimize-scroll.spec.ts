@@ -181,3 +181,26 @@ test('a slot card keeps the page where it is after a background minimize', async
   await frames(page, 10);
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
 });
+
+test('a slot card saved minimized comes into view when the student expands it', async ({
+  context,
+  page,
+  background,
+}) => {
+  await saveSettings(background, { ...DEFAULT_SETTINGS, minimized: true });
+  const { canvas } = await serveScenario(context, [{ path: '/', page: 'dashboard-widgets' }]);
+  await addCsrfCookie(context, canvas.origin);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openCanvasPage(page, canvas.origin, '/');
+  await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot');
+  const bar = inpageList(page).getByRole('button', { name: /^Weekly list/ });
+  await expect(bar).toBeVisible();
+  await grow(page);
+  await page.evaluate(() => window.scrollTo(0, 3000));
+  await frames(page, 6);
+  await expect(bar).not.toBeInViewport();
+  // A key press, unlike a click, does not scroll the bar into view first.
+  await bar.evaluate((button) => (button as HTMLElement).focus({ preventScroll: true }));
+  await page.keyboard.press('Enter');
+  await expect(inpageList(page).getByRole('button', { name: 'Minimize list' })).toBeInViewport();
+});

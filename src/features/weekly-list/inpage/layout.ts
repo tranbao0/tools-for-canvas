@@ -179,6 +179,8 @@ export function claimDashboardLayout(
       attributes: true,
       attributeFilter: ['data-minimized'],
     });
+    // A card can already be minimized when the observing starts, for example a saved state.
+    minimizedSeen = isMinimized();
   }
 
   function restoreScroll(): void {
