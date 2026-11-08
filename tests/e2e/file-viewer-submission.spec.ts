@@ -1,4 +1,5 @@
-import { pageQuiet, requestsQuiet } from './support/settle';
+import { contentScriptWorld } from './support/content-script';
+import { requestsQuiet } from './support/settle';
 import { readFileSync } from 'node:fs';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
@@ -299,7 +300,8 @@ test('a click in the frame downloads the file after the File viewer switch goes 
     ).chrome;
     await api.storage.local.set({ toolsSettings: { fileViewer: false } });
   });
-  await pageQuiet(page);
+  const world = await contentScriptWorld(page);
+  await expect.poll(() => world.evaluate('typeof globalThis.__weekrowViewer')).toBe('undefined');
   const saved = page.waitForEvent('download');
   await link.click();
   await saved;
