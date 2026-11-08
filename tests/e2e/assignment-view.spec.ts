@@ -1,3 +1,4 @@
+import { pageQuiet, requestsQuiet } from './support/settle';
 import { contentScriptWorld } from './support/content-script';
 import { moveTabsToAnotherStore } from './support/pane-identity';
 /**
@@ -494,7 +495,7 @@ test('Preview opens the pane, shows the frame of another row, and closes the pan
   await ready(page, canvas);
   // A click that a page script makes opens nothing.
   await preview(page, 'Essay').evaluate((node) => (node as HTMLButtonElement).click());
-  await page.waitForTimeout(300);
+  await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toBeHidden();
 
   const frame = await openPane(page, 'Essay');
@@ -592,7 +593,7 @@ test('a graded discussion loads its redirect page with content_only once', async
   await expect(
     preview(page, 'Weekly discussion with a title that is long enough to wrap in a narrow row'),
   ).toHaveAttribute('aria-pressed', 'true');
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   expect(get(DISCUSSION)).toHaveLength(1);
   expect(get(`${DISCUSSION}?content_only=1`)).toHaveLength(1);
 });
@@ -653,7 +654,7 @@ test('a row that redirects to a page of a group ends with content_only=1 in the 
   const frame = await paneFrame(page, GROUP_DISCUSSION);
   await expect(frame.locator('#mode')).toHaveText('group slim');
   expect(frame.url()).toBe(`${canvas.origin}${GROUP_DISCUSSION}?content_only=1`);
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   expect(frame.url()).toBe(`${canvas.origin}${GROUP_DISCUSSION}?content_only=1`);
 });
 
@@ -725,7 +726,7 @@ test('the quiz take page keeps its address in the pane', async ({ context, page,
   await frame.locator('#to-take').click();
   await expect.poll(() => framePath(frame), { timeout: 15_000 }).toBe(QUIZ_TAKE);
   await expect(frame.locator('#mode')).toHaveText('take');
-  await page.waitForTimeout(800);
+  await requestsQuiet(page, canvas.requests, background);
   expect(frame.url()).toBe(`${canvas.origin}${QUIZ_TAKE}`);
   expect(canvas.requests.filter((request) => request.path.startsWith(QUIZ_TAKE))).toHaveLength(1);
 });
@@ -1062,7 +1063,7 @@ test('Escape leaves full view first, and a second Escape does what it did before
     for (const target of [window, document, document.querySelector('#tools-turn-in')])
       target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
-  await page.waitForTimeout(200);
+  await pageQuiet(page);
   expect((await geometry(page)).button.pressed).toBe('true');
   // The focus is on the button, and a real Escape leaves full view.
   await page.keyboard.press('Escape');
@@ -1070,7 +1071,7 @@ test('Escape leaves full view first, and a second Escape does what it did before
   expect((await geometry(page)).host.width).toBeLessThan(1000);
   // The second Escape leaves the pane open, as it did before.
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
+  await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   expect(await paneFrame(page)).toBe(frame);
 });
@@ -1194,7 +1195,7 @@ test('Escape in the frame, a synthetic Escape and a stray Escape leave the pane 
     ])
       target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
-  await page.waitForTimeout(300);
+  await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect(frame.locator('#marker')).toHaveValue('half a draft');
   expect(await paddingRight(page)).toBeGreaterThan(0);
@@ -1221,7 +1222,7 @@ test('Escape on the page leaves a file pane open, and Escape inside it closes it
     ])
       target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
-  await page.waitForTimeout(300);
+  await pageQuiet(page);
   await expect(page.locator(FILE_PANE)).toBeVisible();
   // The stored tabs are still there, so a new page brings the pane back.
   await page.reload();
@@ -1305,7 +1306,7 @@ test('the file catcher stays out of the pane while the File viewer switch is off
   await ready(page, canvas);
   const frame = await openPane(page, 'Essay');
   await expect(frame.locator('#mode')).toHaveText('slim');
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   await frame.locator('#file-plain').click();
   await expect.poll(() => framePath(frame)).toBe('/courses/12/files/501');
   await expect(page.locator(FILE_PANE)).toHaveCount(0);
@@ -1436,7 +1437,7 @@ test('the close button of the pane hides it and gives the padding back', async (
     const root = window.frameElement!.getRootNode() as ShadowRoot;
     (root.querySelector('.icon-btn') as HTMLButtonElement).click();
   });
-  await page.waitForTimeout(300);
+  await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await closeAssignment(page);
   await expect(page.locator(PANE_HOST)).toBeHidden();
