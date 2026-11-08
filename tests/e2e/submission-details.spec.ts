@@ -2732,18 +2732,23 @@ test('a mode change keeps the keyboard focus on "Go to assignment"', async ({
   page,
   background,
 }) => {
-  // The report status shows 2.5 s after the load, so the view goes from the replace mode to the
-  // mode that keeps Canvas's frame, while the focus is on the link.
+  // The report status shows when the test asks for it, so the view goes from the replace mode to
+  // the mode that keeps Canvas's frame, while the focus is on the link.
   const preview = withScript(
     previewWithFiles('12', '101', '42', ONE_FILE),
-    "setTimeout(function(){document.querySelector('td.asset-report-status-container').innerHTML='<div><a href=\"#\">Similarity report</a></div>'},2500)",
+    "addEventListener('message',function(event){if(event.data==='show-report')document.querySelector('td.asset-report-status-container').innerHTML='<div><a href=\"#\">Similarity report</a></div>'})",
   );
   await open(context, page, background, { preview });
   const own = page.getByRole('link', { name: 'Go to assignment' });
   await expect(page.locator('#preview_frame')).toBeHidden();
   await own.focus();
   await expect(own).toBeFocused();
-  await expect(page.locator('#preview_frame')).toBeVisible({ timeout: 10_000 });
+  await page.evaluate(() =>
+    document
+      .querySelector<HTMLIFrameElement>('#preview_frame')!
+      .contentWindow!.postMessage('show-report', '*'),
+  );
+  await expect(page.locator('#preview_frame')).toBeVisible();
   await expect(own).toBeFocused();
   await expect(page.locator('a[data-av-own]')).toHaveCount(1);
 });
