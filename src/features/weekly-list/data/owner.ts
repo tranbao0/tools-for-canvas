@@ -1347,6 +1347,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     priority: RequestPriority,
     shown: boolean,
     context: ViewContext,
+    reloadDetails = false,
   ): void {
     if (chunks.length === 0) return;
     startJob(
@@ -1360,7 +1361,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         startedAt: clock.now(),
       },
       context,
-      false,
+      reloadDetails,
     );
   }
 
@@ -1451,19 +1452,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       lastFullAt !== null && own.some((part) => staleParts(coverage, part, lastFullAt).length > 0);
     const times = itemTimes(coverage);
     const chunks = stale.flatMap((part) => chunkInterval(part, times));
-    startJob(
-      {
-        all: [...chunks],
-        waiting: [...chunks],
-        undetailed: [],
-        priority: 'normal',
-        shown: true,
-        phase: 'planner',
-        startedAt: clock.now(),
-      },
-      context,
-      reloadDetails,
-    );
+    startLoad(chunks, 'normal', true, context, reloadDetails);
   }
 
   /** After a view shows: its week catches up after a round, and its neighbor weeks load ahead. */
