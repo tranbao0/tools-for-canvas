@@ -1444,7 +1444,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   An Undo of a done mark or an announcement read mark first passes the same cookie check, and it does nothing when the check fails.
   The reply of a refused Undo says `refused`, and the surface shows the Undo notice again, also beside the `cant_load` state.
   A refused Undo is `refused` only while the cache still belongs to the student of the Undo.
-  After a sign-out or a change of student nothing can be restored, so the reply is the plain one and the notice ends.
+  After a sign-out or a change of student nothing can be restored, so the reply is the plain one: the notice ends, and the "Couldn't undo that" line shows (decision 6).
   A done mark, an announcement read mark, a task create, a task update, a move to today, a task delete and the "send now" of a delayed task delete pass the same check at the tap.
   A refused tap does nothing, and the reply of a task create says that Canvas saved nothing.
   A "send now" that the check refuses leaves the delete to its timer, which sends it after a check.

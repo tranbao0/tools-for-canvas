@@ -221,7 +221,9 @@ test.describe('Ctrl+Z', () => {
     await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
     await expect(toast).toBeVisible();
 
+    // Nothing can be restored after a sign-out, so the notice ends with the failure line.
     await page.keyboard.press('Control+Z');
-    await expect(toast).toHaveCount(0);
+    await expect(toast).toContainText("Couldn't undo that");
+    await expect(toast.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
   });
 });
