@@ -62,7 +62,13 @@ try {
   const canvasTab = await driver.getWindowHandle();
   await driver.switchTo().newWindow('tab');
   await driver.get(`moz-extension://${UUID}/file-check.html`);
-  await driver.findElement(By.xpath('//button[normalize-space()="Run check"]')).click();
+  const runCheck = await driver.wait(
+    async () =>
+      (await driver.findElements(By.xpath('//button[normalize-space()="Run check"]')))[0] ?? false,
+    10_000,
+    'The file check button did not render',
+  );
+  await runCheck.click();
   await driver.wait(
     async () => (await driver.findElements(By.css('[data-part="report"]'))).length > 0,
     20_000,
