@@ -1541,6 +1541,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   A new profile id drops all cached data.
   The cached work of a course that left is dropped, but assignment details and planner items stay.
   A failed reload keeps the old session data unless Canvas refuses access or the user changes.
+  With no course in the old data, the reload is all that the round does, so its failure fails the round, and the surface shows "Couldn't load your list" with Retry.
 
 - A "Canvas page loaded" message from the content script, or a window that gains focus, refreshes the planner items of the current-week range only.
   This covers sign-in, submissions and done marks made in Canvas itself.
@@ -1679,7 +1680,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | No access | `permissions.contains` is false | An "Allow access" button |
 | Signed out | Any 401, then `GET /api/v1/users/self` returns 401 | An "Open Canvas to sign in" button and the saved address |
 | Planner turned off | `users/self` returns 200, and the planner returns 403 with JSON `status` `unauthorized` | The same list and chips, built from the "All assignments" request and the override list. One line says: "Your school limits the Canvas planner. Pages, ungraded discussions, ungraded quizzes, peer reviews, discussions with reply due dates and your own tasks can't show." The add-task button is disabled, with that reason. |
-| No active courses | The courses list is empty | "No active courses" and a Retry button |
+| No active courses | The courses list is empty | "No active courses" and a Retry button. After a failed refresh: "Couldn't load your list" and a Retry button |
 | Nothing due | The span has no items | "Nothing due in these 7 days" |
 | Can't refresh | HTTP 429, 403 with "Rate Limit Exceeded", HTTP 5xx, or a network error | The last data, with one line: "Couldn't refresh. Showing your list from 3:05 pm." and a Retry button. On a network error while the browser reports no connection, the line also says "You're offline." |
 

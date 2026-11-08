@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sessionCacheItem } from './cache';
 import { commitUpdate } from './rounds';
-import { IDS } from '../../../../tests/fixtures/scenario';
+import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import { canvasError, type FakeMethod } from './testing/fakeCanvas';
 import {
   advance,
   createHarness,
   loadReady,
+  PANEL,
   settleAll,
   signInOtherUser,
   useScenarioClock,
@@ -233,5 +234,27 @@ describe('a clock that went back', () => {
     await h.owner.refresh('visible');
     await h.owner.settled();
     expect(h.canvas.callsOf('listCourses').length).toBeGreaterThan(0);
+  });
+});
+
+describe('Retry on No active courses', () => {
+  it('shows that the list could not load when the course list fails, and the courses once it loads', async () => {
+    const scenario = buildScenario(new Date(Date.now()).toISOString());
+    const courses = scenario.courses;
+    scenario.courses = [];
+    const h = await createHarness({ scenario });
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'no_courses' });
+
+    h.canvas.fail('listCourses', canvasError('server'), { times: 1 });
+    await h.owner.refresh('retry');
+    await h.owner.settled();
+    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load' });
+
+    h.canvas.scenario.courses = courses;
+    await h.owner.refresh('retry');
+    await h.owner.settled();
+    expect((await loadReady(h)).kind).toBe('ready');
   });
 });

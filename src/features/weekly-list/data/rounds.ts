@@ -406,10 +406,13 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
       if (!sameCanvasId(fresh.profile.id, session.profile.id)) throw new UserChangedError();
       session = fresh;
     } catch (error) {
+      // The old data stays only when it has courses to show. With none, the reload is all that
+      // the round does, so its failure is the failure of the round.
       if (
         error instanceof UserChangedError ||
         isCanvasError(error, 'unauthorized') ||
-        isCanvasError(error, 'refused')
+        isCanvasError(error, 'refused') ||
+        session.courses.length === 0
       )
         throw error;
     }
