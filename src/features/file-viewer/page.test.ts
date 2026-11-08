@@ -117,6 +117,68 @@ describe('the page script', () => {
     document.body.innerHTML = '';
   });
 
+  it.each([false, true])(
+    'keeps stored tabs until the pane restores them (synced: %s)',
+    async (synced) => {
+      prepare();
+      sendMessage.mockImplementation(async (message: { type: string }) =>
+        message.type === 'viewer:tabs-get' ? { ids: ['42'], active: '42' } : reply(message),
+      );
+      let root: ShadowRoot;
+      const attach = Element.prototype.attachShadow;
+      vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (
+        this: Element,
+        init,
+      ) {
+        const made = attach.call(this, init);
+        if (this.id === 'tools-file-viewer') root = made;
+        return made;
+      });
+      const postMessage = vi.fn();
+      const port = {
+        postMessage,
+        close: vi.fn(),
+        onmessage: null as ((event: { data: unknown }) => void) | null,
+      };
+      vi.stubGlobal(
+        'MessageChannel',
+        class {
+          port1 = port;
+          port2 = {};
+        },
+      );
+      try {
+        await startViewer();
+        await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+        if (synced) {
+          const frame = root!.querySelector('iframe')!;
+          Object.defineProperty(frame, 'contentWindow', { value: { postMessage: vi.fn() } });
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              source: frame.contentWindow,
+              origin: 'chrome-extension://dynamic',
+              data: { type: 'viewer-hello', extensionId: 'my-extension' },
+            }),
+          );
+          port.onmessage!({ data: { type: 'ready', secret: SECRET } });
+          await vi.waitFor(() =>
+            expect(postMessage).toHaveBeenCalledWith(
+              expect.objectContaining({ type: 'open-file' }),
+            ),
+          );
+        }
+        sendMessage.mockClear();
+        if (synced) port.onmessage!({ data: { type: 'close' } });
+        else root!.querySelector<HTMLButtonElement>('button[aria-label]')!.click();
+        const writes = sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set');
+        if (synced) expect(writes.map(([m]) => m.tabs)).toEqual([{ ids: [], active: null }]);
+        else expect(writes).toEqual([]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   it('opens nothing for a click that a script made', async () => {
     prepare();
     await startViewer();

@@ -153,6 +153,15 @@ export async function startViewer(): Promise<void> {
     const links = fileLinks(location.origin, id, courseId);
     return links?.canvas ?? links!.download;
   };
+  const removeAddedTabs = () => {
+    const ids = tabs.ids.filter((id) => !addedTabs.has(id));
+    tabs = {
+      ids,
+      active: tabs.active && ids.includes(tabs.active) ? tabs.active : (ids.at(-1) ?? null),
+    };
+    addedTabs.clear();
+    waitingFile = null;
+  };
   const connectionFailed = () => {
     failedConnection = true;
     clearTimeout(handshake);
@@ -163,13 +172,7 @@ export async function startViewer(): Promise<void> {
     port?.close();
     port = undefined;
     const address = failureAddress || (tabs.active ? canvasAddress(tabs.active) : location.origin);
-    const ids = tabs.ids.filter((id) => !addedTabs.has(id));
-    tabs = {
-      ids,
-      active: tabs.active && ids.includes(tabs.active) ? tabs.active : (ids.at(-1) ?? null),
-    };
-    addedTabs.clear();
-    waitingFile = null;
+    removeAddedTabs();
     dock?.showFailure(address);
     settleConnection?.('timeout');
     settleConnection = undefined;
@@ -244,9 +247,13 @@ export async function startViewer(): Promise<void> {
     });
   };
   const close = () => {
+    const restored = port !== undefined && synced;
+    if (!restored) removeAddedTabs();
     drop();
-    tabs = { ids: [], active: null };
-    void writeTabs(tabs);
+    if (restored) {
+      tabs = { ids: [], active: null };
+      void writeTabs(tabs).catch(() => undefined);
+    }
   };
   // The background cleared the data of a student: a sign-out, another student or a new address.
   // The pane closes, also a pane that another pane covers, and nothing of the earlier student
@@ -255,6 +262,10 @@ export async function startViewer(): Promise<void> {
   // An open that started before the reset belongs to the earlier student and ends without a pane,
   // so `generation` counts the resets.
   let generation = 0;
+  const wantsLink = (result: OpenResult | null, taken: number) =>
+    result === null ||
+    result === 'failed' ||
+    (result === 'ended' && (generation !== taken || !live));
   const reset = () => {
     generation += 1;
     showing = undefined;
@@ -584,11 +595,7 @@ export async function startViewer(): Promise<void> {
         const result = await openTarget(target, href, taken).catch(() => 'failed' as const);
         // The pane could not take the file, so the student gets the link, and never a dead click.
         // A newer click wins, because the student has moved on from this one.
-        if (
-          (result === 'failed' || (result === 'ended' && generation !== taken)) &&
-          click === clicks
-        )
-          followLink();
+        if (wantsLink(result, taken) && click === clicks) followLink();
       })().catch(() => undefined);
     },
     { capture: true, signal: lifetime.signal },
@@ -666,10 +673,10 @@ export async function startViewer(): Promise<void> {
       await starting;
       // The catcher saves the file in the usual way unless the pane has it, so the answer comes
       // after the open.
-      // The catcher clicks the link again on `false`, and only a failed open wants that.
+      // Both channels give the student the link when the pane did not handle the open.
       const result =
         live && enabled ? await openTarget({ fileId }, `/files/${fileId}`, taken) : null;
-      respond({ opened: live && result !== null && result !== 'failed' });
+      respond({ opened: !wantsLink(result, taken) });
     })().catch(() => respond({ opened: false }));
     return true;
   };

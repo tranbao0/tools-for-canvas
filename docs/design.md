@@ -3262,6 +3262,8 @@ With the pane read alone, the default run of the test failed before the fix.
      The order of the tabs is also the order of the clicks.
    - The page script tells a pane what to open once for each port (`synced`).
      The first `open-file` request makes the pane restore the stored tabs, and from then on the pane owns them.
+     A student close clears the stored tabs only after a connected pane restores them; otherwise it removes only tabs added in this page view and keeps the stored tabs and their token.
+     A frame reply uses the same link rule as a top click: a null or failed open, or an open ended by a reset or script teardown, gives the student the link.
      A copy that the page script read from the store is older than the pane, so it is never sent again.
      Otherwise it would undo what the student did in the pane since.
      A click that finishes writing the tabs after the pane has connected sends its file as a request.
