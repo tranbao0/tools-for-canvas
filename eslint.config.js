@@ -105,4 +105,18 @@ export default defineConfig([
     files: ['src/**/*.test.{ts,tsx}', 'tests/**/*.{js,mjs,ts,tsx}', 'scripts/**/*.test.mjs'],
     rules: allowNetworkRules,
   },
+  {
+    // A fixed pause is too short on a loaded machine and too long on a fast one.
+    files: ['tests/e2e/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='waitForTimeout']",
+          message:
+            'Wait for a state or an event, or use the waits in tests/e2e/support/settle.ts, not a fixed pause.',
+        },
+      ],
+    },
+  },
 ]);
