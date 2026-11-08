@@ -20,7 +20,31 @@ import { animatedGif } from '../e2e/support/gif.mjs';
 import { FIXTURE_PAGE_COUNT } from '../fixtures/pdf/fixture.ts';
 import { Builder, By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
+import { Command } from 'selenium-webdriver/lib/command.js';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
+
+// Install by path to avoid the deleted temporary XPI in Mozilla bug 2045054.
+export function installAddon(driver, directory, { allowPrivateBrowsing = false } = {}) {
+  return driver.execute(
+    new Command('install addon')
+      .setParameter('path', path.resolve(directory))
+      .setParameter('temporary', true)
+      .setParameter('allowPrivateBrowsing', allowPrivateBrowsing),
+  );
+}
+
+// Only the click that removes its own frame may end with a missing context.
+export async function clickClosingFrame(click) {
+  try {
+    await click();
+  } catch (error) {
+    if (
+      error.name !== 'NoSuchWindowError' &&
+      !/BrowsingContext does no longer exist/.test(error.message)
+    )
+      throw error;
+  }
+}
 
 /** A fixed moz-extension:// host, set through the extensions.webextensions.uuids pref. */
 const EXTENSION_UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
@@ -584,10 +608,25 @@ async function checkHostileSvg(driver) {
     throw new Error('The blob log did not record the read');
   const open = state.blobs.created.filter((url) => !state.blobs.revoked.includes(url));
   if (open.length !== 0) throw new Error(`A blob URL of the file stays open: ${open.join(' ')}`);
+  // A revoked URL must also reject a direct read.
+  try {
+    const readable = await driver.executeAsyncScript(
+      `const done = arguments[arguments.length - 1];
+       fetch(arguments[0]).then(response => response.arrayBuffer()).then(() => done(true), () => done(false));`,
+      state.blobs.created.at(-1),
+    );
+    if (readable) throw new Error('A freed blob URL is still readable');
+  } catch (error) {
+    if (!/Access to blob:.*denied/s.test(error.message)) throw error;
+  }
   // A freed URL gives nothing, not even as a page of its own.
   const before = await driver.getAllWindowHandles();
   const current = await driver.getWindowHandle();
-  await driver.executeScript('window.open(arguments[0])', state.blobs.created.at(-1));
+  try {
+    await driver.executeScript('window.open(arguments[0])', state.blobs.created.at(-1));
+  } catch (error) {
+    if (!/Access to blob:.*denied/s.test(error.message)) throw error;
+  }
   await driver.sleep(1500);
   const after = await driver.getAllWindowHandles();
   const fresh = after.find((handle) => !before.includes(handle));
@@ -759,7 +798,7 @@ async function main(prefs = {}, mode = 'release') {
   try {
     const capabilities = await driver.getCapabilities();
     console.log(`Firefox ${capabilities.get('browserVersion')} with ${geckodriverBin}`);
-    await driver.installWebExtension(extensionDir, { permanent: false });
+    await installAddon(driver, extensionDir);
     console.log(`Installed ${addonId} as a temporary add-on`);
     const welcomeUrl = `moz-extension://${EXTENSION_UUID}/${WELCOME_PAGE}`;
     await waitForTab(driver, welcomeUrl);

@@ -4,7 +4,7 @@ import { By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
 import { startFileHost } from '../e2e/support/file-host.ts';
-import { findBrowserTools, readAddonId, startFirefox } from './smoke.mjs';
+import { installAddon, findBrowserTools, readAddonId, startFirefox } from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const extension = `moz-extension://${UUID}`;
@@ -66,7 +66,7 @@ async function message(request) {
 }
 
 try {
-  await driver.installWebExtension(extensionDir, { permanent: false, allowPrivateBrowsing: true });
+  await installAddon(driver, extensionDir, { allowPrivateBrowsing: true });
   await driver.get(`${extension}/welcome.html`);
   await driver.wait(() => driver.executeScript('return typeof browser !== "undefined"'), 10_000);
   const saved = await driver.executeAsyncScript(

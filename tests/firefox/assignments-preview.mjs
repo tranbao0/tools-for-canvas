@@ -46,7 +46,14 @@ import path from 'node:path';
 import { By, Key } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
 import { DASHBOARD } from './dashboard-dock.mjs';
-import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+import {
+  installAddon,
+  clickClosingFrame,
+  findBrowserTools,
+  readAddonId,
+  startFirefox,
+  waitForTab,
+} from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const COURSE = '12';
@@ -332,7 +339,7 @@ async function checkCard(driver, origin, cardLoads) {
     async () => (await driver.findElements(By.css('[aria-label="Close file viewer"]')))[0] ?? false,
     10_000,
   );
-  await driver.actions().move({ origin: close }).click().perform();
+  await clickClosingFrame(() => driver.actions().move({ origin: close }).click().perform());
   await driver.switchTo().defaultContent();
   await waitFor(
     cardState,
@@ -532,7 +539,7 @@ async function main() {
   try {
     console.log(`Firefox ${(await driver.getCapabilities()).get('browserVersion')}`);
     await driver.manage().window().setRect({ width: 1440, height: 900 });
-    await driver.installWebExtension(extensionDir, { permanent: false });
+    await installAddon(driver, extensionDir);
     await waitForTab(driver, `moz-extension://${UUID}/welcome.html`);
     const saved = await driver.executeAsyncScript(
       `
@@ -675,7 +682,7 @@ async function main() {
         (await driver.findElements(By.css('[aria-label="Close file viewer"]')))[0] ?? false,
       10_000,
     );
-    await driver.actions().move({ origin: close }).click().perform();
+    await clickClosingFrame(() => driver.actions().move({ origin: close }).click().perform());
     await driver.switchTo().defaultContent();
     const back = await waitFor(
       () => state(driver),
@@ -913,11 +920,10 @@ async function main() {
         throw new Error(
           `The ${kind.name} file was at ${JSON.stringify(placed)} before the cover and at ${JSON.stringify(shownAgain)} after it`,
         );
-      await driver
-        .actions()
-        .move({ origin: await driver.findElement(By.css('[aria-label="Close file viewer"]')) })
-        .click()
-        .perform();
+      const closeButton = await driver.findElement(By.css('[aria-label="Close file viewer"]'));
+      await clickClosingFrame(() =>
+        driver.actions().move({ origin: closeButton }).click().perform(),
+      );
       await driver.switchTo().defaultContent();
       await waitFor(
         () => state(driver),

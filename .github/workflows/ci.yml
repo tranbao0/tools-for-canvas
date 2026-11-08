@@ -127,7 +127,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        firefox: [runner, '140.0']
+        firefox: [runner, minimum]
     steps:
       - name: Check out the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,17 +141,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Cache Firefox 140.0
-        if: matrix.firefox == '140.0'
+      - name: Read the declared minimum Firefox version
+        if: matrix.firefox == 'minimum'
+        id: minimum
+        run: |
+          npm run build:firefox
+          node -e "console.log('version=' + JSON.parse(require('fs').readFileSync('.output/firefox-mv3/manifest.json')).browser_specific_settings.gecko.strict_min_version)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the minimum Firefox version
+        if: matrix.firefox == 'minimum'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: ~/.cache/weekrow-test/firefox-140.0
-          key: firefox-140.0-${{ runner.os }}-${{ runner.arch }}
+          path: ~/.cache/weekrow-test/firefox-${{ steps.minimum.outputs.version }}
+          key: firefox-${{ steps.minimum.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
 
-      - name: Install Firefox 140.0
-        if: matrix.firefox == '140.0'
+      - name: Install the minimum Firefox version
+        if: matrix.firefox == 'minimum'
+        env:
+          WEEKROW_FIREFOX: ${{ steps.minimum.outputs.version }}
         run: |
-          install_output="$(bash tests/firefox/install-firefox.sh 140.0)"
+          install_output="$(bash tests/firefox/install-firefox.sh)"
           printf '%s\n' "$install_output"
           printf '%s\n' "$install_output" | grep '^FIREFOX_BIN=' >> "$GITHUB_ENV"
           echo "GECKODRIVER_BIN=$GECKOWEBDRIVER/geckodriver" >> "$GITHUB_ENV"

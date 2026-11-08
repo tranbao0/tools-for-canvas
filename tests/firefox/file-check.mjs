@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { By } from 'selenium-webdriver';
 import { startFileHost } from '../e2e/support/file-host.ts';
-import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+import { installAddon, findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const PDF = '%PDF-1.4\n%%EOF\n';
@@ -44,7 +44,7 @@ try {
     acceptInsecureCerts: true,
     localDomains: 'school.instructure.com',
   });
-  await driver.installWebExtension(extensionDir, { permanent: false });
+  await installAddon(driver, extensionDir);
   await waitForTab(driver, `moz-extension://${UUID}/welcome.html`);
   const saved = await driver.executeAsyncScript(
     `

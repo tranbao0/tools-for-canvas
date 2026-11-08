@@ -28,7 +28,14 @@ import { fileURLToPath } from 'node:url';
 import { By } from 'selenium-webdriver';
 import { startFileHost } from '../e2e/support/file-host.ts';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
-import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+import {
+  installAddon,
+  clickClosingFrame,
+  findBrowserTools,
+  readAddonId,
+  startFirefox,
+  waitForTab,
+} from './smoke.mjs';
 
 // The fixtures of the Playwright tests import each other without the `.ts` extension, which plain
 // Node does not resolve. Node strips the types itself.
@@ -238,7 +245,8 @@ async function closeFilePane(driver) {
       (count) => count > 0,
       'the close button of the file pane',
     );
-    await driver.findElement(By.css('[aria-label="Close file viewer"]')).click();
+    const close = await driver.findElement(By.css('[aria-label="Close file viewer"]'));
+    await clickClosingFrame(() => close.click());
   } finally {
     await driver.switchTo().defaultContent();
   }
@@ -608,7 +616,7 @@ async function main() {
   try {
     console.log(`Firefox ${(await driver.getCapabilities()).get('browserVersion')}`);
     await driver.manage().window().setRect({ width: WIDTH, height: HEIGHT });
-    await driver.installWebExtension(extensionDir, { permanent: false });
+    await installAddon(driver, extensionDir);
     await waitForTab(driver, `moz-extension://${UUID}/welcome.html`);
     const saved = await driver.executeAsyncScript(
       `

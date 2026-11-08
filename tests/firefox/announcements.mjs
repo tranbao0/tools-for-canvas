@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { By } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
-import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+import { installAddon, findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const WAIT_MS = 15000;
@@ -204,7 +204,7 @@ async function main() {
   try {
     console.log(`Firefox ${(await driver.getCapabilities()).get('browserVersion')}`);
     await driver.manage().window().setRect({ width: 1440, height: 1100 });
-    await driver.installWebExtension(extensionDir, { permanent: false });
+    await installAddon(driver, extensionDir);
     await waitForTab(driver, `moz-extension://${UUID}/welcome.html`);
     const saved = await driver.executeAsyncScript(
       `
