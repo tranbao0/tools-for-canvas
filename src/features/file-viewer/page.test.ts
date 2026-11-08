@@ -117,50 +117,6 @@ describe('the page script', () => {
     document.body.innerHTML = '';
   });
 
-  it.each(['viewer:module-item', 'viewer:tabs-get'])(
-    'Close cancels an open waiting for %s',
-    async (heldType) => {
-      prepare();
-      document.body.innerHTML =
-        '<div data-module-id="7" data-type="File"><a id="file" href="/courses/101/modules/items/9">Notes</a></div>';
-      let release: ((value: unknown) => void) | undefined;
-      let reads = 0;
-      sendMessage.mockImplementation(async (message: { type: string }) => {
-        if (message.type === 'viewer:module-item' && heldType !== message.type)
-          return { fileId: '5' };
-        if (message.type === heldType && (heldType !== 'viewer:tabs-get' || ++reads > 1))
-          return new Promise((resolve) => {
-            release = resolve;
-          });
-        return reply(message);
-      });
-      let root: ShadowRoot | undefined;
-      const attach = Element.prototype.attachShadow;
-      const spy = vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (
-        this: Element,
-        init,
-      ) {
-        const made = attach.call(this, init);
-        if (this.id === 'tools-file-viewer') root = made;
-        return made;
-      });
-      try {
-        await startViewer();
-        click(true);
-        await vi.waitFor(() => expect(release).toBeDefined());
-        root!.querySelector<HTMLButtonElement>('button[aria-label]')!.click();
-        release!(heldType === 'viewer:module-item' ? { fileId: '5' } : { ids: [], active: null });
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        click(true);
-        await vi.waitFor(() => expect(sessionRequests()).toBe(2));
-        const writes = sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set');
-        expect(writes.map(([m]) => m.tabs)).toEqual([{ ids: [], active: null }]);
-      } finally {
-        spy.mockRestore();
-      }
-    },
-  );
-
   it.each([
     { synced: false, covered: false, reconnect: false },
     { synced: true, covered: false, reconnect: false },

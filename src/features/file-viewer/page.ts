@@ -84,6 +84,11 @@ export async function startViewer(): Promise<void> {
   // tabs in memory stay as they are then. The token comes with the tabs and goes back with a
   // write, so the background can refuse a write for tabs that it has cleared since.
   const readTabs = async (): Promise<{ tabs: Tabs; token: string | undefined } | null> => {
+    let pendingWrites: Promise<unknown>;
+    do {
+      pendingWrites = writes;
+      await pendingWrites;
+    } while (pendingWrites !== writes);
     const reply: unknown = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
     if (typeof reply !== 'object' || reply === null) return null;
     const token = (reply as { token?: unknown }).token;
@@ -98,7 +103,7 @@ export async function startViewer(): Promise<void> {
     writes = run.catch(() => undefined);
     return run;
   };
-  type Attempt = { result?: OpenResult };
+  type Attempt = { result?: 'closed' };
   let attempt: Attempt = {};
   let tabs: Tabs = { ids: [], active: null };
   let tabsToken: string | undefined;
@@ -162,7 +167,7 @@ export async function startViewer(): Promise<void> {
   // The file of an open that has not reached the pane yet.
   let waitingFile: string | null = null;
   const addedTabs = new Set<string>();
-  const pageAddedTabs = new Set<string>();
+  let keptTabs: Tabs | undefined;
   let failureAddress = '';
   let failedConnection = false;
   /** The address of a file or a comment attachment in Canvas. */
@@ -171,11 +176,7 @@ export async function startViewer(): Promise<void> {
     return links?.canvas ?? links!.download;
   };
   const removeAddedTabs = () => {
-    const ids = tabs.ids.filter((id) => !pageAddedTabs.has(id));
-    tabs = {
-      ids,
-      active: tabs.active && ids.includes(tabs.active) ? tabs.active : (ids.at(-1) ?? null),
-    };
+    tabs = keptTabs ?? { ids: [], active: null };
     addedTabs.clear();
     waitingFile = null;
   };
@@ -198,13 +199,23 @@ export async function startViewer(): Promise<void> {
   const send = async () => {
     const started = generation;
     const current = attempt;
+    const sendingDock = dock;
+    const sendingPort = port;
     const [latest, stored] = await Promise.all([
       readContext().catch(() => undefined),
       readTabs().catch(() => null),
     ]);
-    if (!live || generation !== started || current.result) return;
+    if (
+      !live ||
+      generation !== started ||
+      current.result ||
+      dock !== sendingDock ||
+      port !== sendingPort
+    )
+      return;
     if (latest?.settings?.theme) themeChoice = latest.settings.theme;
     if (stored) {
+      keptTabs ??= stored.tabs;
       const next = [...addedTabs].reduce(openFile, stored.tabs);
       tabs = waitingFile ? openFile(next, waitingFile) : next;
       tabsToken = stored.token;
@@ -213,7 +224,14 @@ export async function startViewer(): Promise<void> {
     // and the pane restores them.
     if (port && addedTabs.size > 0) {
       await writeTabs(tabs).catch(() => undefined);
-      if (!live || generation !== started || current.result) return;
+      if (
+        !live ||
+        generation !== started ||
+        current.result ||
+        dock !== sendingDock ||
+        port !== sendingPort
+      )
+        return;
       addedTabs.clear();
     }
     applyTheme();
@@ -239,8 +257,10 @@ export async function startViewer(): Promise<void> {
   };
   /** Removes the pane and gives the page its padding back. The stored tabs stay. */
   const drop = (result: OpenResult = 'ended') => {
-    attempt.result ??= result;
-    attempt = {};
+    if (result === 'closed') {
+      attempt.result = result;
+      attempt = {};
+    }
     showing = undefined;
     settleConnection?.(result);
     settleConnection = undefined;
@@ -291,7 +311,7 @@ export async function startViewer(): Promise<void> {
     tabsToken = undefined;
     synced = false;
     sawTabs = false;
-    pageAddedTabs.clear();
+    keptTabs = undefined;
     courses.clear();
     names.clear();
     addresses.clear();
@@ -491,10 +511,7 @@ export async function startViewer(): Promise<void> {
   ): Promise<OpenResult | { connected: Promise<OpenResult> }> => {
     const ended = () => current.result ?? (!live || generation !== started ? 'ended' : undefined);
     if (ended()) return ended()!;
-    if (failedConnection) {
-      drop();
-      current = attempt;
-    }
+    if (failedConnection) drop();
     // Callers have checked this target against the Canvas origin.
     failureAddress = keptAddress(href, location.origin) ?? new URL(href, location.origin).href;
     if (paneOpen()) {
@@ -530,6 +547,7 @@ export async function startViewer(): Promise<void> {
       addresses.get(file.fileId) ??
       keptAddress(href, location.origin) ??
       canvasAddress(file.fileId, courseId);
+    let beforeOpen: Tabs | undefined;
     const open = async () => {
       // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
       // request also makes a pane that has not been told yet restore the stored tabs, so the files
@@ -537,7 +555,14 @@ export async function startViewer(): Promise<void> {
       if (!synced && addedTabs.size > 0) {
         await writeTabs(tabs).catch(() => undefined);
         if (ended()) return ended()!;
-        if (!port) return 'ended' as const;
+        if (!paneOpen() || (!port && !connection)) {
+          tabs = (sawTabs ? beforeOpen : keptTabs) ?? { ids: [], active: null };
+          addedTabs.delete(file.fileId);
+          if (waitingFile === file.fileId) waitingFile = null;
+          await writeTabs(tabs).catch(() => undefined);
+          return ended() ?? 'ended';
+        }
+        if (!port) return { connected: connection! };
       }
       synced = true;
       markSeen();
@@ -552,11 +577,14 @@ export async function startViewer(): Promise<void> {
     const stored = await readTabs().catch(() => null);
     if (ended()) return ended()!;
     if (failedConnection) return connected ? { connected } : 'timeout';
-    if (stored) tabsToken = stored.token;
+    if (stored) {
+      tabsToken = stored.token;
+      keptTabs ??= stored.tabs;
+    }
     const previous = [...addedTabs].reduce(openFile, stored?.tabs ?? tabs);
+    beforeOpen = previous;
     if (!previous.ids.includes(file.fileId)) {
       addedTabs.add(file.fileId);
-      pageAddedTabs.add(file.fileId);
     }
     tabs = openFile(previous, file.fileId);
     // The file stays out of the stored tabs until the pane connects, so a failed open leaves
@@ -655,6 +683,7 @@ export async function startViewer(): Promise<void> {
     // A reset during the read drops the answer: those tabs belong to the earlier student.
     if (stored && born === generation) {
       tabs = stored.tabs;
+      keptTabs = stored.tabs;
       tabsToken = stored.token;
     }
     enabled = true;

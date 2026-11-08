@@ -114,6 +114,39 @@ async function expectInactive(background: Worker): Promise<void> {
     .toEqual([null]);
 }
 
+async function expectStartupDecision(background: Worker, page: Page): Promise<void> {
+  const url = page.url();
+  await expect
+    .poll(() =>
+      background.evaluate(async (address) => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              tabs: { query(query: { url: string }): Promise<{ id: number }[]> };
+              scripting: {
+                executeScript(options: {
+                  target: { tabId: number };
+                  func: () => boolean;
+                }): Promise<{ result: boolean }[]>;
+              };
+            };
+          }
+        ).chrome;
+        const [tab] = await api.tabs.query({ url: address });
+        if (!tab) return false;
+        const [reply] = await api.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () =>
+            (globalThis as unknown as Record<symbol, { fileScriptReported?: boolean }>)[
+              Symbol.for('tools-for-canvas.dock')
+            ]?.fileScriptReported === true,
+        });
+        return reply?.result === true;
+      }, url),
+    )
+    .toBe(true);
+}
+
 test.describe('a close of a pane that did not restore the stored tabs', () => {
   test.setTimeout(75_000);
 
@@ -139,6 +172,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await expectInactive(background);
     await setBlock(page, false);
     await page.reload();
+    await expectStartupDecision(background, page);
     await expect(page.locator(HOST)).toHaveCount(0);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
     await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
@@ -163,6 +197,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await expectInactive(background);
     await setBlock(page, false);
     await page.reload();
+    await expectStartupDecision(background, page);
     await expect(page.locator(HOST)).toHaveCount(0);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
     await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
@@ -184,6 +219,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await expectInactive(background);
     await setBlock(page, false);
     await page.reload();
+    await expectStartupDecision(background, page);
     await expect(page.locator(HOST)).toHaveCount(0);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
     await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
@@ -206,6 +242,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await expectInactive(background);
     await setBlock(page, false);
     await page.reload();
+    await expectStartupDecision(background, page);
     await expect(page.locator(HOST)).toHaveCount(0);
     await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
     await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
