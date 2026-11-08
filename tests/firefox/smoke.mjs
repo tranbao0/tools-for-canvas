@@ -617,7 +617,7 @@ async function checkHostileSvg(driver) {
     );
     if (readable) throw new Error('A freed blob URL is still readable');
   } catch (error) {
-    if (!/Access to blob:.*denied/s.test(error.message)) throw error;
+    if (!/Access to ['"]?blob:.*from script denied/s.test(error.message)) throw error;
   }
   // A freed URL gives nothing, not even as a page of its own.
   const before = await driver.getAllWindowHandles();
@@ -625,7 +625,7 @@ async function checkHostileSvg(driver) {
   try {
     await driver.executeScript('window.open(arguments[0])', state.blobs.created.at(-1));
   } catch (error) {
-    if (!/Access to blob:.*denied/s.test(error.message)) throw error;
+    if (!/Access to ['"]?blob:.*from script denied/s.test(error.message)) throw error;
   }
   await driver.sleep(1500);
   const after = await driver.getAllWindowHandles();
@@ -861,10 +861,14 @@ async function main(prefs = {}, mode = 'release') {
     }, 30_000);
     // The pane reads the PDF through the redirect, runs PDF.js and its worker from the files of
     // the extension, and draws page 1 of the fixture.
-    const drawn = await driver.wait(async () => {
-      const result = await driver.executeScript(PAGE_ONE_INK);
-      return result?.ink > 1000 ? result : false;
-    }, 20_000);
+    const drawn = await driver.wait(
+      async () => {
+        const result = await driver.executeScript(PAGE_ONE_INK);
+        return result?.ink > 1000 ? result : false;
+      },
+      20_000,
+      'Stage: page render',
+    );
     if (prefs['network.cookie.cookieBehavior'] !== undefined) {
       const behavior = prefs['network.cookie.cookieBehavior'];
       const loginCount = server.requests.filter((url) => url === '/login').length;
