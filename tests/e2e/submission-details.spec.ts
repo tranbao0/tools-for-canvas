@@ -1,3 +1,4 @@
+import { pageQuiet, requestsQuiet, stableValue } from './support/settle';
 import { dropResetMessages } from './support/pane-identity';
 import { advanceBackgroundClock } from './support/clock';
 /**
@@ -265,7 +266,7 @@ async function settled(
       ),
     )
     .toBe(true);
-  await page.waitForTimeout(300);
+  await stableValue(page, () => canvas.requests);
 }
 
 /** The path of a frame, or `null` while the frame has no address yet: a new frame reads as empty. */
@@ -606,9 +607,9 @@ test('View Feedback shows the session of Canvas in the feedback pane, and the se
   await page.locator(FEEDBACK).evaluate((node) => node.remove());
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
   await button.evaluate((node) => (node as HTMLButtonElement).click());
-  await page.waitForTimeout(300);
+  await pageQuiet(page);
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
 });
 
 test('the feedback pane gives way to the file pane, comes back when it closes, and closes with its button', async ({
@@ -633,7 +634,7 @@ test('the feedback pane gives way to the file pane, comes back when it closes, a
   // The close button is at the right end of the header: the gap, the border, the padding and half the button.
   await page.mouse.click(barBox.x + barBox.width - 44, 44);
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
 });
 
 test('the feedback pane is a card with a header, and Full view keeps its frame and gives the pane the window', async ({
@@ -713,14 +714,14 @@ test('the feedback pane is a card with a header, and Full view keeps its frame a
   await expect.poll(async () => (await read()).pressed).toBe('false');
   expect((await read()).host).toEqual(place.host);
   await page.keyboard.press('Escape');
-  await page.waitForTimeout(200);
+  await pageQuiet(page);
   await expect(page.locator(FEEDBACK)).toBeVisible();
   // The close button closes the pane and leaves full view.
   await press('.btn[aria-pressed]');
   await expect.poll(async () => (await read()).pressed).toBe('true');
   await press('.icon-btn');
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
 });
 
 test('the header of the feedback pane keeps its title on a narrow card, with icon-only text buttons below 560 px', async ({
@@ -803,7 +804,7 @@ test('the pane closes when the view is turned off', async ({ context, page, back
   await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
   await expect(host(page)).toHaveCount(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
 });
 
 test('a submission with two files lists both, and only a file that Canvas can preview has a button', async ({
@@ -914,8 +915,8 @@ test('a frame that never loads changes nothing: the page shows the box at once a
   // The box needs no frame, so it shows within the wait for the host, though the frame never answers.
   await expect(host(page)).toBeAttached({ timeout: 8000 });
   await expectReplaced(page, canvas.origin);
-  // The view watches a frame for 10 seconds after a load, so the wait outlasts that time.
-  await page.waitForTimeout(11_000);
+  // Drain the frame watch timer before checking that the box stays in place.
+  await pageQuiet(page, 3, 10_100);
   await expectReplaced(page, canvas.origin);
 });
 
@@ -1454,16 +1455,18 @@ test('the instructions stop at about fifteen lines, and "Show more" shows the re
   const body = host(page).locator('.av-instructions .av-body');
   const more = host(page).getByRole('button', { name: 'Show more' });
   await expect(more).toBeVisible();
-  const clipped = await body.evaluate((node) => node.clientHeight);
+  const clipped = await stableValue(page, () => body.evaluate((node) => node.clientHeight));
   const line = await body.evaluate((node) => parseFloat(getComputedStyle(node).lineHeight));
   expect(line).toBeCloseTo(23.1, 1);
   expect(clipped / line).toBeGreaterThan(14.5);
   expect(clipped / line).toBeLessThanOrEqual(15.5);
   await more.click();
   await expect(host(page).getByRole('button', { name: 'Show less' })).toBeVisible();
-  expect(await body.evaluate((node) => node.clientHeight)).toBeGreaterThan(clipped * 1.4);
+  await expect
+    .poll(() => body.evaluate((node) => node.clientHeight))
+    .toBeGreaterThan(clipped * 1.4);
   await host(page).getByRole('button', { name: 'Show less' }).click();
-  expect(await body.evaluate((node) => node.clientHeight)).toBe(clipped);
+  await expect.poll(() => body.evaluate((node) => node.clientHeight)).toBe(clipped);
 });
 
 test('a short text has no "Show more", and the look follows the mockup', async ({
@@ -1794,7 +1797,7 @@ test('both files of the Submission box get the treatment', async ({
 test('the Submission box of another user is unchanged', async ({ context, page, background }) => {
   const served = await openSidebar(context, page, background, { user: '77' });
   await expect(page.locator('#sidebar_content a[href$="download=501"]')).toBeVisible();
-  await page.waitForTimeout(1000);
+  await pageQuiet(page);
   await expect(page.locator('[data-av-own]')).toHaveCount(0);
   await expect(page.locator('#sidebar_content a', { hasText: 'Download' })).toHaveText(
     `Download ${SIDEBAR_FILE}`,
@@ -1817,7 +1820,7 @@ for (const off of ['assignmentView', 'fileViewer'] as const) {
     await expect(page.locator('#sidebar_content a[href$="download=501"]')).toHaveText(
       `Download ${SIDEBAR_FILE}`,
     );
-    await page.waitForTimeout(1000);
+    await pageQuiet(page);
     await expect(page.locator('[data-av-own]')).toHaveCount(0);
     const canvas = await box.evaluate((node) => node.outerHTML);
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
@@ -1825,7 +1828,7 @@ for (const off of ['assignmentView', 'fileViewer'] as const) {
     expect(await box.evaluate((node) => node.outerHTML)).not.toBe(canvas);
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, [off]: false });
     await expect(page.locator('[data-av-own]')).toHaveCount(0);
-    expect(await box.evaluate((node) => node.outerHTML)).toBe(canvas);
+    await expect.poll(() => box.evaluate((node) => node.outerHTML)).toBe(canvas);
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
     await treated(page);
   });
@@ -1863,7 +1866,7 @@ for (const mode of ['on', 'assignmentView off', 'fileViewer off'] as const) {
     await expect(marked).toBeAttached();
     // The script has started and its stale copy cleanup has run when the box is settled.
     if (mode === 'on') await treated(page);
-    else await page.waitForTimeout(1200);
+    else await pageQuiet(page);
     const comments = page.locator('.comments');
     const commentsBefore = await comments.evaluateAll((nodes) => nodes.map((n) => n.outerHTML));
     expect(commentsBefore).toHaveLength(2);
@@ -1871,7 +1874,9 @@ for (const mode of ['on', 'assignmentView off', 'fileViewer off'] as const) {
     expect(before).toBe(MARKED_DESCRIPTION.replace('hidden>', 'hidden="">'));
     // Switching either switch live changes nothing in the description.
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
-    await page.waitForTimeout(300);
+    await expect(
+      page.locator('#sidebar_content [data-av-own]:not(.comments [data-av-own])'),
+    ).toHaveCount(0);
     await saveTools(background, DEFAULT_TOOLS_SETTINGS);
     await treated(page);
     await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
@@ -1895,7 +1900,7 @@ test('the File viewer switch is live in both directions for the Submission box a
   const served = await openSidebar(context, page, background);
   const canvasLink = page.locator('#sidebar_content a[href$="download=501"]');
   await expect(canvasLink).toHaveText(`Download ${SIDEBAR_FILE}`);
-  await page.waitForTimeout(800);
+  await pageQuiet(page);
   await expect(page.locator('[data-av-own]')).toHaveCount(0);
 
   // The switch goes on. The box reads "View NAME", and the click opens the pane at once.
@@ -1914,7 +1919,7 @@ test('the File viewer switch is live in both directions for the Submission box a
   const saved = page.waitForEvent('download');
   await canvasLink.click();
   expect((await saved).url()).toBe(`${served.canvas.origin}${SIDEBAR_HREF}`);
-  await page.waitForTimeout(800);
+  await requestsQuiet(page, served.canvas.requests, background);
   await expect(page.locator(FILE_PANE)).toHaveCount(0);
 
   // And on again: the catcher comes back without a reload.
@@ -1932,7 +1937,7 @@ test("a click on Canvas's link downloads the file at once after the File viewer 
 }) => {
   const served = await openSidebar(context, page, background);
   await treated(page);
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, served.canvas.requests, background);
   await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
   await expect(page.locator('[data-av-own]')).toHaveCount(0);
   const canvasLink = page.locator('#sidebar_content a[href$="download=501"]');
@@ -1940,7 +1945,7 @@ test("a click on Canvas's link downloads the file at once after the File viewer 
   const saved = page.waitForEvent('download');
   await canvasLink.click();
   expect((await saved).url()).toBe(`${served.canvas.origin}${SIDEBAR_HREF}`);
-  await page.waitForTimeout(800);
+  await requestsQuiet(page, served.canvas.requests, background);
   await expect(page.locator(FILE_PANE)).toHaveCount(0);
 });
 
@@ -1959,7 +1964,7 @@ for (const theme of ['light', 'dark'] as const) {
           'body,#right-side{background:#1b2330!important;color:#fff!important}a{color:#5a9fd4!important}',
       });
     }
-    await page.waitForTimeout(300);
+    await pageQuiet(page);
     const box = page.locator('#right-side');
     await box.screenshot({
       path: path.join(SIDEBAR_SHOTS, `sidebar-1440-${theme}.png`),
@@ -2124,7 +2129,7 @@ test('unread rubric comments are marked read once, with the CSRF token, after th
   await expect(host(page)).toHaveCount(0);
   await saveTools(background, DEFAULT_TOOLS_SETTINGS);
   await expect(page.locator(RUBRIC)).toBeVisible();
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   expect(markReads(canvas)).toHaveLength(1);
 });
 
@@ -2164,7 +2169,7 @@ test('no read mark goes out with the switch off', async ({ context, page, backgr
     rubricUnread: true,
   });
   await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
-  await page.waitForTimeout(800);
+  await requestsQuiet(page, canvas.requests, background);
   expect(markReads(canvas)).toHaveLength(0);
   await expect(page.locator('.rubric_comment.unread_indicator')).toHaveCount(1);
 });
@@ -2181,7 +2186,7 @@ test('a failed read mark shows nothing, leaves the unread mark and is not repeat
   });
   await expect(page.locator(RUBRIC)).toBeVisible();
   await expect.poll(() => markReads(canvas).length).toBeGreaterThanOrEqual(1);
-  await page.waitForTimeout(1000);
+  await requestsQuiet(page, canvas.requests, background);
   const sent = markReads(canvas).length;
   expect(sent).toBe(1);
   // The page is as before: the rubric shows, and the mark stays in Canvas's header.
@@ -2191,7 +2196,7 @@ test('a failed read mark shows nothing, leaves the unread mark and is not repeat
     'style',
     /display/,
   );
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   expect(markReads(canvas).length).toBe(sent);
 });
 
@@ -2226,7 +2231,7 @@ test("Canvas's open rubric pop-up keeps the rubric until Canvas closes it, and n
   await page.getByRole('button', { name: 'Hide Rubric' }).click();
   await expect(page.locator('#av-rubric')).toHaveCount(1);
   await expect(page.locator(RUBRIC)).toBeVisible();
-  expect(await hiddenFromReaders(page)).toBe(0);
+  await expect.poll(() => hiddenFromReaders(page)).toBe(0);
   // Canvas moved the focus to its "Show Rubric" link, which the view hides, so the focus goes into
   // the rubric and not to the page body.
   await expect
@@ -2258,7 +2263,7 @@ test('a page that opens with #rubric keeps the pop-up of Canvas until it is clos
   await page.getByRole('button', { name: 'Hide Rubric' }).click();
   await expect(page.locator('#av-rubric')).toHaveCount(1);
   await expect(page.locator(RUBRIC)).toBeVisible();
-  expect(await hiddenFromReaders(page)).toBe(0);
+  await expect.poll(() => hiddenFromReaders(page)).toBe(0);
 });
 
 test("a click on Canvas's own Show Rubric first marks the comments read there, so the view sends no PUT", async ({
@@ -2276,7 +2281,7 @@ test("a click on Canvas's own Show Rubric first marks the comments read there, s
   await page.getByRole('button', { name: 'Hide Rubric' }).click();
   await turnOn(page, background);
   await expect(page.locator('#av-rubric')).toHaveCount(1);
-  await page.waitForTimeout(800);
+  await requestsQuiet(page, canvas.requests, background);
   expect(markReads(canvas)).toHaveLength(0);
 });
 
@@ -2317,7 +2322,7 @@ test('no read mark goes out while the rubric is below the fold, and one goes out
       () => document.getElementById('rubric_holder')!.getBoundingClientRect().top,
     ),
   ).toBeGreaterThan(400);
-  await page.waitForTimeout(800);
+  await requestsQuiet(page, canvas.requests, background);
   expect(markReads(canvas)).toHaveLength(0);
   await page.locator(RUBRIC).scrollIntoViewIfNeeded();
   await expect.poll(() => markReads(canvas).length).toBe(1);
@@ -2780,7 +2785,7 @@ test('a click on the content of a comment runs no action of the box', async ({
   // The comment stands in the box, once the view has moved the column.
   await expect(page.locator('#av-comments #forged-action')).toBeVisible();
   await page.locator('#forged-action').click();
-  await page.waitForTimeout(300);
+  await pageQuiet(page);
   await expect(page.locator(FEEDBACK)).toHaveCount(0);
   // The button of the box still works for the student.
   await box(page).getByRole('button', { name: 'View Feedback' }).click();
@@ -2796,19 +2801,22 @@ test('a wide table in a comment scrolls inside the box and does not widen the pa
     commentHtml: '<table style="width:600px"><tr><td>A wide table in a comment</td></tr></table>',
   });
   await expect(page.locator('#av-comments .comments')).toBeVisible();
-  const sizes = await page.evaluate(() => {
-    const list = document.querySelector('#av-comments .comments')!;
-    const root = document.documentElement;
-    return {
-      page: root.scrollWidth - root.clientWidth,
-      scrolls: list.scrollWidth > list.clientWidth,
-      overflowX: getComputedStyle(list).overflowX,
-      inBox:
-        list.getBoundingClientRect().right <=
-        document.getElementById('av-submission-box')!.getBoundingClientRect().right + 1,
-    };
-  });
-  expect(sizes).toEqual({ page: 0, scrolls: true, overflowX: 'auto', inBox: true });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const list = document.querySelector('#av-comments .comments')!;
+        const root = document.documentElement;
+        return {
+          page: root.scrollWidth - root.clientWidth,
+          scrolls: list.scrollWidth > list.clientWidth,
+          overflowX: getComputedStyle(list).overflowX,
+          inBox:
+            list.getBoundingClientRect().right <=
+            document.getElementById('av-submission-box')!.getBoundingClientRect().right + 1,
+        };
+      }),
+    )
+    .toEqual({ page: 0, scrolls: true, overflowX: 'auto', inBox: true });
 });
 
 test('the comments in the box keep the direction and the language of a right-to-left Canvas', async ({
@@ -2854,12 +2862,12 @@ test('a click on a data-action in the rubric text does not fold the instructions
         '<button type="button" id="forged-more" data-action="more">forged</button>',
       ),
   );
-  const clipped = await body.evaluate((node) => node.clientHeight);
+  const clipped = await stableValue(page, () => body.evaluate((node) => node.clientHeight));
   await page.locator('#forged-more').click();
-  await page.waitForTimeout(300);
+  await pageQuiet(page);
   await expect(page.locator('#forged-more')).toHaveText('forged');
   await expect(page.locator('#forged-more')).not.toHaveAttribute('aria-expanded', /.*/);
-  expect(await body.evaluate((node) => node.clientHeight)).toBe(clipped);
+  await expect.poll(() => body.evaluate((node) => node.clientHeight)).toBe(clipped);
   await expect(host(page).getByRole('button', { name: 'Show more' })).toBeVisible();
   // The button of the instructions still works for the student.
   await host(page).getByRole('button', { name: 'Show more' }).click();
@@ -2941,7 +2949,9 @@ test('the Submission Details page stops after two failed reads', async ({
   );
   await open(context, page, background, { extra: [route] });
   await expect.poll(() => times.length).toBe(2);
-  await page.waitForTimeout(5000);
+  // Drain the 2-second retry timer before checking that no third read starts.
+  await pageQuiet(page, 3, 2100);
+  await requestsQuiet(page, times, background);
   expect(times).toHaveLength(2);
   await expect(host(page)).toHaveCount(0);
 });
@@ -2976,7 +2986,9 @@ test('the Submission box stops after two failed reads', async ({ context, page, 
   );
   await openSidebar(context, page, background, { extra: [route] });
   await expect.poll(() => times.length).toBe(2);
-  await page.waitForTimeout(5000);
+  // Drain the 2-second retry timer before checking that no third read starts.
+  await pageQuiet(page, 3, 2100);
+  await requestsQuiet(page, times, background);
   expect(times).toHaveLength(2);
   await expect(
     page.locator('#sidebar_content a[href*="download="] > [data-av-original]'),
@@ -3027,7 +3039,8 @@ test('identity verdict: lost reset never opens the earlier feedback session', as
     request.path.startsWith('/api/v1/canvadoc_session'),
   ).length;
   await feedback.click();
-  await page.waitForTimeout(2500);
+  await expect(feedback).toHaveCount(0);
+  await requestsQuiet(page, canvas.requests, background);
   expect(
     canvas.requests.filter((request) => request.path.startsWith('/api/v1/canvadoc_session')),
   ).toHaveLength(before);
