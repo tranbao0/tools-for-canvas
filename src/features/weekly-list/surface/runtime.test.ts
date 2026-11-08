@@ -2568,3 +2568,37 @@ describe('write outcome events', () => {
     runtime.stop();
   });
 });
+
+it('drops a visible failure on an identity change even after its outcome expires', async () => {
+  const fake = fakeHost();
+  let failures: string[] = [];
+  fake.reply = (message) =>
+    message.type === 'weekrow:get-state'
+      ? { ...readyFor(fake.user), pendingWrites: [], failedWrites: failures }
+      : { undo: null };
+  const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+  runtime.start();
+  await settle();
+  let answer!: (reply: unknown) => void;
+  const send = fake.reply;
+  fake.reply = (message) =>
+    message.type === 'weekrow:action'
+      ? new Promise((resolve) => {
+          answer = resolve;
+        })
+      : send(message);
+  runtime.actions.moveTaskToToday('8');
+  failures = [sentActions(fake.sent)[0]!.seq!];
+  answer({ undo: null });
+  await settle();
+  expect(runtime.state().undo).toMatchObject({ failure: 'moved' });
+  failures = [];
+  fake.changed();
+  await settle();
+  expect(runtime.state().undo).toMatchObject({ failure: 'moved' });
+  fake.user = 'student-b';
+  fake.changed();
+  await settle();
+  expect(runtime.state().undo).toBeNull();
+  runtime.stop();
+});

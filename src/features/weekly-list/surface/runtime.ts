@@ -374,7 +374,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     ) {
       courseFilter = undefined;
     }
-    const noticed = notice?.data[0];
+    const noticed = notice?.data[0] ?? notice?.retry;
     if (
       noticed !== undefined &&
       reply.kind === 'ready' &&
