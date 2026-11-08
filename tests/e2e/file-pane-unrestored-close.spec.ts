@@ -150,6 +150,27 @@ async function expectStartupDecision(background: Worker, page: Page): Promise<vo
 test.describe('a close of a pane that did not restore the stored tabs', () => {
   test.setTimeout(75_000);
 
+  test('a removed host opens the clicked file without also following its link', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openCoursePage(context, page, background);
+    await openFirstFile(page, 'Read notes');
+    await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
+    const address = page.url();
+    const downloads: unknown[] = [];
+    page.on('download', (download) => downloads.push(download));
+    await page.locator(HOST).evaluate((host) => host.remove());
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    await expect((await pane(page)).getByRole('tab')).toHaveCount(2);
+    await expect((await pane(page)).getByRole('tab', { selected: true })).toContainText(
+      'Lecture photo',
+    );
+    await expect(page).toHaveURL(address);
+    expect(downloads).toEqual([]);
+  });
+
   test('control: the failure panel without a close leaves the tab', async ({
     context,
     page,
