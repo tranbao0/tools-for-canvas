@@ -911,9 +911,29 @@ test.describe('a new copy of the script', () => {
     await settledList(page);
     await minimize(page);
     await expect.poll(() => padding(page)).toBe('38px');
+    const paddings = page.evaluate(
+      () =>
+        new Promise<string[]>((resolve, reject) => {
+          const values = new Set<string>();
+          const start = performance.now();
+          let frameId = 0;
+          const timeout = setTimeout(() => {
+            cancelAnimationFrame(frameId);
+            reject(new Error('padding samples: animation frames never completed'));
+          }, 10_000);
+          const frame = () => {
+            values.add(document.documentElement.style.paddingRight);
+            if (performance.now() - start < 500) frameId = requestAnimationFrame(frame);
+            else {
+              clearTimeout(timeout);
+              resolve([...values]);
+            }
+          };
+          frame();
+        }),
+    );
     await page.setViewportSize({ width: 1700, height: 1074 });
-    await pageQuiet(page);
-    await expect.poll(() => padding(page)).toBe('38px');
+    expect(await paddings).toEqual(['38px']);
   });
 });
 
