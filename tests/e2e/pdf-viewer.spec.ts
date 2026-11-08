@@ -1,3 +1,4 @@
+import { slowAnswer } from './support/slow-answer';
 import { pageQuiet, requestsQuiet, watchPaneIdentityChecks, frameQuiet } from './support/settle';
 /**
  * The PDF viewer of the file pane (design decision 25, item 4). A fake Canvas serves the file
@@ -986,7 +987,7 @@ function studentCanvas() {
   let delayMs = 0;
   // The profile request fails, so the cache never gets a session.
   let profileFails = false;
-  const answerLate = () => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+  const answerLate = () => slowAnswer(delayMs);
   const routesOfStudent: FakeCanvasRoute[] = [
     {
       path: '/api/v1/users/self/profile',
@@ -1283,7 +1284,7 @@ test('the error card keeps the address of a link with a verifier in memory, and 
   const canvas = await openCoursePage(context, page, background, verifierHtml, [
     { path: '/api/v1/files/42', respond: () => ({ status: 404, body: { errors: [] } }) },
   ]);
-  await waitForListLoaded(canvas);
+  await waitForListLoaded(canvas, background);
   await openFirstFile(page, 'Read notes');
   let frame = await pane(page);
   await expect(frame.getByText("Couldn't load this file")).toBeVisible();
@@ -1631,7 +1632,7 @@ test('a module file whose item read fails ends with the link followed, and never
       contentType: 'text/html',
     },
   ]);
-  await waitForListLoaded(canvas);
+  await waitForListLoaded(canvas, background);
   await page.getByRole('link', { name: 'Module notes' }).click();
   // The page script took the click and asked for the item. The read failed.
   await expect

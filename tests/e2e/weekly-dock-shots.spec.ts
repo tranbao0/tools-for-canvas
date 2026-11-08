@@ -83,7 +83,7 @@ for (const size of SIZES) {
         link.textContent = 'Read notes';
         document.getElementById('content')?.prepend(link);
       });
-      await waitForListLoaded(served.canvas);
+      await waitForListLoaded(served.canvas, background);
       await openFirstFile(page, 'Read notes');
       await expect(page.locator('#tools-weekly')).toBeHidden();
       await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');

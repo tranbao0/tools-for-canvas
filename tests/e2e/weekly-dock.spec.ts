@@ -107,7 +107,7 @@ async function open(
   }
   if (options.withFile === true) {
     await addFileLink(page);
-    await waitForListLoaded(served.canvas);
+    await waitForListLoaded(served.canvas, background);
   }
   return served;
 }
@@ -911,29 +911,27 @@ test.describe('a new copy of the script', () => {
     await settledList(page);
     await minimize(page);
     await expect.poll(() => padding(page)).toBe('38px');
-    const paddings = page.evaluate(
-      () =>
-        new Promise<string[]>((resolve, reject) => {
-          const values = new Set<string>();
-          const start = performance.now();
-          let frameId = 0;
-          const timeout = setTimeout(() => {
-            cancelAnimationFrame(frameId);
-            reject(new Error('padding samples: animation frames never completed'));
-          }, 10_000);
-          const frame = () => {
-            values.add(document.documentElement.style.paddingRight);
-            if (performance.now() - start < 500) frameId = requestAnimationFrame(frame);
-            else {
-              clearTimeout(timeout);
-              resolve([...values]);
-            }
-          };
-          frame();
-        }),
-    );
+    await page.evaluate(() => {
+      const scope = window as unknown as { stopPaddingSamples: () => string[] };
+      const values = new Set<string>();
+      let frameId = 0;
+      const sample = () => {
+        values.add(document.documentElement.style.paddingRight);
+        frameId = requestAnimationFrame(sample);
+      };
+      sample();
+      scope.stopPaddingSamples = () => {
+        cancelAnimationFrame(frameId);
+        values.add(document.documentElement.style.paddingRight);
+        return [...values];
+      };
+    });
     await page.setViewportSize({ width: 1700, height: 1074 });
-    expect(await paddings).toEqual(['38px']);
+    await pageQuiet(page);
+    const paddings = await page.evaluate(() =>
+      (window as unknown as { stopPaddingSamples: () => string[] }).stopPaddingSamples(),
+    );
+    expect(paddings).toEqual(['38px']);
   });
 });
 

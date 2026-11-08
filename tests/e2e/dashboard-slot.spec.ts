@@ -113,7 +113,7 @@ for (const size of [
     await expect(page.locator(WRAPPER)).toHaveAttribute('data-weekrow-replaced', '');
     await frames(page);
     expectOverSection(await slotBoxes(page));
-    await expect.poll(async () => (await card.boundingBox())!.height).toBeCloseTo(height, 0);
+    expect((await card.boundingBox())!.height).toBeCloseTo(height, 0);
     // The card follows the box of the widget when Canvas changes it.
     await page.locator(SECTION).evaluate((node) => {
       (node as HTMLElement).style.height = '1200px';

@@ -101,9 +101,12 @@ export const SYLLABUS = {
  * Waits until the first load of the list has finished, so the cache has its student. The viewer
  * reads Canvas only for a confirmed student, and a read that comes sooner is refused.
  */
-export async function waitForListLoaded(canvas: {
-  readonly requests: readonly { path: string; answeredAt: number | null }[];
-}): Promise<void> {
+export async function waitForListLoaded(
+  canvas: {
+    readonly requests: readonly { path: string; answeredAt: number | null }[];
+  },
+  background: Worker,
+): Promise<void> {
   await expect
     .poll(
       () =>
@@ -115,7 +118,27 @@ export async function waitForListLoaded(canvas: {
     )
     .toBe(true);
   // The owner commits the answer a moment later.
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await expect
+    .poll(
+      () =>
+        background.evaluate(async () => {
+          const api = (
+            globalThis as unknown as {
+              chrome: {
+                storage: {
+                  session: {
+                    get(key: string): Promise<Record<string, { userCheck?: { userId: string } }>>;
+                  };
+                };
+              };
+            }
+          ).chrome;
+          const stored = await api.storage.session.get('weekrowCache');
+          return Boolean(stored['weekrowCache']?.userCheck?.userId);
+        }),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 }
 
 /** The name and the type line of the visible file: the card, or the slim line of a PDF. */
