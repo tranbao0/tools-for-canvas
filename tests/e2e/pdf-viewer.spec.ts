@@ -1,3 +1,4 @@
+import { pageQuiet, requestsQuiet } from './support/settle';
 /**
  * The PDF viewer of the file pane (design decision 25, item 4). A fake Canvas serves the file
  * record. Its download route redirects once to a real HTTPS host, as Canvas redirects to its file
@@ -423,7 +424,7 @@ test('Escape on any control of the search bar closes the bar only, and the pane 
     await page.keyboard.press('Escape');
     await expect(field).toHaveCount(0);
     // The key would reach the document and close the pane a moment later.
-    await page.waitForTimeout(400);
+    await pageQuiet(page);
     await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
     await expect(frame.getByRole('tab')).toHaveCount(2);
   }
@@ -442,8 +443,8 @@ test('Escape in the page number field cancels the typed page and leaves the page
   await input.fill('3');
   await page.keyboard.press('Escape');
   await expect(input).toHaveValue('1');
-  await page.waitForTimeout(400);
-  expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
+  await pageQuiet(page);
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(0);
   await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
 });
 
@@ -472,13 +473,19 @@ test('zoom in changes the width of the canvas, and the menu sets fit modes', asy
   await menu.click();
   await frame.getByRole('menuitemradio', { name: '200%' }).click();
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('200%');
-  const wide = (await pageBox(frame, 1).boundingBox())!.width;
-  expect(Math.abs(wide / (612 * (96 / 72)) - 2)).toBeLessThan(0.02);
+  await expect
+    .poll(async () => {
+      const wide = (await pageBox(frame, 1).boundingBox())!.width;
+      return Math.abs(wide / (612 * (96 / 72)) - 2);
+    })
+    .toBeLessThan(0.02);
   await menu.click();
   await frame.getByRole('menuitemradio', { name: 'Fit page' }).click();
-  const fitted = await pageBox(frame, 1).boundingBox();
-  const area = (await frame.locator('[data-part="pdf-scroll"]').boundingBox())!;
-  expect(fitted!.height).toBeLessThanOrEqual(area.height);
+  await expect(async () => {
+    const fitted = await pageBox(frame, 1).boundingBox();
+    const area = (await frame.locator('[data-part="pdf-scroll"]').boundingBox())!;
+    expect(fitted!.height).toBeLessThanOrEqual(area.height);
+  }).toPass();
   await menu.click();
   await page.keyboard.press('Escape');
   // Escape closes the menu only; the pane stays.
@@ -705,7 +712,7 @@ test('a file over 100 MB shows the card only', async ({ context, page, backgroun
   await expect(frame.locator(FILE_META)).toHaveText('PDF · 150 MB');
   await expect(frame.getByRole('link', { name: 'Download' })).toBeVisible();
   await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, fileHost.requests, background);
   await expect(frame.locator(VIEWER)).toHaveCount(0);
   await expect(frame.locator('[data-part="pdf-loading"]')).toHaveCount(0);
   expect(fileHost.requests).toEqual([]);
@@ -1653,7 +1660,8 @@ test('identity verdict: a cold profile survives a worker restart', async ({
   await openFirstFile(page, 'Read notes');
   await slowExpect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
   await restartWorker(context, page, background, extensionUrl);
-  await page.waitForTimeout(6500);
+  // Drain the five-second identity timeout and the next one-second watcher tick.
+  await pageQuiet(page, 3, 6100);
   await expect(page.locator('#tools-file-viewer')).toBeVisible();
 });
 
@@ -1671,6 +1679,7 @@ test('identity verdict: another store keeps the file error card and the click', 
   await expect(frame.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
   await expect(frame.getByRole('link', { name: 'Download', exact: true })).toBeVisible();
   await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
-  await page.waitForTimeout(2000);
+  // Drain a full identity watcher interval before checking that the card stays open.
+  await pageQuiet(page, 3, 1100);
   await expect(page.locator('#tools-file-viewer')).toBeVisible();
 });
