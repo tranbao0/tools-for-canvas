@@ -1060,7 +1060,7 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
     'same document',
   );
   await expect(frame.locator('#marker')).toHaveValue('a draft that stays');
-  await expect.poll(() => frame.evaluate(() => window.scrollY)).toBe(240);
+  expect(await frame.evaluate(() => window.scrollY)).toBe(240);
   expect(await frame.evaluate(() => window.innerWidth)).toBeGreaterThan(1100);
 
   await sampleList();
@@ -1077,7 +1077,7 @@ test('Full view fills the browser page, keeps the frame and its draft, and leave
     'same document',
   );
   await expect(frame.locator('#marker')).toHaveValue('a draft that stays');
-  await expect.poll(() => frame.evaluate(() => window.scrollY)).toBe(240);
+  expect(await frame.evaluate(() => window.scrollY)).toBe(240);
 });
 
 test('screenshots of the pane and of its full view at 1400 by 930, in light and dark', async ({
