@@ -176,15 +176,21 @@ describe('the page script', () => {
         message.type === 'viewer:tabs-get' ? { ids: ['42'], active: '42' } : reply(message),
       );
       let releaseWrite: (() => void) | undefined;
+      let storedTabs: { ids: string[]; active: string | null } = { ids: ['42'], active: '42' };
       if (writing) {
-        sendMessage.mockImplementation(async (message: { type: string; tabs?: unknown }) => {
-          if (message.type === 'viewer:tabs-get') return { ids: ['42'], active: '42' };
-          if (message.type === 'viewer:tabs-set')
-            await new Promise<void>((resolve) => {
-              releaseWrite = resolve;
-            });
-          return reply(message);
-        });
+        sendMessage.mockImplementation(
+          async (message: { type: string; tabs: typeof storedTabs }) => {
+            if (message.type === 'viewer:tabs-get') return storedTabs;
+            if (message.type === 'viewer:tabs-set') {
+              if (!releaseWrite)
+                await new Promise<void>((resolve) => {
+                  releaseWrite = resolve;
+                });
+              storedTabs = message.tabs;
+            }
+            return reply(message);
+          },
+        );
       }
       let root: ShadowRoot;
       const attach = Element.prototype.attachShadow;
@@ -251,7 +257,13 @@ describe('the page script', () => {
         sendMessage.mockClear();
         if (synced && !reconnect) port.onmessage!({ data: { type: 'close' } });
         else root!.querySelector<HTMLButtonElement>('button[aria-label]')!.click();
-        if (writing) releaseWrite!();
+        if (writing) {
+          releaseWrite!();
+          await vi.waitFor(() => expect(storedTabs).toEqual({ ids: ['42'], active: null }));
+          expect(postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'open-file' }),
+          );
+        }
         await new Promise((resolve) => setTimeout(resolve, 0));
         const writes = sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set');
         if (synced && !covered && !writing)
