@@ -146,28 +146,35 @@ async function setReadFilter(page: Page, label: string): Promise<void> {
 }
 
 /** Samples each rendered height during an action, including a jump that comes back. */
-function sampleHeights(locator: Locator): Promise<number[]> {
-  return locator.evaluate(
-    (node) =>
-      new Promise<number[]>((resolve, reject) => {
-        const values = new Set<number>();
-        const start = performance.now();
-        let frameId = 0;
-        const timeout = setTimeout(() => {
-          cancelAnimationFrame(frameId);
-          reject(new Error('sampleHeights: animation frames never completed'));
-        }, 10_000);
-        const frame = () => {
-          values.add(node.getBoundingClientRect().height);
-          if (performance.now() - start < 500) frameId = requestAnimationFrame(frame);
-          else {
-            clearTimeout(timeout);
-            resolve([...values]);
-          }
-        };
-        frame();
-      }),
-  );
+async function sampleHeights(locator: Locator): Promise<() => Promise<number[]>> {
+  const key = `height-${Math.random()}`;
+  await locator.evaluate((node, key) => {
+    const scope = window as unknown as { samples: Record<string, { stop: () => number[] }> };
+    scope.samples ??= {};
+    const values = new Set<number>();
+    let frameId = 0;
+    const sample = () => {
+      values.add(node.getBoundingClientRect().height);
+      frameId = requestAnimationFrame(sample);
+    };
+    sample();
+    scope.samples[key] = {
+      stop: () => {
+        cancelAnimationFrame(frameId);
+        values.add(node.getBoundingClientRect().height);
+        return [...values];
+      },
+    };
+  }, key);
+  return async () => {
+    await pageQuiet(locator.page());
+    return locator.evaluate((_node, key) => {
+      const scope = window as unknown as { samples: Record<string, { stop: () => number[] }> };
+      const values = scope.samples[key]!.stop();
+      delete scope.samples[key];
+      return values;
+    }, key);
+  };
 }
 
 async function heightOf(locator: Locator): Promise<number> {
@@ -370,38 +377,38 @@ test.describe('announcements: one steady list', () => {
     await open(context, page);
     await expect(articles(page)).toHaveCount(10);
     const card = page.locator(WIDGET);
-    const before = {
+    const before = await stableValue(page, async () => ({
       card: await heightOf(card),
       feed: await heightOf(feed(page)),
       filters: await heightOf(page.locator(`${WIDGET} [data-wr-filter]`)),
-    };
+    }));
     // 36rem, or the window height less 14rem when that is less: 576 px in a window of 1000 px.
     expect(before.feed).toBe(576);
     const scrollHeight = await feed(page).evaluate((el) => el.scrollHeight);
 
-    const cardHeights = sampleHeights(card);
-    const feedHeights = sampleHeights(feed(page));
-    const filterHeights = sampleHeights(page.locator(`${WIDGET} [data-wr-filter]`));
+    const cardHeights = await sampleHeights(card);
+    const feedHeights = await sampleHeights(feed(page));
+    const filterHeights = await sampleHeights(page.locator(`${WIDGET} [data-wr-filter]`));
     await articles(page).first().getByRole('button', { name: 'Read more' }).click();
     await expect(articles(page).first().locator('.wr-body')).toContainText('Science Hall 214');
-    expect(await cardHeights).toEqual([before.card]);
-    expect(await feedHeights).toEqual([before.feed]);
+    expect(await cardHeights()).toEqual([before.card]);
+    expect(await feedHeights()).toEqual([before.feed]);
     // The message grows inside the scroll area only.
     await expect
       .poll(() => feed(page).evaluate((el) => el.scrollHeight))
       .toBeGreaterThan(scrollHeight);
     // The pager of the page and the filters did not move.
-    expect(await filterHeights).toEqual([before.filters]);
+    expect(await filterHeights()).toEqual([before.filters]);
 
-    const loadingHeights = sampleHeights(card);
+    const loadingHeights = await sampleHeights(card);
     await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
     await expect(articles(page)).toHaveCount(20);
-    expect(await loadingHeights).toEqual([before.card]);
+    expect(await loadingHeights()).toEqual([before.card]);
 
-    const closingHeights = sampleHeights(card);
+    const closingHeights = await sampleHeights(card);
     await articles(page).first().getByRole('button', { name: 'Show less' }).click();
     await expect(articles(page).first().locator('.wr-body')).toHaveCount(0);
-    expect(await closingHeights).toEqual([before.card]);
+    expect(await closingHeights()).toEqual([before.card]);
   });
 
   test('keep the height of the card in the four states: list, open message, search and dates', async ({
@@ -1079,7 +1086,7 @@ test.describe('announcements: one steady list', () => {
     const widget = page.locator(WIDGET);
     await expect(widget.getByLabel('Course filter:')).toBeVisible();
     const height = await heightOf(widget);
-    const heights = sampleHeights(widget);
+    const heights = await sampleHeights(widget);
     await widget
       .getByLabel('Course filter:')
       .selectOption({ label: 'BIO 110: Principles of Biology' });
@@ -1094,7 +1101,7 @@ test.describe('announcements: one steady list', () => {
     expect(names.filter((text) => text.includes(':') && !text.includes('Sent by'))).toEqual(
       names.filter((text) => text === 'BIO 110: Principles of Biology'),
     );
-    expect(await heights).toEqual([height]);
+    expect(await heights()).toEqual([height]);
 
     await widget.getByLabel('Course filter:').selectOption({ label: 'All courses' });
     await expect(articles(page).filter({ hasText: 'Office hours move' })).toHaveCount(1);
@@ -1219,7 +1226,7 @@ test.describe('announcements: one steady list', () => {
     await page.locator(`${LIST}`).getByRole('button', { name: 'Clear search' }).click();
     await expect(articles(page)).toHaveCount(20);
     await expect(search).toHaveValue('');
-    await expect.poll(() => feed(page).evaluate((el) => el.scrollTop)).toBe(top);
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(top);
   });
 
   test('search by date with the REST list, filter it by the text, and Clear it', async ({
@@ -1263,7 +1270,7 @@ test.describe('announcements: one steady list', () => {
     await expect(articles(page)).toHaveCount(2);
     await page.locator(`${LIST}`).getByRole('button', { name: 'Clear search' }).click();
     await expect(articles(page)).toHaveCount(20);
-    await expect.poll(() => feed(page).evaluate((el) => el.scrollTop)).toBe(top);
+    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(top);
   });
 
   test('send a missing From as 2000-01-01, a missing To as today, and nothing when From is after To', async ({
