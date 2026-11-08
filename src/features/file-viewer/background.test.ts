@@ -15,6 +15,16 @@ import { ViewerUnconfirmedError } from './unconfirmed';
 import { ACK_TIMEOUT_MS, BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
 import { FileBytesError, fileReadFacts } from '../../shared/canvas/fileBytes';
 
+const build = vi.hoisted(() => ({ browser: 'chrome' }));
+vi.mock('../../shared/platform/browserKind', () => ({
+  get BROWSER_KIND() {
+    return build.browser;
+  },
+}));
+afterEach(() => {
+  build.browser = 'chrome';
+});
+
 function setup() {
   const api = {
     getViewerFile: vi.fn(async () => ({
@@ -993,7 +1003,7 @@ describe('file bytes port', () => {
     vi.mocked(host.tabUrl).mockResolvedValue('https://evil.example/page');
     const fetchBytes = vi.fn();
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes, false);
+    serveBytesPort(p as never, host, fetchBytes);
     p.send({ fileId: '1' });
     await settle();
     expect(p.postMessage).toHaveBeenCalledWith({ error: { kind: 'unconfirmed' } });
@@ -1004,7 +1014,7 @@ describe('file bytes port', () => {
     const { host, pane, read, api } = setup();
     const fetchBytes = vi.fn(async () => new Uint8Array([1]));
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes, false);
+    serveBytesPort(p as never, host, fetchBytes);
     p.send({ fileId: '1' });
     await settle();
     expect(read).toHaveBeenCalledWith('https://school.edu', 7, expect.any(Function));
@@ -1030,7 +1040,7 @@ describe('file bytes port', () => {
     });
     const fetchBytes = vi.fn(async () => new Uint8Array([1]));
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes, false);
+    serveBytesPort(p as never, host, fetchBytes);
     p.send({ fileId: '1' });
     await settle();
     expect(fetchBytes).toHaveBeenCalledWith(
@@ -1042,7 +1052,7 @@ describe('file bytes port', () => {
     const { host, pane, api } = setup();
     const fetchBytes = vi.fn(async () => new Uint8Array([1]));
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes, false);
+    serveBytesPort(p as never, host, fetchBytes);
     p.send({ commentTab: COMMENT, truncateAt: 16 });
     await settle();
     expect(api.getViewerFile).not.toHaveBeenCalled();
@@ -1102,7 +1112,7 @@ describe('file bytes port', () => {
       return bytes;
     });
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes as never, false);
+    serveBytesPort(p as never, host, fetchBytes as never);
     p.send({ fileId: '1' });
     await settle();
     // The window holds back everything past the first chunks until the pane acknowledges.
@@ -1121,7 +1131,8 @@ describe('file bytes port', () => {
     const { host, pane } = setup();
     const bytes = new Uint8Array(BYTES_CHUNK + 1).fill(7);
     const p = port(pane);
-    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never, true);
+    build.browser = 'firefox';
+    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never);
     p.send({ fileId: '1' });
     await settle();
     await drain(p, 2);
@@ -1192,7 +1203,8 @@ describe('file bytes port', () => {
     const { host, pane } = setup();
     const bytes = new Uint8Array(BYTES_CHUNK * 10);
     const p = port(pane);
-    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never, true);
+    build.browser = 'firefox';
+    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never);
     p.send({ fileId: '1' });
     await settle();
     const before = p.postMessage.mock.calls.length;
@@ -1218,7 +1230,8 @@ describe('file bytes port', () => {
         return bytes;
       });
       const p = port(pane);
-      serveBytesPort(p as never, host, fetchBytes as never, true);
+      build.browser = 'firefox';
+      serveBytesPort(p as never, host, fetchBytes as never);
       p.send({ fileId: '1' });
       await flush();
       expect(p.postMessage).toHaveBeenCalledTimes(1 + BYTES_WINDOW);
