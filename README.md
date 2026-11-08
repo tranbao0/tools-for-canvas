@@ -5,6 +5,29 @@ See your coursework as a to-do list, and open files, assignments and announcemen
 It works in Chrome, Edge and Firefox.
 It has no account, no server of its own and no telemetry.
 
+## Status
+
+Last update: 2026-11-08.
+
+**Released:** test build 0.1.0.32 for Firefox, signed by Mozilla, for a small group of testers.
+Tools for Canvas is not in the browser stores yet.
+
+What this build adds:
+
+- A Preview button on the new Canvas dashboard opens an assignment beside the list, as on the Assignments list.
+- People search on the new dashboard.
+- "Mark as done" covers what Skip did, and done work from before the span folds into an "older" line.
+- A marked announcement leaves the list with a short animation.
+- Panes fit the page beside them on the new dashboard, the classic dashboard and the Files pages.
+- An open pane closes when you sign out or another student signs in, and it covers itself while Canvas cannot confirm your sign-in.
+- File links work in Firefox private windows and container tabs.
+
+**Working on now:**
+
+- A listing in the Chrome Web Store and on Firefox Add-ons.
+- Fixes from a full code review, for example new courses that show without a reload, and a clear message when a save fails.
+- The next tools on the [roadmap](docs/roadmap.md).
+
 ## What you get
 
 ### Weekly list
