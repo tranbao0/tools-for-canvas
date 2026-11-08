@@ -112,14 +112,12 @@ export function createViewerOwner(host: ViewerHost, tabId: number | undefined) {
       const item = await host.read(origin, tabId, (api) =>
         api.getViewerModuleItem(courseId, moduleId, itemId),
       );
-      if (item.type !== 'File' || !id(item.content_id))
+      if (item.type !== 'File' || !isFileId(item.content_id))
         throw new Error('The module item is not a file');
       return { fileId: item.content_id };
     },
   };
 }
-const id = (value: unknown): value is string =>
-  typeof value === 'string' && /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/.test(value);
 
 /** Whether a sender is the pane: the frame of `viewer.html` inside a tab, never a tab of its own. */
 function isPaneFrame(sender: ViewerSender): boolean {
@@ -329,10 +327,14 @@ export function routeViewerMessage(
         });
       }
       case 'viewer:file':
-        if (!id(request['fileId'])) throw new Error('Invalid file id');
+        if (!isFileId(request['fileId'])) throw new Error('Invalid file id');
         return owner.file(origin, request['fileId']);
       case 'viewer:module-item':
-        if (!id(request['courseId']) || !id(request['moduleId']) || !id(request['itemId']))
+        if (
+          !isFileId(request['courseId']) ||
+          !isFileId(request['moduleId']) ||
+          !isFileId(request['itemId'])
+        )
           throw new Error('Invalid module identity');
         return owner.moduleItem(
           origin,
@@ -537,7 +539,7 @@ export function serveBytesPort(
           Object.keys(message).some((key) => !['fileId', 'commentTab', 'truncateAt'].includes(key))
         )
           throw new Error('Invalid file read');
-        const fileRead = id(fileId) && commentTab === undefined;
+        const fileRead = isFileId(fileId) && commentTab === undefined;
         const commentRead =
           typeof commentTab === 'string' && isCommentTab(commentTab) && fileId === undefined;
         if (!origin || (!fileRead && !commentRead)) throw new Error('Invalid file read');
