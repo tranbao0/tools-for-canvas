@@ -50,7 +50,7 @@ export const DEFAULT_WEEKLY_DOCK_WIDTH = 360;
  */
 export function normalizeWeeklyDockWidth(value: unknown, viewportWidth?: number): number {
   return typeof value === 'number' && Number.isFinite(value)
-    ? normalizeWidth(value, viewportWidth)
+    ? normalizeWidth(value, viewportWidth, 0)
     : DEFAULT_WEEKLY_DOCK_WIDTH;
 }
 

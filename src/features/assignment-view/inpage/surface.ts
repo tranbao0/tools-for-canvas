@@ -3,7 +3,7 @@
  *
  * The script reads the saved address and the switches through the page channel, like the dashboard
  * fixes do, and has no storage access. Its context ends when the extension goes away, which
- * removes the view.
+ * covers open panes and keeps their drafts. A newer injection retires the view through its own signal.
  */
 import { browser, type Browser } from 'wxt/browser';
 import { logFailure } from '../../../shared/platform/log';
@@ -26,7 +26,10 @@ function listenToBackground(handler: (message: unknown) => void): () => void {
   return () => browser.runtime.onMessage.removeListener(listener);
 }
 
-export async function startAssignmentViewSurface(ctx: PageScriptContext): Promise<void> {
+export async function startAssignmentViewSurface(
+  ctx: PageScriptContext,
+  retirement?: AbortSignal,
+): Promise<void> {
   // A copy that the browser destroyed, as Firefox does on an update, cannot clean up.
   removeStaleView();
   const channel = createPageChannel({
@@ -38,13 +41,10 @@ export async function startAssignmentViewSurface(ctx: PageScriptContext): Promis
   ctx.watchValidity(CONTEXT_CHECK_MS);
   await startAssignmentView({
     channel,
-    signal: ctx.signal,
+    signal: retirement,
+    // A lost extension context is unknown identity. The watcher covers the panes and keeps drafts.
+    // The channel stops on abort; the student can still close a covered pane.
     requestFrameCatcher: () => browser.runtime.sendMessage({ type: 'viewer:inject-frames' }),
-    // The background tells every page when the student of the data changed or signed out.
-    onStudentReset: (listener) =>
-      listenToBackground((message) => {
-        if ((message as { type?: unknown } | null)?.type === 'viewer:reset') listener();
-      }),
   }).catch((error: unknown) => logFailure('assignment view', error));
   if (import.meta.env.WXT_E2E === '1' && !ctx.signal.aborted) {
     document.documentElement.setAttribute('data-av-started', '');

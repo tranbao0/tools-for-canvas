@@ -148,13 +148,20 @@ const paneFrames = (page: Page): Frame[] =>
 const paddingRight = (page: Page): Promise<number> =>
   page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).paddingRight) || 0);
 
+/** A dock can be visible under its cover before identity permits its frame to load. */
+async function readyPaneFrame(page: Page): Promise<Frame> {
+  await expect.poll(() => paneFrames(page).length).toBeGreaterThan(0);
+  const frame = paneFrames(page)[0]!;
+  await expect(frame.locator('#marker')).toBeVisible();
+  return frame;
+}
+
 /**
  * Clicks the close button of the assignment pane with the mouse. The root of the pane is closed,
  * but a frame of the Canvas origin reaches it, which is how a test finds the button.
  */
 async function closeAssignment(page: Page): Promise<void> {
-  const frame = paneFrames(page)[0];
-  if (frame === undefined) throw new Error('The pane has no frame');
+  const frame = await readyPaneFrame(page);
   const box = await frame.evaluate(() => {
     const root = window.frameElement!.getRootNode() as ShadowRoot;
     const rect = root.querySelector('.icon-btn')!.getBoundingClientRect();
@@ -214,6 +221,38 @@ test('a click opens the pane on the row, another row shows its page, and a secon
   await expect(page.locator('[aria-pressed=true]')).toHaveCount(0);
   expect(await paddingRight(page)).toBe(0);
 });
+
+// The pane takes the room at the right edge, so the card must stay beside it at every width: in the
+// slot, and in the layouts that a page without the Course work widget uses. The mouse switches the
+// pane to another row and a second click on that row closes it.
+for (const [place, query] of [
+  ['the Course work slot', '/'],
+  ['the layouts of a page without the Course work widget', '/?fixture_course_work=none'],
+] as const) {
+  for (const width of [1920, 1440, 1280, 1000]) {
+    test(`keeps the card beside the pane in ${place} at ${width} px`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      await open(context, page, background, { path: query, width, height: 1000 });
+      await preview(page, LAB_4).click();
+      await expect(page.locator(PANE_HOST)).toBeVisible();
+      const paneLeft = (await page.locator(PANE_HOST).boundingBox())!.x;
+      await expect
+        .poll(async () => {
+          const box = (await card(page).boundingBox())!;
+          return box.x + box.width;
+        })
+        .toBeLessThanOrEqual(paneLeft);
+      await preview(page, HOMEWORK_7).click({ timeout: 3000 });
+      await expect(preview(page, HOMEWORK_7)).toHaveAttribute('aria-pressed', 'true');
+      await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'false');
+      await preview(page, HOMEWORK_7).click({ timeout: 3000 });
+      await expect(page.locator(PANE_HOST)).toHaveCount(0);
+    });
+  }
+}
 
 test('a script of the page cannot open the pane', async ({ context, page, background }) => {
   await open(context, page, background);
@@ -306,14 +345,16 @@ for (const [name, options] of [
   });
 }
 
-test('the pane leaves the page when the extension context ends', async ({
+test('the pane covers its draft when the extension context ends', async ({
   context,
   page,
   background,
 }) => {
   await open(context, page, background);
   await preview(page, LAB_4).click();
-  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
+  const frame = await readyPaneFrame(page);
+  await frame.locator('#marker').fill('Keep this draft after the context ends');
   // The worker goes with the reload, so the answer of this call may never come.
   void background
     .evaluate(() =>
@@ -322,10 +363,11 @@ test('the pane leaves the page when the extension context ends', async ({
       ).chrome.runtime.reload(),
     )
     .catch(() => undefined);
-  await expect(page.locator(PANE_HOST)).toHaveCount(0, { timeout: 15_000 });
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.style.paddingRight))
-    .toBe('');
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown', {
+    timeout: 6000,
+  });
+  await expect(frame.locator('#marker')).toHaveValue('Keep this draft after the context ends');
+  expect(frame.isDetached()).toBe(false);
 });
 
 /** The height of a row, whose title is `title`. */
@@ -628,7 +670,7 @@ test('a file pane and a pane from the card cover each other in turn, and nothing
   const first = (await page.locator(PANE_HOST).boundingBox())!;
   await expect.poll(() => paddingRight(page)).toBe(first.width);
   // A file link inside the pane opens the file pane over it.
-  const frame = paneFrames(page)[0]!;
+  const frame = await readyPaneFrame(page);
   await openFilePane(page, () => frame.locator('#file').click({ timeout: 2000 }));
   await expect(page.locator(PANE_HOST)).toBeHidden();
   const second = (await page.locator(FILE_PANE).boundingBox())!;
@@ -654,7 +696,7 @@ test('a file link in the pane of the classic dashboard opens the file pane, and 
   });
   await preview(page, LAB_4).click();
   await expect(page.locator(PANE_HOST)).toBeVisible();
-  const frame = paneFrames(page)[0]!;
+  const frame = await readyPaneFrame(page);
   await openFilePane(page, () => frame.locator('#file').click({ timeout: 2000 }));
   await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
   await closePane(page);
@@ -663,6 +705,31 @@ test('a file link in the pane of the classic dashboard opens the file pane, and 
   await closeAssignment(page);
   await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
   expect(await paddingRight(page)).toBe(360);
+});
+
+test('the classic header controls stay in the room beside a pane', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, {
+    fixture: 'dashboard-card-view',
+    width: 1797,
+    height: 900,
+  });
+  await preview(page, LAB_4).click();
+  const pane = page.locator(PANE_HOST);
+  await expect(pane).toBeVisible();
+  const clear = async (selector: string): Promise<boolean> => {
+    const edge = (await pane.boundingBox())?.x ?? 0;
+    const box = await page.locator(selector).boundingBox();
+    return box !== null && box.x + box.width <= edge;
+  };
+  for (const width of [900, 1000, 1100]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => clear('[data-testid="switch-to-new-dashboard-button"]')).toBe(true);
+    await expect.poll(() => clear('[data-testid="dashboard-options-button"]')).toBe(true);
+  }
 });
 
 test('focus follows a keyboard student into the pane of the dock and back to Preview', async ({
@@ -688,4 +755,105 @@ test('focus follows a keyboard student into the pane of the dock and back to Pre
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
   await expect(preview(page, LAB_4)).toBeFocused();
+});
+
+test('a hand-in in the pane that the card opened moves the row at the close, though a round ran in the last 60 seconds', async ({
+  context,
+  page,
+  background,
+}) => {
+  const scenario = buildScenario(SCENARIO_NOW);
+  let handedIn = false;
+  // Canvas answers the planner with the hand-in as soon as it happened.
+  const planner: FakeCanvasRoute = {
+    path: '/api/v1/planner/items',
+    respond: () => ({
+      body: json(
+        scenario.plannerItems.map((item) =>
+          item.plannable_id === '1004' && typeof item.submissions === 'object'
+            ? { ...item, submissions: { ...item.submissions, submitted: handedIn } }
+            : item,
+        ),
+      ),
+    }),
+  };
+  const { canvas, state } = await open(context, page, background, { extra: [planner] });
+  await expect(rowOf(page, LAB_4)).toBeVisible();
+  await preview(page, LAB_4).click();
+  await expect
+    .poll(
+      () =>
+        canvas.requests.filter((request) =>
+          request.path.includes('/courses/101/assignments/1004/submissions/self'),
+        ).length,
+    )
+    .toBeGreaterThan(0);
+  // The page load round ran a few seconds ago, so the 60-second limit holds for the rounds that
+  // nobody asked for. The student hands in, and the close reads the submission.
+  state.submitted = true;
+  handedIn = true;
+  await closeAssignment(page);
+  await expect(rowOf(page, LAB_4)).toHaveCount(0, { timeout: 8000 });
+});
+
+test('a done mark after a hand-in reaches Canvas', async ({ context, page, background }) => {
+  const { canvas, state } = await open(context, page, background);
+  await preview(page, LAB_4).click();
+  state.submitted = true;
+  await closeAssignment(page);
+  await expect(rowOf(page, LAB_4)).toHaveCount(0);
+  await doneBox(inpageList(page), QUIZ_3).click();
+  await expect
+    .poll(
+      () =>
+        canvas.requests.filter(
+          (request) => request.method === 'POST' && request.path === '/api/v1/planner/overrides',
+        ).length,
+    )
+    .toBe(1);
+});
+
+test('a wide pane stacks the widget columns in the room beside it', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background);
+  await preview(page, QUIZ_3).click();
+  const host = page.locator(PANE_HOST);
+  const box = await host.boundingBox();
+  if (!box) throw new Error('No assignment pane');
+  await page.mouse.move(box.x + 2, 450);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 300, 450, { steps: 20 });
+  await page.mouse.up();
+  for (const width of [900, 1000, 1100, 1280, 1440, 1600]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator('[data-testid="widget-columns"]')).toHaveCSS(
+      'flex-direction',
+      'column',
+    );
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+  }
+  await closeAssignment(page);
+  await expect(page.locator('html')).not.toHaveAttribute('data-weekrow-widget-stack');
+});
+
+test('the widget columns stack below the room where Canvas stacks them', async ({
+  context,
+  page,
+  background,
+}) => {
+  await page.setViewportSize({ width: 1872, height: 900 });
+  await open(context, page, background);
+  await preview(page, QUIZ_3).click();
+  const box = await page.locator(PANE_HOST).boundingBox();
+  if (!box) throw new Error('No assignment pane');
+  const columns = page.locator('[data-testid="widget-columns"]');
+  await page.setViewportSize({ width: Math.ceil(box.width) + 1380, height: 900 });
+  await expect(page.locator('html')).not.toHaveAttribute('data-weekrow-widget-stack');
+  await page.setViewportSize({ width: Math.ceil(box.width) + 1379, height: 900 });
+  await expect(columns).toHaveCSS('flex-direction', 'column');
 });

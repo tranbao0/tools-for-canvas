@@ -5,7 +5,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import { HOSTILE_MESSAGE } from '../fixtures/announcements';
-import { defaultColorFor } from '../../src/features/weekly-list/model/colors';
+import { courseJson } from '../fixtures/canvas-json';
 import {
   DASHBOARD_FIX_KEYS,
   DEFAULT_TOOLS_SETTINGS,
@@ -73,11 +73,6 @@ async function open(
     await expect(page.locator(`${LIST} article`).first()).toBeAttached();
   }
   return served;
-}
-
-function rgb(hex: string): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
 /** The text of the message of the opened announcement, from its shadow root. */
@@ -1066,6 +1061,53 @@ test.describe('announcements: one steady list', () => {
     await expect(articles(page).filter({ hasText: 'Office hours move' })).toHaveCount(1);
   });
 
+  test('keep the course filter inside the widget when a course name is longer than the widget', async ({
+    context,
+    page,
+  }) => {
+    const longName = `HIST 305: ${'Topics in the History of Science and Technology, '.repeat(6)}Seminar`;
+    await open(context, page, {
+      width: 1280,
+      scenario: {
+        extend(scenario) {
+          scenario.courses.push(
+            courseJson({
+              id: '109',
+              name: longName,
+              courseCode: 'HIST 305',
+              term: { id: '27', name: 'Fall 2026', startAt: null, endAt: null },
+            }),
+          );
+        },
+      },
+    });
+    const widget = page.locator(WIDGET);
+    await widget.getByLabel('Course filter:').selectOption({ label: longName });
+    const select = widget.locator('[data-wr-filter] select');
+    const edges = async () =>
+      page.evaluate(
+        ([widgetSelector, selectSelector]) => {
+          const box = (selector: string) => {
+            const rect = document.querySelector(selector)!.getBoundingClientRect();
+            return { left: rect.left, right: rect.right };
+          };
+          return { widget: box(widgetSelector!), select: box(selectSelector!) };
+        },
+        [WIDGET, `${WIDGET} [data-wr-filter] select`],
+      );
+    const found = await edges();
+    expect(found.select.right).toBeLessThanOrEqual(found.widget.right);
+    expect(found.select.left).toBeGreaterThanOrEqual(found.widget.left);
+    await expect(select).toHaveCSS('text-overflow', 'ellipsis');
+    await page.setViewportSize({ width: 1000, height: 1000 });
+    await expect
+      .poll(async () => {
+        const narrow = await edges();
+        return narrow.select.right <= narrow.widget.right;
+      })
+      .toBe(true);
+  });
+
   test('search the title and the message for every word, and mark the match', async ({
     context,
     page,
@@ -1258,6 +1300,58 @@ test.describe('announcements: one steady list', () => {
   }
 });
 
+test('the course filter has the arrow and the box of the read filter, and shows its longest course name', async ({
+  context,
+  page,
+}) => {
+  await open(context, page);
+  const widget = page.getByTestId('widget-announcements-widget');
+  const read = widget.getByTestId('announcement-filter-select');
+  const course = widget.getByLabel('Course filter:');
+  await expect(course).toBeVisible();
+  /** The arrow of a filter: its path, its size, and its distance from the right and the top of the box. */
+  const arrowOf = (box: Locator, arrow: Locator) =>
+    Promise.all([
+      box.boundingBox(),
+      arrow.boundingBox(),
+      arrow.locator('path').getAttribute('d'),
+    ]).then(([frame, icon, path]) => ({
+      path,
+      width: Math.round(icon!.width),
+      height: Math.round(icon!.height),
+      fromRight: Math.round(frame!.x + frame!.width - (icon!.x + icon!.width)),
+      fromTop: Math.round(icon!.y - frame!.y),
+    }));
+  const nativeArrow = read.locator('xpath=following-sibling::span[1]').locator('svg');
+  const ownArrow = widget.locator('.wr-caret svg');
+  await expect(ownArrow).toHaveCount(1);
+  expect(await arrowOf(course, ownArrow)).toEqual(await arrowOf(read, nativeArrow));
+  // The box has the height and the corners of the read filter.
+  const frame = (locator: Locator) =>
+    locator.evaluate((el) => {
+      const css = getComputedStyle(el);
+      return [el.getBoundingClientRect().height, css.borderRadius, css.fontSize];
+    });
+  expect(await frame(course)).toEqual(await frame(read));
+  // The box is never narrower than the read filter, and it is wide enough for its longest option.
+  const widths = await course.evaluate((el) => {
+    const select = el as HTMLSelectElement;
+    const css = getComputedStyle(select);
+    const canvas = document.createElement('canvas').getContext('2d')!;
+    canvas.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+    const text = Math.max(
+      ...[...select.options].map((option) => canvas.measureText(option.text).width),
+    );
+    return {
+      box: select.getBoundingClientRect().width,
+      needed: text + parseFloat(css.paddingLeft) + parseFloat(css.paddingRight),
+    };
+  });
+  const readWidth = (await read.boundingBox())!.width;
+  expect(widths.box).toBeGreaterThanOrEqual(readWidth);
+  expect(widths.box).toBeGreaterThanOrEqual(widths.needed - 1);
+});
+
 test('match the dark read filter colors', async ({ context, page }, testInfo) => {
   await open(context, page);
   await expect(page.locator('[data-wr-filter]')).toBeVisible();
@@ -1280,7 +1374,7 @@ test('match the dark read filter colors', async ({ context, page }, testInfo) =>
     background: expected.background,
   });
   expect(await widget.locator('.wr-caret').evaluate((el) => getComputedStyle(el).color)).toBe(
-    await read.evaluate((el) => getComputedStyle(el.nextElementSibling!).borderRightColor),
+    await read.evaluate((el) => getComputedStyle(el.nextElementSibling!).color),
   );
   // The course filter keeps the extension's brand focus ring, the same as its other controls.
   await course.focus();
@@ -1332,16 +1426,21 @@ test.describe('course grades', () => {
       'href',
       '/courses/108/grades',
     );
-    // The copy has no button of its own: the buttons belong to the widget.
-    await expect(widget.locator('[data-wr-card] button')).toHaveCount(0);
-    const color = await widget
-      .getByTestId('course-107-grade')
-      .evaluate(
-        (node) =>
-          getComputedStyle(node.parentElement?.parentElement?.parentElement as Element)
-            .backgroundColor,
-      );
-    expect(color).toBe(rgb(defaultColorFor('107')));
+    // Each copy has an eye and no course settings menu.
+    await expect(widget.locator('[data-wr-card] button')).toHaveCount(2);
+    // The header of a card is the saved color of the course, or `#334451` when the student saved
+    // none, as the widget draws it. Chemistry (a card of the widget) and Psychology (a copy) have
+    // no saved color, so the two headers are one color.
+    const headerColor = (testId: string) =>
+      widget
+        .getByTestId(testId)
+        .evaluate(
+          (node) =>
+            getComputedStyle(node.parentElement?.parentElement?.parentElement as Element)
+              .backgroundColor,
+        );
+    expect(await headerColor('course-107-grade')).toBe('rgb(51, 68, 81)');
+    expect(await headerColor('course-107-grade')).toBe(await headerColor('course-104-grade'));
     // A card that the widget drew is not copied.
     await expect(widget.locator('[data-testid="course-grade-card-103"]')).toHaveCount(1);
   });
@@ -1419,7 +1518,7 @@ test.describe('course grades', () => {
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
   });
 
-  test('hide copied grades when the server main toggle is off', async ({
+  test('use explicit course visibility before the server main toggle', async ({
     context,
     page,
   }, testInfo) => {
@@ -1452,7 +1551,7 @@ test.describe('course grades', () => {
     await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
     const widget = page.getByTestId('widget-course-grades-widget');
     await expect(page.locator('[data-wr-card]')).toHaveCount(2);
-    await expect(widget.getByTestId('course-108-grade')).toHaveText('•••');
+    await expect(widget.getByTestId('course-108-grade')).toHaveText('N/A');
     await expect(widget.getByTestId('course-107-grade')).toHaveText('•••');
     await widget.screenshot({ path: testInfo.outputPath('grade-cards.png') });
   });
@@ -1895,3 +1994,481 @@ for (const frame of ['input', 'wrapper', 'none']) {
     });
   }
 }
+
+for (const saved of [false, true])
+  test(`copied eyes refresh after a failed reply, saved=${saved}`, async ({ context, page }) => {
+    let mutations = 0;
+    let reads = 0;
+    let releaseRead: () => void = () => undefined;
+    const pendingRead = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    let release: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: async (request): Promise<FakeReply> => {
+            if (request.postData?.includes('updateWidgetDashboardConfig')) {
+              mutations++;
+              await pending;
+              return { body: { errors: [{ message: 'Refused' }] } };
+            }
+            if (mutations) {
+              reads++;
+              await pendingRead;
+            }
+            return {
+              body: {
+                data: {
+                  legacyNode: {
+                    widgetDashboardConfig: JSON.stringify(
+                      saved && mutations
+                        ? {
+                            filters: {
+                              'course-grades-widget': { gradeVisibilities: { '107': false } },
+                            },
+                          }
+                        : {},
+                    ),
+                  },
+                },
+              },
+            };
+          },
+        },
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+    const grade = page.getByTestId('course-107-grade');
+    const eye = page.locator('[data-wr-card="107"] button');
+    await expect(grade).toHaveText('95%', { timeout: READ_WAIT });
+    await eye.evaluate((button) => (button as HTMLButtonElement).click());
+    await expect(grade).toHaveText('95%');
+    expect(mutations).toBe(0);
+    await eye.click();
+    await expect(grade).toHaveText('•••');
+    await expect.poll(() => mutations).toBe(1);
+    release();
+    await expect.poll(() => reads).toBeGreaterThan(0);
+    await expect(grade).toHaveText('•••');
+    releaseRead();
+    await expect(grade).toHaveText(saved ? '•••' : '95%');
+    await expect(eye).toBeFocused();
+    await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
+    await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
+    await expect(page.locator('[data-wr-card="107"] .fx-card-body [role="status"]')).toHaveText(
+      'Could not save grade visibility. Try again.',
+    );
+  });
+
+test('an added Course grades widget saves its own filter', async ({ context, page }) => {
+  const widgetId = 'course_grades-widget-12345678-1234-1234-1234-123456789abc';
+  let written: unknown;
+  const served = await serveScenario(
+    context,
+    [
+      ...PAGE,
+      {
+        method: 'POST',
+        path: '/api/graphql',
+        respond: (request): FakeReply => {
+          const body = JSON.parse(request.postData ?? '{}');
+          if (body.query?.includes('updateWidgetDashboardConfig')) {
+            written = body.variables;
+            return { body: { errors: [{ message: 'Refused' }] } };
+          }
+          return {
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: {
+                      [widgetId]: { showGrades: true, gradeVisibilities: { '101': false } },
+                    },
+                  }),
+                },
+              },
+            },
+          };
+        },
+      },
+    ],
+    EIGHT_COURSES,
+  );
+  await addCsrfCookie(context, served.canvas.origin);
+  await openCanvasPage(
+    page,
+    served.canvas.origin,
+    '/?fixture_course_work=second&fixture_added_grades=1',
+  );
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect
+    .poll(() => written)
+    .toEqual({
+      widgetId,
+      filters: { showGrades: true, gradeVisibilities: { '101': false, '107': false } },
+    });
+});
+
+for (const state of ['covered', 'uncovered', 'native change'])
+  test(`a copied eye waits for a native eye write to settle (${state})`, async ({
+    context,
+    page,
+  }) => {
+    let filters = { gradeVisibilities: {} as Record<string, boolean> };
+    let written: unknown;
+    let savedAt = 0;
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          method: 'POST',
+          path: '/api/graphql',
+          respond: (request): FakeReply => {
+            const body = JSON.parse(request.postData ?? '{}');
+            if (body.query?.includes('updateWidgetDashboardConfig')) {
+              written = body.variables.filters;
+              savedAt = Date.now();
+              return { body: { errors: [{ message: 'Refused' }] } };
+            }
+            return {
+              body: {
+                data: {
+                  legacyNode: {
+                    widgetDashboardConfig: JSON.stringify({
+                      filters: { 'course-grades-widget': filters },
+                    }),
+                  },
+                },
+              },
+            };
+          },
+        },
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+    await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+    if (state === 'uncovered') {
+      await page
+        .getByTestId('widget-course-grades-widget')
+        .getByTestId('pagination-container')
+        .locator('li button')
+        .last()
+        .evaluate((button) => {
+          button.textContent = '3';
+        });
+      await expect(page.getByTestId('widget-course-grades-widget')).not.toHaveAttribute(
+        'data-wr-grades',
+      );
+    }
+    await page.exposeFunction('nativeEyeWrite', () => {
+      setTimeout(() => {
+        filters = { gradeVisibilities: { '101': false } };
+      }, 1200);
+    });
+    const nativeEye = page.locator(
+      '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
+    );
+    await nativeEye.evaluate((button) =>
+      button.addEventListener('click', () => {
+        void (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
+      }),
+    );
+    const nativeAt = Date.now();
+    await nativeEye.click();
+    await page.locator('[data-wr-card="107"] button').click();
+    await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+    await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(2);
+    await expect(page.locator('[data-wr-card][aria-busy="true"]')).toHaveCount(2);
+    await page.waitForTimeout(1500);
+    let changedAt = 0;
+    if (state === 'native change') {
+      changedAt = Date.now();
+      await page.getByTestId('course-101-grade').evaluate((grade) => {
+        grade.textContent = '•••';
+      });
+    }
+    await nativeEye.click();
+    await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
+    expect(savedAt - (changedAt || nativeAt)).toBeLessThan(4300);
+    if (changedAt) expect(savedAt - changedAt).toBeGreaterThanOrEqual(3000);
+    expect(savedAt - nativeAt).toBeGreaterThanOrEqual(3000);
+  });
+
+for (const work of ['task', 'search', 'message', 'customize'])
+  test(`a copied eye protects ${work}`, async ({ context, page }) => {
+    const { canvas } = await open(context, page, { scenario: EIGHT_COURSES });
+    await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+    if (work === 'task') await page.getByRole('button', { name: 'Add task', exact: true }).click();
+    else if (work === 'search') await page.locator(`${LIST} input[type="search"]`).fill('lab');
+    else
+      await page.evaluate((kind) => {
+        const node = document.createElement(kind === 'customize' ? 'button' : 'div');
+        if (kind === 'customize') node.dataset.testid = 'save-customize-button';
+        else {
+          node.setAttribute('role', 'dialog');
+          node.setAttribute('aria-label', 'Compose Message');
+          node.innerHTML = '<textarea aria-label="Message">Draft message</textarea>';
+        }
+        document.body.append(node);
+      }, work);
+    const eye = page.locator('[data-wr-card="107"] button');
+    if (work === 'customize') await expect(eye).toHaveCount(0);
+    else {
+      await eye.click();
+      await expect(page.locator('[data-wr-card="107"] .fx-card-body [role="status"]')).toHaveText(
+        'Close the open form first.',
+      );
+    }
+    expect(
+      canvas.requests.filter((request) =>
+        request.postData?.includes('updateWidgetDashboardConfig'),
+      ),
+    ).toHaveLength(0);
+  });
+
+for (const timing of ['before click', 'during wait'])
+  test(`a copied eye protects a pane opened ${timing}`, async ({ context, page }) => {
+    const served = await serveScenario(
+      context,
+      [
+        ...PAGE,
+        {
+          path: '/courses/101/assignments/1004',
+          contentType: 'text/html',
+          body: '<!doctype html><html><body><input aria-label="Draft"></body></html>',
+        },
+      ],
+      EIGHT_COURSES,
+    );
+    await addCsrfCookie(context, served.canvas.origin);
+    await page.setViewportSize({ width: 1920, height: 1000 });
+    await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+    await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+    const eye = page.locator('[data-wr-card="107"] button');
+    if (timing === 'during wait') {
+      await page
+        .locator(
+          '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
+        )
+        .click();
+      await eye.click();
+      await expect(eye).toBeDisabled();
+    }
+    await page
+      .getByRole('button', { name: 'Preview Lab report 4: Cellular respiration', exact: true })
+      .click();
+    await expect(page.locator('#tools-turn-in')).toBeVisible();
+    await expect
+      .poll(() => page.frames().some((frame) => frame.url().includes('content_only=1')))
+      .toBe(true);
+    const frame = page.frames().find((frame) => frame.url().includes('content_only=1'))!;
+    await frame.getByRole('textbox', { name: 'Draft' }).fill('Keep this text');
+    if (timing === 'before click') await eye.click();
+    await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
+      'Close the open pane first.',
+    );
+    await expect(frame.getByRole('textbox', { name: 'Draft' })).toHaveValue('Keep this text');
+    await expect(page.getByTestId('course-107-grade')).toHaveText('95%');
+    await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
+    await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
+    expect(
+      served.canvas.requests.filter((request) =>
+        request.postData?.includes('updateWidgetDashboardConfig'),
+      ),
+    ).toHaveLength(0);
+    await page.locator('[data-wr-card="107"]').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: test.info().outputPath(`pane-${timing}.png`) });
+  });
+
+test('a copied eye restores the saved grade when a form opens during the wait', async ({
+  context,
+  page,
+}) => {
+  const { canvas } = await open(context, page, { scenario: EIGHT_COURSES });
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page
+    .locator('[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]')
+    .click();
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+  await page.getByRole('button', { name: 'Add task', exact: true }).click();
+  await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
+    'Close the open form first.',
+  );
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%');
+  await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
+  await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
+  expect(
+    canvas.requests.filter((request) => request.postData?.includes('updateWidgetDashboardConfig')),
+  ).toHaveLength(0);
+});
+
+test('a saved grade does not reload over a pane that opened during the send', async ({
+  context,
+  page,
+}) => {
+  let filters = { gradeVisibilities: {} as Record<string, boolean> };
+  let release: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let sent = false;
+  const served = await serveScenario(
+    context,
+    [
+      ...PAGE,
+      {
+        path: '/courses/101/assignments/1004',
+        contentType: 'text/html',
+        body: '<!doctype html><html><body><input aria-label="Draft"></body></html>',
+      },
+      {
+        method: 'POST',
+        path: '/api/graphql',
+        respond: async (request): Promise<FakeReply> => {
+          const body = JSON.parse(request.postData ?? '{}');
+          if (body.query?.includes('updateWidgetDashboardConfig')) {
+            sent = true;
+            await pending;
+            filters = body.variables.filters['course-grades-widget'] ?? body.variables.filters;
+            return {
+              body: {
+                data: {
+                  updateWidgetDashboardConfig: { filters: body.variables.filters, errors: [] },
+                },
+              },
+            };
+          }
+          return {
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: { 'course-grades-widget': filters },
+                  }),
+                },
+              },
+            },
+          };
+        },
+      },
+    ],
+    EIGHT_COURSES,
+  );
+  await addCsrfCookie(context, served.canvas.origin);
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page.evaluate(() => {
+    (window as unknown as { kept: boolean }).kept = true;
+  });
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect.poll(() => sent).toBe(true);
+  await page
+    .getByRole('button', { name: 'Preview Lab report 4: Cellular respiration', exact: true })
+    .click();
+  await expect(page.locator('#tools-turn-in')).toBeVisible();
+  await expect
+    .poll(() => page.frames().some((frame) => frame.url().includes('content_only=1')))
+    .toBe(true);
+  const frame = page.frames().find((frame) => frame.url().includes('content_only=1'))!;
+  await frame.getByRole('textbox', { name: 'Draft' }).fill('Keep this text');
+  release();
+  await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(0);
+  await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0);
+  await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
+  await expect(frame.getByRole('textbox', { name: 'Draft' })).toHaveValue('Keep this text');
+  expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept)).toBe(true);
+});
+
+test('an aborted save leaves the focus in the form that stopped it', async ({ context, page }) => {
+  await open(context, page, { scenario: EIGHT_COURSES });
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page
+    .locator('[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]')
+    .click();
+  await page.locator('[data-wr-card="107"] button').click();
+  await page.getByRole('button', { name: 'Add task', exact: true }).click();
+  const title = page.getByRole('textbox', { name: /title/i }).first();
+  await title.fill('abc');
+  await expect(page.locator('[data-wr-card="107"] [role="status"]')).toHaveText(
+    'Close the open form first.',
+  );
+  await page.keyboard.type('def');
+  await expect(title).toHaveValue('abcdef');
+});
+
+test('Customize opened during the wait stops a copied eye save', async ({ context, page }) => {
+  let writes = 0;
+  const served = await serveScenario(
+    context,
+    [
+      ...PAGE,
+      {
+        method: 'POST',
+        path: '/api/graphql',
+        respond: (request): FakeReply => {
+          if (request.postData?.includes('updateWidgetDashboardConfig')) {
+            writes += 1;
+            return { body: { errors: [{ message: 'Refused' }] } };
+          }
+          return {
+            body: {
+              data: {
+                legacyNode: {
+                  widgetDashboardConfig: JSON.stringify({
+                    filters: { 'course-grades-widget': { gradeVisibilities: {} } },
+                  }),
+                },
+              },
+            },
+          };
+        },
+      },
+    ],
+    EIGHT_COURSES,
+  );
+  await addCsrfCookie(context, served.canvas.origin);
+  await openCanvasPage(page, served.canvas.origin, '/?fixture_course_work=second');
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page
+    .locator('[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]')
+    .click();
+  await page.locator('[data-wr-card="107"] button').click();
+  await expect(page.locator('[data-wr-card="107"] button')).toBeDisabled();
+  await page.evaluate(() => {
+    const node = document.createElement('button');
+    node.dataset.testid = 'save-customize-button';
+    document.body.append(node);
+  });
+  await expect(page.locator('[data-wr-card][aria-busy]')).toHaveCount(0, { timeout: 6000 });
+  expect(writes).toBe(0);
+});
+
+test('a close note leaves its card when the form that caused it closes', async ({
+  context,
+  page,
+}) => {
+  await open(context, page, { scenario: EIGHT_COURSES });
+  await expect(page.getByTestId('course-107-grade')).toHaveText('95%', { timeout: READ_WAIT });
+  await page.getByRole('button', { name: 'Add task', exact: true }).click();
+  await page.locator('[data-wr-card="107"] button').click();
+  const note = page.locator('[data-wr-card="107"] [role="status"]');
+  await expect(note).toHaveText('Close the open form first.');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).first().click();
+  await expect(note).toHaveCount(0);
+});

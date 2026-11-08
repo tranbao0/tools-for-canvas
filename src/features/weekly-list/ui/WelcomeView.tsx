@@ -5,6 +5,7 @@ import type { WelcomeProps } from './contract';
 import { hostOf } from './format';
 import { AppMark } from '../../../shared/ui/icons';
 import { Heading, HostText, MARKER, withNode } from '../../../shared/ui/parts';
+import { OfferBanner } from './Notices';
 import { StateBody } from './States';
 
 const PIN_TEXT = {
@@ -49,7 +50,7 @@ export function WelcomeView({ browser, shortcut, state, actions }: WelcomeProps)
                 actions={actions}
                 level={3}
                 context="welcome"
-                showOffer={state.kind === 'not_set_up'}
+                offerView={state.kind === 'not_set_up' ? OfferBanner : undefined}
               />
             )}
             <p class="wr-step-body">{t('welcomeListBody')}</p>

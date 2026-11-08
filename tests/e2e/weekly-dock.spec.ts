@@ -268,6 +268,71 @@ test.describe('the dock on the classic dashboard', () => {
     expect(await padding(page)).toBe('360px');
   });
 
+  test('keeps the header and the columns of Canvas apart at every window width, because Canvas reads the window and not the room', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { width: 1000, height: 800 });
+    /** The boxes of the header parts and of the two columns that the real Canvas lays out here. */
+    const parts = () =>
+      page.evaluate(() => {
+        const box = (selector: string) => {
+          const rect = document.querySelector(selector)?.getBoundingClientRect();
+          if (rect === undefined) throw new Error(`${selector} is not on the page`);
+          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+        };
+        return {
+          heading: box('.fixture-inst-heading'),
+          switchButton: box('[data-testid="switch-to-new-dashboard-button"]'),
+          options: box('[data-testid="dashboard-options-button"]'),
+          content: box('#content-wrapper'),
+          right: box('#right-side-wrapper'),
+        };
+      });
+    // Window width, the padding the dock takes, and where Canvas puts its right column.
+    // A room below 768 px (where Canvas starts its mobile layout) is not made: the dock lies over
+    // the page. A room from 768 px up to 992 px gets the one column layout that Canvas gives a
+    // window that wide. A room of 992 px or more keeps two columns.
+    const cases = [
+      [1000, '', 'beside'],
+      [1100, '', 'beside'],
+      [1200, '360px', 'below'],
+      [1280, '360px', 'below'],
+      [1366, '360px', 'beside'],
+    ] as const;
+    for (const [width, room, column] of cases) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect.poll(() => padding(page), { message: `padding at ${width}` }).toBe(room);
+      // The padding can stay the same from one width to the next, so the one column layout is
+      // what shows that the dock has laid out for this width.
+      await expect
+        .poll(
+          () => page.evaluate(() => document.documentElement.hasAttribute('data-weekrow-stack')),
+          {
+            message: `one column layout at ${width}`,
+          },
+        )
+        .toBe(column === 'below');
+      const found = await parts();
+      expect(found.heading.right, `heading and button at ${width}`).toBeLessThanOrEqual(
+        found.switchButton.left,
+      );
+      expect(found.switchButton.right, `button and options at ${width}`).toBeLessThanOrEqual(
+        found.options.left + 0.5,
+      );
+      if (column === 'below') {
+        expect(found.right.top, `right column at ${width}`).toBeGreaterThanOrEqual(
+          found.content.bottom - 1,
+        );
+      } else {
+        expect(found.right.left, `right column at ${width}`).toBeGreaterThanOrEqual(
+          found.content.right - 1,
+        );
+      }
+    }
+  });
+
   test('the wrapper of the fixture has its margin from 768 px on, as the real rule has', async ({
     context,
     page,
@@ -696,6 +761,20 @@ test.describe('the load order with a file pane that opens at the start', () => {
     await open(context, page, background, { withFile: true });
     await openFirstFile(page, FILE_LINK, () => addFileLink(page));
     await expect(page.locator(DOCK)).toBeHidden();
+    // The reload starts only after the open file is stored, not merely after its host appears.
+    const frame = await pane(page);
+    await expect
+      .poll(() =>
+        frame.evaluate(async () => {
+          const api = (
+            globalThis as unknown as {
+              chrome: { runtime: { sendMessage(message: object): Promise<{ ids: string[] }> } };
+            }
+          ).chrome;
+          return (await api.runtime.sendMessage({ type: 'viewer:tabs-get' })).ids;
+        }),
+      )
+      .toEqual(['42']);
     // Every value that the padding takes while the page loads again, with the file pane stored.
     await page.addInitScript(() => {
       const values: string[] = [];

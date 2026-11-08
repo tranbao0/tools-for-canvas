@@ -167,3 +167,35 @@ it.each([
   expect(h.canvas.callsOf('deleteNote')).toEqual([]);
   stop();
 });
+
+it('refuses a delete port from a Firefox frame in the page process', async () => {
+  vi.stubEnv('BROWSER', 'firefox');
+  const h = await createHarness();
+  await loadReady(h);
+  let connect!: (port: import('wxt/browser').Browser.runtime.Port) => void;
+  vi.spyOn(browser.runtime.onConnect, 'addListener').mockImplementation((fn) => {
+    connect = fn;
+  });
+  vi.spyOn(browser.alarms.onAlarm, 'addListener').mockImplementation(() => undefined);
+  vi.spyOn(browser.alarms, 'create').mockResolvedValue(undefined);
+  for (const event of [browser.runtime.onConnect, browser.alarms.onAlarm])
+    vi.spyOn(event, 'removeListener').mockImplementation(() => undefined);
+  const stop = wireDataTriggers(h.owner);
+  const postMessage = vi.fn();
+  const noteId = IDS.notes.libraryBooksToday;
+  connect({
+    name: `weekrow-delete:${JSON.stringify({ kind: 'deleteTask', noteId, userId: IDS.user, origin: ORIGIN })}`,
+    sender: {
+      id: browser.runtime.id,
+      url: browser.runtime.getURL('/viewer.html'),
+      origin: browser.runtime.getURL('/').replace(/\/$/, ''),
+      envType: 'content_child',
+    },
+    postMessage,
+    onDisconnect: { addListener: () => undefined },
+  } as unknown as import('wxt/browser').Browser.runtime.Port);
+  await h.owner.settled();
+  expect(postMessage).not.toHaveBeenCalled();
+  stop();
+  vi.unstubAllEnvs();
+});

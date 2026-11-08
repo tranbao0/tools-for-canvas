@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createDock,
   filePaneOpen,
@@ -17,6 +17,9 @@ import {
   type Dock,
   type DockRole,
 } from './dock';
+
+// The weekly dock lies over the page when it would leave Canvas less than 768 px, so these tests use a wide window.
+window.innerWidth = 1600;
 
 const padding = () => document.documentElement.style.getPropertyValue('padding-right');
 const docks: Dock[] = [];
@@ -88,6 +91,152 @@ describe('the record of the room on the page', () => {
     giveBackRoom(document);
     expect(padding()).toBe('13px');
     lookalike.remove();
+  });
+});
+
+describe('the room that Canvas gets beside a dock', () => {
+  const html = document.documentElement;
+  const stacked = () => html.hasAttribute('data-weekrow-stack');
+  const style = () => document.getElementById('weekrow-stack-style');
+  /** Runs with a window of this width, and puts the width back. */
+  function inWindow(width: number, run: () => void): void {
+    const { innerWidth } = window;
+    try {
+      window.innerWidth = width;
+      run();
+    } finally {
+      window.innerWidth = innerWidth;
+    }
+  }
+
+  it('keeps 420 px beside the navigation and restores the chosen width after a resize', () => {
+    inWindow(1000, () => {
+      const file = dock('file', 900, true);
+      file.open();
+      expect(padding()).toBe('496px');
+      expect(file.width).toBe(900);
+      window.innerWidth = 1600;
+      window.dispatchEvent(new Event('resize'));
+      expect(padding()).toBe('912px');
+      file.setWidth(1000);
+      window.innerWidth = 900;
+      window.dispatchEvent(new Event('resize'));
+      expect(padding()).toBe('396px');
+      expect(file.width).toBe(1000);
+    });
+  });
+
+  it('lies over the page at its own width when the weekly dock would leave less than 768 px, on a window of 900 px or more', () => {
+    inWindow(1000, () => {
+      const weekly = dock('weekly', 360);
+      weekly.open();
+      expect(weekly.host.style.width).toBe('360px');
+      expect(weekly.host.style.left).toBe('');
+      expect(padding()).toBe('');
+      window.innerWidth = 1200;
+      window.dispatchEvent(new Event('resize'));
+      expect(weekly.host.style.width).toBe('360px');
+      expect(padding()).toBe('360px');
+    });
+  });
+
+  it('takes room in a pane on a window of 900 px or more, and leaves the narrow room to the one column layout', () => {
+    inWindow(1000, () => {
+      const file = dock('file', 480, true);
+      file.open();
+      expect(padding()).toBe('492px');
+      expect(stacked()).toBe(true);
+      file.close();
+      const turnIn = dock('turn-in', 480, true);
+      turnIn.open();
+      expect(padding()).toBe('492px');
+      turnIn.close();
+    });
+  });
+
+  it('gives the one column layout of Canvas while the room is below 992 px', () => {
+    inWindow(1300, () => {
+      const weekly = dock('weekly', 360);
+      weekly.open();
+      expect(stacked()).toBe(true);
+      expect(style()?.textContent).toContain('.ic-app-main-content{display:block!important}');
+      window.innerWidth = 1352;
+      window.dispatchEvent(new Event('resize'));
+      expect(stacked()).toBe(false);
+      weekly.close();
+      expect(style()).toBeNull();
+    });
+  });
+
+  it('waits for 1140 px of room beside the course menu, as Canvas does', () => {
+    inWindow(1400, () => {
+      document.body.classList.add('course-menu-expanded');
+      try {
+        const file = dock('file', 480, true);
+        file.open();
+        expect(stacked()).toBe(true);
+        expect(html.hasAttribute('data-weekrow-hide-menu')).toBe(false);
+        expect(style()?.textContent).toContain('.ic-Layout-columns{margin-left:0!important}');
+        expect(document.body.classList.contains('course-menu-expanded')).toBe(true);
+        window.innerWidth = 1700;
+        window.dispatchEvent(new Event('resize'));
+        expect(stacked()).toBe(false);
+        file.close();
+      } finally {
+        document.body.classList.remove('course-menu-expanded');
+      }
+    });
+  });
+
+  it('lays out again when the course menu opens or closes, with no resize, for a dock and for a tab', async () => {
+    const menu = (open: boolean) => document.body.classList.toggle('course-menu-expanded', open);
+    const host = document.createElement('div');
+    document.body.append(host);
+    // The room of the dock is 1008 px, and the room of the tab is 1132 px: both are above 992 px
+    // and below the 1140 px that Canvas wants beside the course menu.
+    for (const [width, hold] of [
+      [1500, () => (dock('file', 480, true).open(), { release: () => docks.pop()?.close() })],
+      [1170, () => leaseRoom(host, 38)],
+    ] as const) {
+      const { innerWidth } = window;
+      window.innerWidth = width;
+      try {
+        const held = hold();
+        expect(stacked()).toBe(false);
+        menu(true);
+        await vi.waitFor(() => expect(stacked()).toBe(true));
+        menu(false);
+        await vi.waitFor(() => expect(stacked()).toBe(false));
+        // A holder that gave its room back no longer watches the page.
+        held.release();
+        menu(true);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(stacked()).toBe(false);
+        expect(padding()).toBe('');
+      } finally {
+        menu(false);
+        window.innerWidth = innerWidth;
+      }
+    }
+  });
+
+  it('leaves no mark on the page after the last holder, and gives back what a dead copy left', () => {
+    inWindow(1300, () => {
+      const file = dock('file', 480);
+      file.open();
+      const turnIn = dock('turn-in', 480);
+      turnIn.open();
+      file.close();
+      expect(stacked()).toBe(true);
+      turnIn.close();
+      expect(stacked()).toBe(false);
+      expect(style()).toBeNull();
+      dock('file', 480).open();
+      document.getElementById('tools-file')?.remove();
+      giveBackRoom(document);
+      expect(stacked()).toBe(false);
+      expect(style()).toBeNull();
+    });
   });
 });
 
@@ -544,7 +693,7 @@ describe('full view', () => {
       expect(turnIn.host.style.width).toBe('');
       expect(turnIn.host.style.left).toBe('0px');
       expect(turnIn.host.hasAttribute('data-full')).toBe(false);
-      window.innerWidth = 1200;
+      window.innerWidth = 1400;
       window.dispatchEvent(new Event('resize'));
       expect(fullViewAvailable()).toBe(true);
       expect(turnIn.full).toBe(true);

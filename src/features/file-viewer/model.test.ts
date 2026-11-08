@@ -224,12 +224,19 @@ describe('preview routes', () => {
     '/courses/12~3/files/folder/week%201/notes?preview=45~6',
     '/courses/12~3/files/folder?preview=45~6',
     '/courses/12~3/files/search?search_term=a&preview=45~6',
+    // My Files of the student, and the Files page of a group and of a user.
+    '/files/folder/users_9?preview=45~6',
+    '/files?preview=45~6',
+    '/files/search?search_term=a&preview=45~6',
+    '/groups/5/files/folder/plans?preview=45~6',
+    '/users/9/files?preview=45~6',
   ]) {
     it(route, () => expect(fileTarget(route, origin)).toEqual({ fileId: '45~6' }));
     for (const hostile of [
       'https://other.edu' + route,
       route.replace('/files', '/files/extra'),
       route.replace('/files', '/groups/files'),
+      route.replace(/^(?:\/(?:courses|groups|users)\/[^/]+)?\/files/, '/accounts/1/files'),
       route.replace('45~6', 'abc'),
       route + '&preview=7',
     ])

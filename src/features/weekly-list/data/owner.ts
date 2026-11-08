@@ -10,7 +10,7 @@ import type { WidgetGradePreferences } from '../../../shared/canvas/types';
  * runs. The background uses it today; a panel page or a content script could host it instead.
  */
 import type { RequestPriority } from '../../../shared/canvas/limiter';
-import { isCanvasId } from '../../../shared/canvas/ids';
+import { isCanvasId, isGradeWidgetId } from '../../../shared/canvas/ids';
 import type {
   CanvasApi,
   PlannerItem,
@@ -96,6 +96,7 @@ import type {
   NoSubmissionAccess,
 } from '../../assignment-view/protocol';
 import { projectAssignmentView, projectReports } from '../../assignment-view/project';
+import { handInRecordOf, isHandedIn, withHandIn, type HandInRecord } from './handIn';
 import {
   applyPatch,
   matchesTarget,
@@ -202,6 +203,8 @@ export interface DataOwnerDeps {
   sessionFingerprint(origin: string): Promise<string | null>;
   /** Whether the tab of a surface lives in the store that the requests use. */
   surfaceUsesRequestStore(tabId: number): Promise<boolean>;
+  /** A positive store classification for pane checks; absent tabs remain unknown. */
+  paneCookieStore(tabId: number): Promise<'request' | 'other' | 'unknown'>;
   /** Whether the browser lets the extension reach the origin now (decision 5). */
   hasAccess(origin: string): Promise<boolean>;
   store: DataStore;
@@ -229,7 +232,16 @@ interface RefreshResult {
   retryAt: number | null;
 }
 
+export type PaneOwnerVerdict =
+  { verdict: 'yes'; userId: string | null } | { verdict: 'no' | 'unknown' };
+
 export interface DataOwner {
+  /** Reads the cookie proof without an age-based check; an explicit retry awaits the shared check. */
+  viewerPaneCheck(
+    origin: string | null,
+    tabId: number | undefined,
+    retry?: boolean,
+  ): Promise<PaneOwnerVerdict>;
   /** Restores delayed deletes when the worker wakes. */
   resumeDeletes(): Promise<void>;
   /** `tabId` is the tab of the surface, when it has one. */
@@ -267,6 +279,14 @@ export interface DataOwner {
    * student first, and the reply names that student. `token` names the read for a late result.
    * A tab in another cookie store gets no grade visibilities.
    */
+  setGradeVisibility(
+    courseId: string,
+    visible: boolean,
+    userId: string,
+    tabId: number | undefined,
+    origin: string | null,
+    widgetId: string,
+  ): Promise<{ ok: boolean }>;
   dashboardGradeVisibility(
     token: string | undefined,
     tabId: number | undefined,
@@ -836,6 +856,34 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (cache === null) return;
     cache = { ...cache, limits: limitsAfterStart(cache.limits, 'full', clock.now()) };
     schedule('full');
+  }
+
+  /**
+   * A read of a submission that shows work handed in, while the cached list still shows the
+   * assignment as not handed in, writes the hand-in into the cached planner items, so the row moves
+   * with no round. A round that nobody asked for stays under the 60-second limit.
+   */
+  function applyHandIn(courseId: string, assignmentId: string, record: HandInRecord): void {
+    if (cache === null || cache.limited || !isHandedIn(record)) return;
+    const planner = withHandIn(cache.planner, courseId, assignmentId);
+    if (planner === null) return;
+    const id = nextId();
+    cache = {
+      ...cache,
+      planner,
+      patches: [
+        ...cache.patches,
+        {
+          kind: 'hand-in',
+          id,
+          courseId,
+          assignmentId,
+          confirmedAt: clock.now(),
+        },
+      ],
+    };
+    persist();
+    bumpLater();
   }
 
   function cancelDefer(): void {
@@ -2646,7 +2694,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    */
   async function readFingerprint(origin: string): Promise<string | null | undefined> {
     try {
-      return await deps.sessionFingerprint(origin);
+      const fingerprint = await deps.sessionFingerprint(origin);
+      if (fingerprint === null && !(await deps.hasAccess(origin))) return undefined;
+      return fingerprint;
     } catch (error) {
       deps.log('session fingerprint', error);
       return undefined;
@@ -3084,7 +3134,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentDetailsReply | NoSubmissionAccess> {
-    return readForAssignmentView(origin, tabId, async (api, entry) => {
+    const reply = await readForAssignmentView(origin, tabId, async (api, entry) => {
       const [assignment, submission] = await Promise.all([
         api.getAssignmentRecord(courseId, assignmentId),
         api.getOwnSubmissionRecord(courseId, assignmentId).catch(notFoundIsNull),
@@ -3098,8 +3148,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           ? canvasTimeZone(session, await viewContext(origin))
           : deps.browserTimeZone();
       if (!isCurrent(stamp)) throw new ViewerUnconfirmedError();
-      return { details: projectAssignmentView(assignment, submission), timeZone };
+      const details = projectAssignmentView(assignment, submission);
+      return { details, timeZone, handIn: handInRecordOf(submission), entry };
     });
+    if ('kind' in reply) return reply;
+    if (identityHolds(reply.entry)) applyHandIn(courseId, assignmentId, reply.handIn);
+    return { details: reply.details, timeZone: reply.timeZone };
   }
 
   async function assignmentOwner(
@@ -3108,16 +3162,23 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     origin: string | null,
     tabId: number | undefined,
   ): Promise<AssignmentOwnerReply | NoSubmissionAccess> {
-    const reply = await readForAssignmentView(origin, tabId, async (api) => {
+    const reply = await readForAssignmentView(origin, tabId, async (api, entry) => {
       const record = await api
         .getOwnSubmissionUserRecord(courseId, assignmentId)
         .catch(notFoundIsNull);
       if (record === null) return null;
       const user = record['user_id'];
       if (typeof user !== 'string' || !isCanvasId(user)) throw new Error('Not a submission record');
-      return { userId: user, ...projectReports(record) };
+      return {
+        value: { userId: user, ...projectReports(record) },
+        handIn: handInRecordOf(record),
+        entry,
+      };
     });
-    return reply === null ? { kind: 'no_submission_access' } : reply;
+    if (reply === null) return { kind: 'no_submission_access' };
+    if (identityHolds(reply.entry) && sameCanvasId(reply.value.userId, cache?.session?.profile.id))
+      applyHandIn(courseId, assignmentId, reply.handIn);
+    return reply.value;
   }
 
   /**
@@ -3222,6 +3283,46 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     return context !== null && identityHolds(context.stamp);
   }
 
+  async function viewerPaneCheck(
+    origin: string | null,
+    tabId: number | undefined,
+    retry = false,
+  ): Promise<PaneOwnerVerdict> {
+    const unknown: PaneOwnerVerdict = { verdict: 'unknown' };
+    try {
+      await ready();
+      if (origin === null || origin !== knownOrigin || tabId === undefined) return unknown;
+      const stamp = writeStamp();
+      // Only a positive store read grants this exception. An unreadable store stays unknown.
+      const storeKind = await deps.paneCookieStore(tabId);
+      if (!identityHolds(stamp) || storeKind === 'unknown') return unknown;
+      if (storeKind === 'other') return { verdict: 'yes', userId: null };
+      const fingerprint = await readFingerprint(origin);
+      if (!identityHolds(stamp) || fingerprint === undefined) return unknown;
+      if (fingerprint === null) {
+        if (cache?.failure?.kind !== 'signed_out') signOut({ kind: 'signed_out' });
+        return { verdict: 'no' };
+      }
+      const proof = viewerProof;
+      const userId = confirmedFingerprint(fingerprint)
+        ? cache!.session!.profile.id
+        : proof?.origin === origin && proof.gen === generation && proof.fingerprint === fingerprint
+          ? proof.userId
+          : null;
+      if (userId === null) {
+        if (userCheck === null && checkAllowed(retry)) startUserCheck();
+        if (retry && userCheck !== null) await userCheck;
+        return unknown;
+      }
+      // A pending or unreadable claim cannot supply a token for content.
+      const held = await store.viewerStudent.getValue();
+      if (!identityHolds(stamp) || held === null || !sameCanvasId(held, userId)) return unknown;
+      return { verdict: 'yes', userId };
+    } catch {
+      return unknown;
+    }
+  }
+
   async function viewerConfirm(origin: string | null, tabId: number | undefined): Promise<boolean> {
     await ready();
     if (origin === null || origin !== knownOrigin) return false;
@@ -3231,6 +3332,49 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     if (origin === null || origin !== knownOrigin || !(await readFingerprint(origin))) return false;
     const context = await viewerContext(origin, tabId, true, stamp);
     return context !== null && identityHolds(context.stamp);
+  }
+
+  async function setGradeVisibility(
+    courseId: string,
+    visible: boolean,
+    userId: string,
+    tabId: number | undefined,
+    origin: string | null,
+    widgetId: string,
+  ): Promise<{ ok: boolean }> {
+    await ready();
+    const refused = { ok: false };
+    const stamp = writeStamp();
+    if (
+      origin === null ||
+      origin !== knownOrigin ||
+      !isCanvasId(courseId) ||
+      !isGradeWidgetId(widgetId) ||
+      !isCanvasId(userId) ||
+      typeof visible !== 'boolean'
+    )
+      return refused;
+    if (
+      !(await surfaceMayRead(tabId)) ||
+      !identityHolds(stamp) ||
+      !(await signedInStudentOwnsCache())
+    )
+      return refused;
+    if (
+      !identityHolds(stamp) ||
+      cache?.session?.profile.id !== userId ||
+      !cache.session.courses.some((course) => course.id === courseId)
+    )
+      return refused;
+    const fresh = writeStamp();
+    try {
+      const ok = await apiFor(origin)
+        .withGuard(writeGuard(fresh))
+        .setWidgetGradeVisibility?.(userId, courseId, visible, widgetId);
+      return { ok: ok === true && identityHolds(fresh) && (await cookieConfirmed(fresh)) };
+    } catch {
+      return refused;
+    }
   }
 
   async function dashboardGradeVisibility(
@@ -4092,6 +4236,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     dashboardData,
     dashboardGradeVisibility,
+    setGradeVisibility,
     announcement,
     announcementPage,
     announcementRange: announcementRangeRead,
@@ -4105,6 +4250,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     viewerMayFetch,
     viewerUserId,
     viewerConfirm,
+    viewerPaneCheck,
 
     async originChanged(origin) {
       await ready();

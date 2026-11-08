@@ -1,3 +1,5 @@
+import { contentScriptWorld } from './support/content-script';
+import { moveTabsToAnotherStore } from './support/pane-identity';
 /**
  * The Assignments list of the assignment view (design decision 26): the Preview buttons and the
  * assignment pane, on the Assignments fixture through the fake Canvas server. The fixture rows
@@ -95,7 +97,7 @@ const FILE_ROUTES: FakeCanvasRoute[] = [
  * a discussion, a quiz and a discussion of a group.
  */
 function paneContent(name: string, mode: string): string {
-  return `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>${name}</h1><p id="mode">${mode}</p><p><a id="file" href="/courses/12/files/501" onclick="return false">essay.txt</a> <a id="file-plain" href="/courses/12/files/501">essay again</a></p><p><a id="to-discussion" href="${DISCUSSION}">discussion</a> <a id="to-quiz" href="${QUIZ}">quiz</a> <a id="to-take" href="${QUIZ_TAKE}">take</a> <a id="to-group" href="${GROUP_DISCUSSION}">group</a></p><input id="marker" aria-label="Draft"><script>addEventListener('beforeunload',(e)=>{if(document.getElementById('marker').value){e.preventDefault();e.returnValue='';}})</script><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`;
+  return `<!doctype html><html><body style="margin:20px;font-family:Arial"><h1>${name}</h1><p id="mode">${mode}</p><p><a id="file" href="/courses/12/assignments/101/submissions/9?download=501" onclick="return false">Download essay.txt</a> <a id="file-plain" href="/courses/12/files/501">essay again</a></p><p><a id="to-discussion" href="${DISCUSSION}">discussion</a> <a id="to-quiz" href="${QUIZ}">quiz</a> <a id="to-take" href="${QUIZ_TAKE}">take</a> <a id="to-group" href="${GROUP_DISCUSSION}">group</a></p><input id="marker" aria-label="Draft"><script>addEventListener('beforeunload',(e)=>{if(document.getElementById('marker').value){e.preventDefault();e.returnValue='';}})</script><form method="post"><button>Submit work</button></form><button type="button" id="quiet" onclick="fetch('${ASSIGNMENT}/quiet',{method:'POST'})">Submit quietly</button></body></html>`;
 }
 
 interface OpenOptions {
@@ -828,7 +830,7 @@ test('the pane is a card with a gap, and its header has a title, a second line a
   expect(header.titleSize).toBe('18px');
   expect(header.ellipsis).toBe('ellipsis');
   // The second line is the due text and the points of the row, in 13 px muted text.
-  expect(header.subText).toBe('Due Nov 3 at 10pm | 10 pts');
+  expect(header.subText).toBe('Due Nov 3 at 10pm | -/10 pts');
   expect(header.subSize).toBe('13px');
   expect(header.subColor).toBe('rgb(88, 104, 116)');
   expect(header.sub.y).toBeGreaterThan(header.title.y + header.title.height);
@@ -882,8 +884,8 @@ test('a row with no due text and no points gives a header with one line, and a l
   await ready(page, canvas);
   await page.evaluate(() => {
     document.querySelector('#assignment_102 .ig-details')!.remove();
-    // Canvas draws the date twice: for screen readers, and for the eye. A long date shows once.
-    const due = document.querySelector('#assignment_103 .non-screenreader')!;
+    // Canvas draws the date for screen readers and for the eye. A long date shows once.
+    const due = document.querySelector('#assignment_103 .visible-desktop')!;
     due.insertAdjacentHTML('beforeend', ' ' + 'long '.repeat(60));
   });
   const read = async () => {
@@ -919,7 +921,7 @@ test('a row with no due text and no points gives a header with one line, and a l
   expect(long.text).not.toContain('Due Nov 5 at 10pm Due');
   // The header follows the frame that shows.
   await preview(page, 'Essay').click();
-  await expect.poll(async () => (await read()).text).toBe('Due Nov 3 at 10pm | 10 pts');
+  await expect.poll(async () => (await read()).text).toBe('Due Nov 3 at 10pm | -/10 pts');
   await preview(page, 'Reading').click();
   await expect.poll(async () => (await read()).hidden).toBe(true);
 });
@@ -2369,7 +2371,7 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   background,
 }) => {
   const { canvas } = await open(context, page, background);
-  await page.setViewportSize({ width: 1400, height: 930 });
+  await page.setViewportSize({ width: 1600, height: 930 });
   await ready(page, canvas);
   await openPane(page, 'Essay');
   const hostBox = async () => (await page.locator(PANE_HOST).boundingBox())!;
@@ -2383,10 +2385,11 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   const start = await hostBox();
   expect(start.width).toBe(DEFAULT_TOOLS_SETTINGS.fileViewerWidth + 12);
 
-  // A drag from the handle to x = 700 makes the host 700 px wide: the card and the 12 px gap.
+  // A drag from the handle to x = 900 in a window of 1600 px makes the host 700 px wide: the card
+  // and the 12 px gap. The room that is left exceeds 420 px beside the global navigation.
   await page.mouse.move(start.x + 2, start.y + start.height / 2);
   await page.mouse.down();
-  await page.mouse.move(700, start.y + start.height / 2, { steps: 4 });
+  await page.mouse.move(900, start.y + start.height / 2, { steps: 4 });
   await page.mouse.up();
   await saved(688);
   expect((await hostBox()).width).toBe(700);
@@ -2411,7 +2414,7 @@ test('the resize handle of the pane follows the mouse and the arrow keys, saves 
   const narrow = await hostBox();
   await page.mouse.move(narrow.x + 2, narrow.y + narrow.height / 2);
   await page.mouse.down();
-  await page.mouse.move(1390, narrow.y + narrow.height / 2, { steps: 4 });
+  await page.mouse.move(1590, narrow.y + narrow.height / 2, { steps: 4 });
   await page.mouse.up();
   await saved(360);
   expect((await hostBox()).width).toBe(372);
@@ -2515,4 +2518,329 @@ test.describe('a file pane that the assignment pane covers', () => {
       await host.close();
     }
   });
+});
+
+test('identity verdict: a draft survives three cookie changes in thirty seconds', async ({
+  context,
+  page,
+  background,
+}) => {
+  test.setTimeout(90000);
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this unsent draft');
+  await advanceBackgroundClock(background, 60000);
+  for (let change = 0; change < 3; change++) {
+    await context.addCookies([
+      {
+        name: 'canvas_session',
+        value: `rotation-${change}`,
+        url: canvas.origin,
+        secure: true,
+        sameSite: 'Lax',
+      },
+    ]);
+    await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
+    await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes', {
+      timeout: 40000,
+    });
+    await expect(frame.locator('#marker')).toHaveValue('Keep this unsent draft');
+  }
+});
+
+test('identity verdict: a missing reply covers the pane within six seconds', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this unsent draft');
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
+  const world = await contentScriptWorld(page);
+  expect(
+    await world.evaluate(`(() => {
+    const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+    const send = runtime.sendMessage.bind(runtime);
+    const began = performance.now();
+    new MutationObserver(() => {
+      if (document.querySelector('#tools-turn-in').getAttribute('data-identity') === 'unknown')
+        globalThis.__paneCoveredAfter ??= performance.now() - began;
+    }).observe(document.querySelector('#tools-turn-in'), {attributes: true, attributeFilter: ['data-identity']});
+    globalThis.__paneHeld = 0;
+    runtime.sendMessage = (message) => { if (['viewer:pane-check', 'viewer:fetch-allowed'].includes(message.type)) { globalThis.__paneHeld++; return new Promise(() => {}); } return send(message); };
+    return runtime.sendMessage.toString();
+  })()`),
+  ).toContain('__paneHeld');
+  await expect
+    .poll(() => world.evaluate('globalThis.__paneHeld'), { timeout: 2000 })
+    .toBeGreaterThan(0);
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown', {
+    timeout: 6000,
+  });
+  expect(await world.evaluate('globalThis.__paneCoveredAfter')).toBeLessThanOrEqual(6000);
+  await expect(frame.locator('#marker')).toHaveValue('Keep this unsent draft');
+});
+
+test('identity verdict: Preview in another store stays open', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  await moveTabsToAnotherStore(background);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Container draft');
+  await page.waitForTimeout(6500);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await expect(frame.locator('#marker')).toHaveValue('Container draft');
+});
+
+test('identity verdict: a 401 runs the full reset and removes the cover', async ({
+  context,
+  page,
+  background,
+}) => {
+  let signedOut = false;
+  const scenario = buildScenario(SCENARIO_NOW);
+  const { canvas } = await open(context, page, background, {
+    extra: [
+      {
+        path: '/api/v1/users/self',
+        respond: () =>
+          signedOut
+            ? { status: 401, body: { errors: [{ message: 'Signed out' }] } }
+            : { body: json(scenario.self) },
+      },
+    ],
+  });
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Draft before sign-out');
+  await advanceBackgroundClock(background, 60000);
+  signedOut = true;
+  await context.addCookies([
+    { name: 'canvas_session', value: 'expired', url: canvas.origin, secure: true, sameSite: 'Lax' },
+  ]);
+  await expect(page.locator(PANE_HOST)).toHaveCount(0);
+  await expect(page.locator('[data-identity="unknown"]')).toHaveCount(0);
+  expect(frame.isDetached()).toBe(true);
+});
+
+test('identity cover: Retry resumes a draft after a failed check', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this draft');
+  await background.evaluate(() => {
+    const scope = globalThis as unknown as { fetch: typeof fetch; restoreFetch: () => void };
+    const savedFetch = scope.fetch;
+    scope.restoreFetch = () => {
+      scope.fetch = savedFetch;
+    };
+    scope.fetch = (input, init) =>
+      String(input).includes('/users/self')
+        ? Promise.reject(new Error('Temporary failure'))
+        : savedFetch(input, init);
+  });
+  await context.addCookies([
+    { name: 'canvas_session', value: 'retry-cookie', url: canvas.origin, secure: true },
+  ]);
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
+  await page.waitForTimeout(1000);
+  await background.evaluate(() =>
+    (globalThis as unknown as { restoreFetch(): void }).restoreFetch(),
+  );
+  expect(
+    await frame.evaluate(() =>
+      [
+        ...(window.frameElement!.getRootNode() as ShadowRoot).querySelectorAll(
+          '.identity-cover button',
+        ),
+      ].map((b) => b.textContent),
+    ),
+  ).toEqual(['Retry', 'Close']);
+  await clickPane(page, '.identity-cover button');
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes', { timeout: 3000 });
+  await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
+});
+
+async function holdPaneIdentity(page: Page) {
+  const world = await contentScriptWorld(page);
+  await world.evaluate(`(() => {
+    const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+    const send = runtime.sendMessage.bind(runtime);
+    globalThis.__restorePaneIdentity = () => { runtime.sendMessage = send; };
+    runtime.sendMessage = (message) => message.type === 'viewer:pane-check'
+      ? Promise.resolve({ verdict: 'unknown' }) : send(message);
+  })()`);
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
+  return world;
+}
+
+test('identity cover: keys leave the frame and cannot submit its form', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas, state } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this draft');
+  await holdPaneIdentity(page);
+  expect(await frame.evaluate(() => document.hasFocus())).toBe(false);
+  expect(
+    await frame.evaluate(
+      () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.textContent,
+    ),
+  ).toBe('Retry');
+  await page.keyboard.type('XYZ');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
+  await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
+  expect(state.submitted).toBe(false);
+  await expect(page.locator(PANE_HOST)).toBeVisible();
+  await page.keyboard.press('Tab');
+  await page.waitForTimeout(1200);
+  expect(
+    await frame.evaluate(
+      () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.textContent,
+    ),
+  ).toBe('Close');
+});
+
+test('identity cover: restored focus keeps Escape in full view', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  const host = page.locator(PANE_HOST);
+  await toggleFullView(page);
+  const world = await holdPaneIdentity(page);
+  await frame.evaluate(() =>
+    (
+      (window.frameElement!.getRootNode() as ShadowRoot).querySelector(
+        '.identity-cover button:last-child',
+      ) as HTMLElement
+    ).focus(),
+  );
+  await world.evaluate('globalThis.__restorePaneIdentity()');
+  await expect(host).toHaveAttribute('data-identity', 'yes');
+  expect(
+    await frame.evaluate(
+      () => (window.frameElement!.getRootNode() as ShadowRoot).activeElement?.tagName,
+    ),
+  ).toBe('SECTION');
+  await page.keyboard.press('Escape');
+  await expect(host).not.toHaveAttribute('data-full');
+});
+
+test('identity cover: a fullscreen frame exits before content can show', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').click();
+  await frame.evaluate(() => document.documentElement.requestFullscreen());
+  await expect
+    .poll(() => page.evaluate(() => document.fullscreenElement?.id))
+    .toBe('tools-turn-in');
+  await holdPaneIdentity(page);
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+});
+
+test('a second injection retires the old assignment view through later page changes', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  await background.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: {
+          tabs: { query(query: object): Promise<{ id: number; url?: string }[]> };
+          scripting: { executeScript(details: object): Promise<unknown> };
+        };
+      }
+    ).chrome;
+    const tab = (await api.tabs.query({})).find((tab) =>
+      tab.url?.includes('/courses/12/assignments'),
+    )!;
+    await api.scripting.executeScript({ target: { tabId: tab.id }, files: ['assignment-view.js'] });
+  });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const list = document.querySelector('.assignment-list') ?? document.querySelector('#content')!;
+    list.innerHTML = list.innerHTML.replace(/<button[^>]*data-av-preview[^]*?<\/button>/g, '');
+  });
+  await expect(page.locator('[data-av-preview]')).toHaveCount(3);
+  await page.waitForTimeout(500);
+  await expect(page.locator('[data-av-preview]')).toHaveCount(3);
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
+  await expect(page.locator('[data-av-preview]')).toHaveCount(0);
+});
+
+test('identity verdict: a late idle tick never flashes the cover', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  await openPane(page, 'Essay');
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
+  const world = await contentScriptWorld(page);
+  await world.evaluate(`(() => {
+    globalThis.__lateCovers = 0;
+    const host = document.querySelector('#tools-turn-in');
+    new MutationObserver(() => {
+      if (host.getAttribute('data-identity') === 'unknown') globalThis.__lateCovers++;
+    }).observe(host, { attributes: true, attributeFilter: ['data-identity'] });
+    const now = Date.now;
+    Date.now = () => now() + 60000;
+  })()`);
+  await page.waitForTimeout(2200);
+  expect(await world.evaluate('globalThis.__lateCovers')).toBe(0);
+});
+
+test('identity verdict: losing site access preserves the frame and draft', async ({
+  context,
+  page,
+  background,
+}) => {
+  const { canvas } = await open(context, page, background);
+  await ready(page, canvas);
+  const frame = await openPane(page, 'Essay');
+  await frame.locator('#marker').fill('Keep this draft');
+  await background.evaluate(() => {
+    const api = (
+      globalThis as unknown as {
+        chrome: {
+          cookies: { get: (...args: unknown[]) => Promise<unknown> };
+          permissions: { contains: (...args: unknown[]) => Promise<boolean> };
+        };
+      }
+    ).chrome;
+    api.cookies.get = async () => null;
+    api.permissions.contains = async () => false;
+  });
+  await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown');
+  await page.waitForTimeout(2200);
+  await expect(frame.locator('#marker')).toHaveValue('Keep this draft');
+  expect(frame.isDetached()).toBe(false);
 });

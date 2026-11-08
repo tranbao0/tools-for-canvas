@@ -29,3 +29,11 @@ export function sameCanvasId(first: unknown, second: unknown): boolean {
     normalizeCanvasId(first) === normalizeCanvasId(second)
   );
 }
+
+/** The default Course grades widget or a widget added by the student. */
+export function isGradeWidgetId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    (value === 'course-grades-widget' || /^course_grades-widget-[0-9a-f-]{36}$/.test(value))
+  );
+}

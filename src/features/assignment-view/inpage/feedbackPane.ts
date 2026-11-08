@@ -12,13 +12,8 @@
  * redirect to DocViewer, so the script cannot read the address of the frame, and it cannot tell
  * whether DocViewer refused to be framed. The bar therefore always has "Open in new tab".
  */
-import {
-  createDock,
-  filePaneOpen,
-  hideFilePane,
-  watchFilePane,
-  type Dock,
-} from '../../file-viewer/dock';
+import { filePaneOpen, hideFilePane, watchFilePane, type Dock } from '../../file-viewer/dock';
+import { createCardDock } from '../../file-viewer/cardDock';
 import { CLOSE_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { OWN } from './own';
@@ -38,6 +33,7 @@ export interface FeedbackRequest {
   title: string;
   /** A checked session address (see `sessionUrl`). */
   url: string;
+  identityToken?: string;
 }
 
 export interface FeedbackPaneOptions {
@@ -59,6 +55,7 @@ export interface FeedbackPane {
 export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
   const { doc } = options;
   let dock: Dock | undefined;
+  let current: FeedbackRequest | undefined;
   let frame: HTMLIFrameElement | undefined;
   let title: HTMLElement | undefined;
   let link: HTMLAnchorElement | undefined;
@@ -94,7 +91,7 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
     title.textContent = request.title;
     link.href = request.url;
     frame.title = `Feedback on ${request.title}`;
-    frame.src = request.url;
+    if (frame.getAttribute('src') !== request.url) frame.src = request.url;
   }
 
   return {
@@ -102,18 +99,23 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       return dock !== undefined;
     },
     open(request) {
+      current = request;
       if (dock) {
         hideFilePane(true);
         sync();
-        show(request);
+        if (dock.host.getAttribute('data-identity') === 'yes') show(request);
         return;
       }
-      const created = createDock({
+      const created = createCardDock({
         role: 'feedback',
+        onClose: shut,
+        identityToken: request.identityToken,
+        onIdentityChange(confirmed) {
+          if (confirmed && current) show(current);
+        },
         id: FEEDBACK_HOST_ID,
         label: 'Feedback',
         resizeLabel: 'Resize feedback',
-        card: true,
         width: options.width(),
         onResized: options.saveWidth,
         doc,
@@ -144,7 +146,6 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       frame.style.background = '#fff';
       created.section.append(style, bar, frame);
       dock = created;
-      show(request);
       hideFilePane(true);
       created.open();
       fullView.update();

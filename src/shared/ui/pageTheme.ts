@@ -71,3 +71,22 @@ export function detectPageTheme(doc: Document = document): PageTheme {
   }
   return 'light';
 }
+
+/**
+ * Calls `onChange` with the new theme each time the page turns light or dark, until the returned
+ * function stops it. Canvas turns its own dark mode on and off with no reload, by an inline
+ * background on `html` and `body`, and a class can do the same, so the watch reads the theme after
+ * a change of an attribute of `html` or `body`.
+ */
+export function watchPageTheme(doc: Document, onChange: (theme: PageTheme) => void): () => void {
+  let last = detectPageTheme(doc);
+  const observer = new MutationObserver(() => {
+    const next = detectPageTheme(doc);
+    if (next === last) return;
+    last = next;
+    onChange(next);
+  });
+  observer.observe(doc.documentElement, { attributes: true });
+  if (doc.body !== null) observer.observe(doc.body, { attributes: true });
+  return () => observer.disconnect();
+}

@@ -12,7 +12,7 @@ import {
   type SurfaceState,
 } from '../model/types';
 import { App } from './App';
-import { OFFER_ARM_MS } from './Notices';
+import { OFFER_ARM_MS, OfferBanner } from './Notices';
 import { KIND_SAVE_DELAY_MS } from './SpanPicker';
 import type { AppProps, SurfaceKind } from './contract';
 import { spyActions, type SpyActions } from './testing/actions';
@@ -34,11 +34,18 @@ import {
 
 afterEach(cleanup);
 
+/** The side panel passes the offer view to the list, as the panel page does. */
+const offerFor = (surface: SurfaceKind) => (surface === 'panel' ? OfferBanner : undefined);
+
 function setup(state: SurfaceState = readyState(), surface: SurfaceKind = 'panel') {
   const actions: SpyActions = spyActions();
-  const result = render(<App surface={surface} state={state} actions={actions} />);
+  const result = render(
+    <App surface={surface} state={state} actions={actions} offerView={offerFor(surface)} />,
+  );
   const rerender = (next: SurfaceState) =>
-    result.rerender(<App surface={surface} state={next} actions={actions} />);
+    result.rerender(
+      <App surface={surface} state={next} actions={actions} offerView={offerFor(surface)} />,
+    );
   return { ...result, actions, rerender };
 }
 
@@ -994,6 +1001,85 @@ describe('the open bottom group', () => {
       expect(area()?.querySelector('li')).not.toBeNull();
     },
   );
+
+  describe('with older done work', () => {
+    const olderDone = () =>
+      readyState({
+        view: mkView({
+          groups: [
+            todayGroup,
+            mkGroup({
+              kind: 'done',
+              items: dueItems(['Finished one'], { state: 'done' }),
+              older: dueItems(['Old done one', 'Old done two'], { state: 'done' }),
+            }),
+          ],
+        }),
+      });
+    const line = () => screen.getByRole('button', { name: '2 older' });
+    const olderDoneOnly = () =>
+      readyState({
+        view: mkView({
+          groups: [
+            todayGroup,
+            mkGroup({
+              kind: 'done',
+              older: dueItems(['Old done one', 'Old done two'], { state: 'done' }),
+            }),
+          ],
+        }),
+      });
+
+    it('counts only the work of the span in Done, and shows the older line closed with its own count', () => {
+      setupSaved(olderDone(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+      expect(header(/^Done/).parentElement?.querySelector('.wr-count')?.textContent).toBe('1');
+      expect(within(area() as HTMLElement).getByRole('heading').textContent).toMatch(/^Done1/);
+      expect(line().getAttribute('aria-expanded')).toBe('false');
+      expect(area()?.textContent).not.toContain('Old done one');
+      // Done has no Mark all older done: only Past due has it.
+      expect(screen.queryByRole('button', { name: 'Mark all older done' })).toBeNull();
+    });
+
+    it('opens to rows with a check that can be unchecked, and keeps the line open across the views', () => {
+      const { actions } = setupSaved(olderDone(), 'inpage', {
+        ...DEFAULT_SETTINGS,
+        openGroup: 'done',
+      });
+      fireEvent.click(line());
+      const box = within(area() as HTMLElement).getByRole<HTMLInputElement>('checkbox', {
+        name: 'Done: Old done one',
+      });
+      expect(box.checked).toBe(true);
+      fireEvent.click(box);
+      expect(actions.setDone).toHaveBeenCalledWith(expect.any(String), false);
+      fireEvent.click(header(/^To do/));
+      fireEvent.click(header(/^Done/));
+      expect(line().getAttribute('aria-expanded')).toBe('true');
+      expect(area()?.textContent).toContain('Old done two');
+    });
+
+    it('shows a count that is no number while the span loads or did not load, whatever the older work', () => {
+      const state = olderDoneOnly();
+      if (state.kind !== 'ready') throw new Error('not ready');
+      for (const flag of [{ loading: true }, { incomplete: true }] as const) {
+        cleanup();
+        setupSaved(readyState({ view: { ...state.view, ...flag } }), 'inpage', {
+          ...DEFAULT_SETTINGS,
+          openGroup: 'done',
+        });
+        expect(header(/^Done/).parentElement?.querySelector('.wr-count')?.textContent).toBe('?');
+      }
+    });
+
+    it('shows the line under a count of 0 when only older work is done', () => {
+      setupSaved(olderDoneOnly(), 'inpage', { ...DEFAULT_SETTINGS, openGroup: 'done' });
+      expect(header(/^Done/).parentElement?.querySelector('.wr-count')?.textContent).toBe('0');
+      // The empty line of the span comes first, and the older line follows it.
+      const shown = area() as HTMLElement;
+      expect(shown.textContent).toContain('Nothing done in this span.');
+      expect(line()).toBeTruthy();
+    });
+  });
 
   it('keeps the headers in their order when the open group is empty', () => {
     setupSaved(readyState({ view: mkView({ groups: [todayGroup, doneGroup] }) }), 'inpage', {

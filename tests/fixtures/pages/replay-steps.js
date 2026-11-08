@@ -30,7 +30,7 @@
             const state = params.get('fixture_course_work');
             if (state === 'none') section.parentElement.remove();
             if (state === 'second') {
-              const wrapper = document.createElement('div');
+              const wrapper = document.createElement('span');
               wrapper.dataset.testid = 'widget-container-course_work-widget-first';
               wrapper.innerHTML = '<section class="fx-section" data-testid="widget-course_work-widget-first"><h2>Course work</h2><p>Could not load Course work</p><button data-testid="course_work-widget-first-retry-button">Retry</button></section>';
               section.parentElement.before(wrapper);

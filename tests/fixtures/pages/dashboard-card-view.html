@@ -74,12 +74,17 @@
               <h1 class="screenreader-only">Dashboard</h1>
               <div id="dashboard_header_container" class="ic-Dashboard-header">
                 <div class="large ic-Dashboard-header__layout">
-                  <span class="ic-Dashboard-header__title"><span class="hidden-phone">Dashboard</span></span>
-                  <div class="ic-Dashboard-header__actions">
-                    <div id="dashboard-planner-header" class="CanvasPlanner__HeaderContainer" style="display: none;"></div>
-                    <div id="DashboardOptionsMenu_Container"><button type="button" class="Button" aria-label="Dashboard Options">&#8942;</button></div>
-                    <div id="dashboard-planner-header-aux"></div>
-                  </div>
+                  <span dir="ltr" direction="row" wrap="no-wrap" class="fixture-inst-flex">
+                    <span dir="ltr" class="fixture-inst-flex-item"><span dir="ltr" data-cid="Heading" class="fixture-inst-heading"><span class="hidden-phone">Dashboard</span></span></span>
+                    <span dir="ltr" class="fixture-inst-flex-item">
+                      <div class="ic-Dashboard-header__actions">
+                        <div id="dashboard-planner-header" class="CanvasPlanner__HeaderContainer" style="display: none;"></div>
+                        <button type="button" data-testid="switch-to-new-dashboard-button" class="fixture-inst-button"><span class="fixture-inst-button__content">Switch to new dashboard view</span></button>
+                        <div id="DashboardOptionsMenu_Container"><button type="button" data-testid="dashboard-options-button" class="fixture-inst-icon-button" aria-haspopup="true" aria-expanded="false" aria-label="Dashboard Options">&#8942;</button></div>
+                        <div id="dashboard-planner-header-aux" style="display: none;"></div>
+                      </div>
+                    </span>
+                  </span>
                 </div>
               </div>
               <div id="dashboard-planner" class="StudentPlanner__Container" style="display: none"></div>

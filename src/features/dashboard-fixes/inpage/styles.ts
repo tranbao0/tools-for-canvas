@@ -33,10 +33,12 @@ export const FIXES_CSS = `
 .wr-pg[data-wr-dark] button:focus-visible{outline-color:#5a9fd4}
 [data-wr-bar]{flex-flow:row wrap!important;align-items:flex-start!important;column-gap:.75rem}
 [data-wr-bar]>[data-wr-list]{flex:1 1 100%!important;min-width:0}
+[data-wr-bar]>[data-wr-filter]{min-width:0;max-width:100%}
 .wr-filter-label{display:block;margin-bottom:.25rem}
-.wr-select{position:relative;width:12rem;max-width:100%}
-.wr-filter-select{box-sizing:border-box;width:100%;height:1.75rem;margin:0;padding:0 2.25rem 0 .75rem;font:inherit;font-size:.875rem;color:inherit;background:transparent;border:.0625rem solid #8d959f;border-radius:.25rem;appearance:none;cursor:pointer}
-.wr-caret{position:absolute;right:.75rem;top:50%;width:.5rem;height:.5rem;margin-top:-.375rem;border:solid;border-width:0 .125rem .125rem 0;color:#586874;transform:rotate(45deg);pointer-events:none}
+.wr-select{position:relative;display:inline-block;max-width:100%;vertical-align:top}
+.wr-filter-select{box-sizing:border-box;display:block;width:auto;max-width:100%;height:1.75rem;margin:0;padding:0 2.25rem 0 .75rem;font:inherit;font-size:.875rem;color:inherit;background:transparent;border:.0625rem solid #8d959f;border-radius:.25rem;appearance:none;text-overflow:ellipsis;cursor:pointer}
+.wr-caret{position:absolute;top:.0625rem;right:.0625rem;bottom:.0625rem;display:flex;align-items:center;justify-content:center;width:1.5rem;font-size:.875rem;color:#586874;pointer-events:none}
+.wr-caret svg{display:block;fill:currentColor}
 [data-wr-dark] .wr-caret{color:#9ea6ad}
 .wr-filter-select option{color:var(--wr-option-ink);background:var(--wr-option-background)}
 .wr-x-note{margin:0 0 .5rem;font-size:.75rem;opacity:.75}

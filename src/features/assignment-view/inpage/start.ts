@@ -1,3 +1,5 @@
+import { resetPanes, watchPaneReset } from '../../file-viewer/paneReset';
+import { checkPaneIdentity } from '../../file-viewer/paneIdentity';
 /**
  * Starts the one assignment view (design decision 26) on the Assignments list, on the
  * Submission Details page of the student's own submission, and on the assignment page, where it
@@ -12,7 +14,7 @@
  */
 import { logFailure } from '../../../shared/platform/log';
 import type { ToolsSettings } from '../../../shared/settings/tools';
-import { detectPageTheme } from '../../../shared/ui/pageTheme';
+import { detectPageTheme, watchPageTheme } from '../../../shared/ui/pageTheme';
 import { inpageTheme } from '../../../shared/ui/theme';
 import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import type { DataMessage } from '../../weekly-list/data/protocol';
@@ -151,6 +153,7 @@ export async function startAssignmentView(
       send: channel.send,
       theme,
       openFeedback: feedback.open,
+      paneIdentity: checkPaneIdentity,
       closeFeedback: feedback.close,
     });
     pane = {
@@ -188,7 +191,7 @@ export async function startAssignmentView(
     const watch = createSubmissionWatch({
       send: channel.send,
       active: () => viewOn,
-      onOtherStudent: () => preview.reset(),
+      onOtherStudent: resetPanes,
     });
     const preview = createPreviewPane({
       doc,
@@ -251,9 +254,9 @@ export async function startAssignmentView(
   let saved: string | null = null;
   let enabled = false;
   const apply = (): void => {
-    // An open assignment pane may hold unsent work, so a switch or an address that a failed read
-    // made unknown never closes it. A change of student, a sign-out and a new address do, through
-    // `onStudentReset`.
+    // An unknown sign-in covers the whole pane and preserves its frames and unsent work.
+    // A confirmed student change, sign-out or changed clearing round runs the shared reset.
+    // An unreadable switch or address does not discard the draft.
     view.setActive(!stopped && enabled && saved === origin);
   };
   const follow = (next: Settings): void => {
@@ -274,15 +277,20 @@ export async function startAssignmentView(
       apply();
     }),
     channel.settings.watch(follow),
+    // Canvas turns its dark mode on and off with no reload, and Automatic follows it.
+    watchPageTheme(doc, () => {
+      view.refreshTheme();
+      dock.refreshTheme();
+    }),
   );
-  if (options.onStudentReset)
-    stops.push(
-      options.onStudentReset(() => {
-        dock.reset();
-        view.resetStudent?.();
-        apply();
-      }),
-    );
+  stops.push(
+    watchPaneReset(() => {
+      dock.reset();
+      view.resetStudent?.();
+      apply();
+    }),
+  );
+  if (options.onStudentReset) stops.push(options.onStudentReset(resetPanes));
   signal?.addEventListener('abort', controller.stop, { once: true });
   try {
     const [address, loadedTools, loadedSettings] = await Promise.all([

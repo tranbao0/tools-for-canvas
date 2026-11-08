@@ -108,43 +108,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Firefox smoke test
-        # The runner image ships Firefox and geckodriver; GECKOWEBDRIVER points to the driver folder.
-        run: |
-          export FIREFOX_BIN="$(command -v firefox)"
-          export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
-          npm run test:firefox
-
-      - name: Firefox submission pages test
-        run: |
-          export FIREFOX_BIN="$(command -v firefox)"
-          export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
-          npm run test:firefox:submission-pages
-
-      - name: Firefox assignments preview test
-        run: |
-          export FIREFOX_BIN="$(command -v firefox)"
-          export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
-          npm run test:firefox:assignments-preview
-
-      - name: Firefox announcements test
-        run: |
-          export FIREFOX_BIN="$(command -v firefox)"
-          export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
-          npm run test:firefox:announcements
-
-      - name: Firefox People test
-        run: |
-          export FIREFOX_BIN="$(command -v firefox)"
-          export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
-          npm run test:firefox:people
-
-      - name: Firefox dashboard dock test
-        run: |
-          export FIREFOX_BIN="$(command -v firefox)"
-          export GECKODRIVER_BIN="$GECKOWEBDRIVER/geckodriver"
-          npm run test:firefox:dashboard-dock
-
       - name: Upload the Playwright report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -155,6 +118,54 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  firefox:
+    name: Firefox tests
+    # Every Firefox suite runs here, beside the Chromium tests, so neither job waits for the other.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js from .nvmrc
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Find Firefox and geckodriver
+        # The runner image ships Firefox and geckodriver; GECKOWEBDRIVER points to the driver folder.
+        run: |
+          echo "FIREFOX_BIN=$(command -v firefox)" >> "$GITHUB_ENV"
+          echo "GECKODRIVER_BIN=$GECKOWEBDRIVER/geckodriver" >> "$GITHUB_ENV"
+
+      - name: Firefox smoke test
+        run: npm run test:firefox
+
+      - name: Firefox file check test
+        run: npm run test:firefox:file-check
+
+      - name: Firefox submission pages test
+        run: npm run test:firefox:submission-pages
+
+      - name: Firefox assignments preview test
+        run: npm run test:firefox:assignments-preview
+
+      - name: Firefox announcements test
+        run: npm run test:firefox:announcements
+
+      - name: Firefox People test
+        run: npm run test:firefox:people
+
+      - name: Firefox dashboard dock test
+        run: npm run test:firefox:dashboard-dock
+
+      - name: Firefox private and container tabs test
+        run: npm run test:firefox:private-tabs
 
   platforms:
     strategy:

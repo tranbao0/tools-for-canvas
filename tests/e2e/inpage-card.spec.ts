@@ -56,9 +56,14 @@ async function widgetHeight(page: Page): Promise<number> {
   );
 }
 
-/** The card is as tall as the widget it replaced, and at least 420 px. */
-function expectSlotHeight(card: number, widget: number): void {
-  expect(Math.abs(card - Math.max(420, widget))).toBeLessThanOrEqual(1);
+/**
+ * The card is as tall as the widget it replaced, at least 420 px, and never taller than the card
+ * in the band.
+ */
+function expectSlotHeight(card: number, widget: number, windowHeight: number): void {
+  expect(Math.abs(card - Math.min(Math.max(420, widget), limit(windowHeight)))).toBeLessThanOrEqual(
+    1,
+  );
 }
 
 async function open(
@@ -1365,8 +1370,8 @@ test.describe('the full list in the card', () => {
     }) => {
       await open(context, page, background, { height: windowHeight });
       const full = await cardBox(page);
-      // The window does not change the height: the card is as tall as the widget it replaced.
-      expectSlotHeight(full.card.height, await widgetHeight(page));
+      // The card is as tall as the widget it replaced, up to the height of the card in the band.
+      expectSlotHeight(full.card.height, await widgetHeight(page), windowHeight);
     });
 
     test(`has a height of the window minus 48 px, at most 760 px and at least 420 px, in a ${windowHeight} px window without a Course work widget`, async ({
@@ -1387,7 +1392,7 @@ test.describe('the full list in the card', () => {
     background,
   }) => {
     await open(context, page, background, { height: 400 });
-    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page));
+    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page), 400);
   });
 
   test('keeps 420 px in a low window without a Course work widget', async ({
@@ -1411,7 +1416,7 @@ test.describe('the full list in the card', () => {
     };
     await open(context, page, background, short);
     // The card keeps its size from span to span, so a short list leaves room at the bottom.
-    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page));
+    expectSlotHeight((await cardBox(page)).card.height, await widgetHeight(page), 1000);
   });
 
   test('keeps its fixed height when the content is short, without a Course work widget', async ({
@@ -1448,12 +1453,12 @@ test.describe('the full list in the card', () => {
     await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(0);
   });
 
-  test('scrolls with the page, and does not stick to the top of the window', async ({
+  test('the card without a Course work slot scrolls with the page', async ({
     context,
     page,
     background,
   }) => {
-    await open(context, page, background);
+    await open(context, page, background, { query: NO_COURSE_WORK });
     await page.evaluate(() => {
       const filler = document.createElement('div');
       filler.style.height = '3000px';
@@ -1673,3 +1678,48 @@ test.describe('while the list loads', () => {
     await expect(list.locator('.wr-pinned [data-group="todo"] .wr-count')).toHaveText(/^\d+$/);
   });
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const [name, layout, query] of [
+    ['slot', LAYOUTS[0]!, undefined],
+    ['band', LAYOUTS[0]!, NO_COURSE_WORK],
+    ['dock', LAYOUTS[1]!, undefined],
+  ] as const) {
+    test(`list top edge stays marked in ${name}, ${theme}`, async ({
+      context,
+      page,
+      background,
+    }, testInfo) => {
+      await openBottomLayout(context, page, background, layout, 800, query, theme);
+      const list = inpageList(page);
+      const scroll = list.locator('.wr-scroll');
+      const bar = list.locator('.wr-pinned');
+      const shadow =
+        name === 'dock'
+          ? 'none'
+          : `${await bar.evaluate((node) => getComputedStyle(node).borderTopColor)} 0px -1px 0px 0px`;
+      if (name === 'dock')
+        await expect(list.locator('.wr-tabs')).toHaveCSS('border-bottom-width', '1px');
+      await expect(scroll).toHaveCSS('box-shadow', shadow);
+      const height = await list.evaluate((node) => node.getBoundingClientRect().height);
+      await scroll.hover();
+      await page.mouse.wheel(0, 140);
+      await expect(scroll).toHaveCSS('box-shadow', shadow);
+      expect(await list.evaluate((node) => node.getBoundingClientRect().height)).toBe(height);
+      await list.screenshot({ path: testInfo.outputPath(`top-line-${name}-${theme}.png`) });
+    });
+  }
+}
+
+for (const fixture of ['dashboard-card-view', 'course-home', 'dashboard-widgets'])
+  test(`the list has one top rule on ${fixture}`, async ({ context, page, background }) => {
+    await open(context, page, background, {
+      page: fixture,
+      path: fixture === 'course-home' ? '/courses/101' : '/',
+      query: fixture === 'course-home' ? '/courses/101' : '/?fixture_course_work=second',
+    });
+    const list = inpageList(page).locator('.wr-task-panel > .wr-scroll');
+    await expect(list).toBeVisible();
+    if (fixture === 'dashboard-widgets') await expect(list).not.toHaveCSS('box-shadow', 'none');
+    else await expect(list).toHaveCSS('box-shadow', 'none');
+  });

@@ -616,3 +616,11 @@ describe('on a page that shows the weekly card', () => {
     },
   );
 });
+
+vi.mock('../../file-viewer/paneIdentity', () => ({
+  watchPaneIdentity: (show: (yes: boolean) => void) => {
+    show(true);
+    return () => undefined;
+  },
+  checkPaneIdentity: async () => ({ verdict: 'yes', token: '0:42' }),
+}));

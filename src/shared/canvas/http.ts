@@ -138,6 +138,8 @@ export interface CanvasRequest {
    * the shared limit. The transport sends one attempt and ignores this number.
    */
   readonly maxRetries?: number;
+  /** Runs after the asynchronous CSRF read, right before the fetch. A refusal sends nothing. */
+  readonly beforeFetch?: () => Promise<boolean>;
 }
 
 export interface CanvasResponse {
@@ -189,6 +191,8 @@ export function createCanvasTransport(options: CanvasTransportOptions): CanvasTr
   const send = async (request: CanvasRequest, signal: AbortSignal): Promise<CanvasResponse> => {
     const headers = await headersFor(request, options.getCsrfToken);
     const body = request.body === undefined ? undefined : JSON.stringify(request.body);
+    if (request.beforeFetch && !(await request.beforeFetch()))
+      throw new CanvasError('refused', 'The request guard refused the request');
     const response = await canvasFetch(
       origin,
       request.url,

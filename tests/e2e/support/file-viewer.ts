@@ -49,6 +49,14 @@ export const courseHomeHtml = simpleHtml
     )}`,
   );
 
+/** Adds test file links to the content, which stays available when the course menu is hidden. */
+export function courseHomeWithFileLinks(links: string): string {
+  return courseHomeHtml.replace(
+    '<div id="content" class="ic-Layout-contentMain" role="main">',
+    (content) => `${content}<p>${links}</p>`,
+  );
+}
+
 /**
  * The bytes of the file that `NOTES` names: the fixture PDF, as the text it is (it holds only
  * ASCII). A pane that opens a PDF reads this file, so a test that does not care about the PDF

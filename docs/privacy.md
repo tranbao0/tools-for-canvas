@@ -1,13 +1,13 @@
 # Privacy policy
 
 This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
-Last updated: 2026-11-06.
+Last updated: 2026-11-07.
 
 ## Summary
 
 Tools for Canvas has no account, no server of its own and no telemetry.
 It reads your Canvas data in your browser and shows it to you.
-It writes only done marks, custom tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
+It writes only done marks, custom tasks, announcement read and unread marks, the read mark of your rubric comments and your grade visibility preference, and only to your own Canvas.
 Nothing goes to the developer.
 Canvas can send a file, View Feedback or Preview to its own storage and DocViewer hosts, and images and profile pictures can load from other hosts that a teacher or Canvas chose (see "What the extension sends elsewhere").
 
@@ -61,7 +61,9 @@ When both cookies exist, the fingerprint includes both salted hashes.
 It stores up to three confirmed fingerprints with their cookie names, the user id and the check time in session storage.
 It stores a random per-install salt in a trusted storage item.
 On Chrome and Edge, the item lives in `storage.local`, which the browser locks to trusted extension contexts, so web pages and content scripts cannot read it.
-On Firefox, the item lives in the IndexedDB of the extension, which content scripts cannot open, and it has no copy in `storage.local`, which content scripts can read.
+On Firefox, the shipped code reads and writes only through the background the salt in its IndexedDB vault, or in `storage.session` in private browsing or after an IndexedDB `InvalidStateError`.
+The salt has no copy in `storage.local`, and Canvas content scripts cannot read it through the supplied APIs.
+A compromised Firefox page process can read it through an extension-origin frame or through `storage.session`; the vault does not stop that threat.
 It never stores or sends the session cookie value.
 It reads the fingerprint before and after each request that fills its cache.
 It keeps the answer only when both fingerprints match and the check confirmed that fingerprint for the same student.
@@ -69,8 +71,10 @@ It starts no load of Canvas data when there is no session cookie or when the coo
 The one request that it can send without that check is the question to Canvas who is signed in, which comes before a write or after a request that Canvas refused.
 It reads the fingerprint again right before each request that writes to Canvas, also before a retry after a rate limit.
 It sends a write only when a check confirmed that fingerprint for the same student.
-This covers done marks, read marks of announcements, the read mark of rubric comments, and the creation, change and deletion of your own tasks.
-The one exception is a correction: if a write reached another account because the sign-in changed during the request, the extension sends one more request to take that write back.
+This covers done marks, read marks of announcements, the read mark of rubric comments, your grade visibility preference, and the creation, change and deletion of your own tasks.
+For done marks, tasks and read marks, if a write reaches another account because the sign-in changes during the request, the extension sends one corrective request to take it back.
+The grade visibility preference write has no correction because Canvas writes to the current user and its reply does not identify that user.
+The extension checks the cookie again after reading the CSRF token, just before it sends that mutation.
 The detector does not announce itself to the page.
 The detector sends nothing to any server.
 On a page that is not Canvas, it stops at once and keeps nothing.
@@ -96,6 +100,7 @@ The extension writes only to your own Canvas, and only for something that you do
 - the flags that an item had before, when you press Undo on a done mark;
 - a custom task when you create, edit or delete one;
 - a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo;
+- a grade visibility preference when you click the eye on a copied course grade card, through the GraphQL `updateWidgetDashboardConfig` mutation (added 2026-11-07);
 - a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard;
 - a read mark on the rubric comments of your own submission (`PUT /api/v1/courses/:id/assignments/:id/submissions/:id/rubric_assessments/read`), when you open the Submission Details page of your own work and its rubric, with unread comments, is in view;
 - nothing of its own when you open View Feedback, but the session address that it loads makes Canvas mark the notes on that file as read, as Canvas's own dialog does;
@@ -181,10 +186,24 @@ The extension also keeps these items in browser memory (`storage.session`) for t
 The browser clears them when it closes.
 The extension also drops the Canvas data, the announcements, the read marks, the waiting changes, the open file ids and the id of the student that they belong to when another person signs in to Canvas.
 
-The settings, the address, the notes, the switches of the fixes and the salt are in storage that web pages cannot reach.
+Ordinary web pages and content scripts cannot read the trusted settings, address, notes, switches and salt through the supplied APIs.
 In Chrome and Edge, the extension locks its `storage.local` against page scripts.
-In Firefox, they live in the extension's own IndexedDB, with a copy in `storage.local` that the extension checks and repairs.
+The shipped Firefox code opens the extension's IndexedDB vault only in the background.
+Other extension pages use a runtime message that Firefox verifies as coming from the extension process.
+The file pane has no access to the full vault message API; its separate read-only message returns only the saved Canvas address when its top tab shows that Canvas.
+This message check does not stop a compromised Firefox page process from framing `viewer.html` and opening the extension-origin IndexedDB directly.
+The manifest must allow `https://*/*` so the pane works on schools with their own domains.
+These replies never pass through a message that a page script can read.
+The normal copy in `storage.local` and its check and repair logic remain, but the extension never uses that copy to restore trusted data.
 The salt has no such copy.
+
+When Firefox always uses private browsing, IndexedDB cannot open and the trusted vault uses `storage.session` instead.
+You answer "Use it" again after each browser start in this mode.
+The trusted settings and notes also last only for that session; a local mirror does not restore them.
+Tests on Firefox 159 confirm that ordinary Canvas content scripts cannot read `storage.session`, and that the list and file pane work in this mode.
+The Firefox parent does not enforce the same restriction against a compromised page process.
+This limit applies both to the private-mode vault and to cached Canvas data in `storage.session` in a normal profile.
+All Firefox measurements described here use Firefox 159.
 
 ## What the extension sends elsewhere
 
@@ -278,7 +297,19 @@ While the pane is open, a script of the Canvas page can see a message that names
 On Firefox that address is random for each install and does not change.
 This shows that the extension is installed, and it reveals nothing else.
 The file viewer reads a record or bytes only while the session cookie of your Canvas is the one that the extension confirmed for your account, so it never shows the file of another account.
-If it cannot confirm it, the pane shows "Open in Canvas" and reads nothing.
+While any pane is open, one watcher in the tab sends a message inside the browser each second to check its student and clearing round.
+This check makes no Canvas request unless the session cookie changed or has no confirmed proof, as after a restart.
+It does not refresh an old proof just because time passed.
+If the student is not yet confirmed, an opaque cover over the whole pane says "Canvas can't confirm your sign-in." and offers Retry before Close.
+Retry starts one sign-in check without the automatic check limits and ignores more taps while that check runs.
+When the cover appears with focus anywhere in the dock, focus moves to Retry and leaves any focused frame.
+When confirmation hides the cover with focus on a cover button, focus moves to the dock section so Escape still works in full view.
+The pane reads nothing while covered, and its frames and typed text stay alive underneath.
+The cover goes when the same student is confirmed again.
+A confirmed change of student, a sign-out (including a 401 answer), or a changed clearing round removes the frames and clears the page's stored feedback sessions.
+A network failure, timeout, invalid reply, 5xx, or 429 leaves the content under the cover.
+On Firefox, a tab confirmed to be in another cookie store keeps its Canvas Preview open with that tab's own cookies, also when the Canvas of the extension signs out or changes student.
+File reads in that tab still refuse and show the file error card with Retry, Download and Open in Canvas.
 The file viewer switch and pane width stay in local settings.
 With the File viewer on, it also reads the address of the file link that you click in a frame of the assignment pane, to open that file in the file pane, and it reads nothing else of those frames, apart from the Escape key (see "What the one assignment view does").
 It reads the same address in the frame of a submission page, also on an anonymous submission page.
@@ -300,7 +331,10 @@ SVG files appear only in image elements, and text files appear as plain text.
 The extension stores the page number, zoom mode or scale, and save time for each PDF.
 Each entry uses the Canvas address, student ID and file ID as its key.
 On Chrome and Edge, the entries live in local browser storage (`storage.local`), which the browser locks to the extension.
-On Firefox, they live in an IndexedDB store of the extension, with no copy in `storage.local`.
+On Firefox, the shipped code reads and writes only through the background them in its IndexedDB vault, with no copy in `storage.local`.
+In private browsing or after an IndexedDB `InvalidStateError`, the positions live in `storage.session` and end with that browser session.
+The pane requests one position through the existing background check for the current student.
+That API refuses a whole-vault read or another student's positions, but the Firefox process limit above still applies.
 The store keeps at most 200 entries and removes the oldest entries first.
 The extension clears these entries on sign-out and when it finds that another student is signed in.
 It also removes the entries of other students and of other Canvas addresses each time a student opens or saves a PDF position.

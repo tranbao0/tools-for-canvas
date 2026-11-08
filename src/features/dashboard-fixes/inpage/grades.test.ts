@@ -28,7 +28,7 @@ describe('gradesFix', () => {
     // The copy carries the class of the card that the widget drew.
     const native = document.querySelector('[data-testid="course-grade-card-103"]');
     expect(card?.className).toBe(native?.className);
-    expect(card?.querySelectorAll('button')).toHaveLength(0);
+    expect(card?.querySelectorAll('button')).toHaveLength(1);
     expect(card?.querySelector('[data-testid="course-107-last-updated"]')).toBeNull();
     expect(card?.querySelector('a[href="/courses/107/grades"]')?.getAttribute('aria-label')).toBe(
       'View PSYC 100: Intro to Psychology gradebook',
@@ -36,6 +36,31 @@ describe('gradesFix', () => {
     expect(card?.querySelector('a[href="/courses/107"]')).not.toBeNull();
     expect(card?.querySelector('[id]')).toBeNull();
     expect(document.querySelector('[data-wr-grades]')).not.toBeNull();
+  });
+
+  it('draws the copies again when the widget changes the look of its cards, such as a theme change in either direction', () => {
+    const fix = gradesFix();
+    const context = fakeContext();
+    fix.apply(context);
+    const native = document.querySelector<HTMLElement>('[data-testid="course-grade-card-103"]')!;
+    // The card and its title, which carry the color of the text.
+    const looks = (id: string) =>
+      [
+        document.querySelector(`[data-testid="course-grade-card-${id}"]`),
+        document.querySelector(`[data-testid="course-${id}-name"]`),
+      ].map((node) => node?.getAttribute('class'));
+    // React gives every node of the card the classes of the new theme, and the node stays.
+    for (const to of ['dark', 'light']) {
+      for (const node of [native, ...native.querySelectorAll('*')]) {
+        node.setAttribute(
+          'class',
+          `${(node.getAttribute('class') ?? '').replace(/ ?(dark|light)$/, '')} ${to}`,
+        );
+      }
+      fix.apply(context);
+      expect(looks('107')).toEqual(looks('103'));
+      expect(cards()).toHaveLength(7);
+    }
   });
 
   describe('the pager of Canvas', () => {
@@ -99,7 +124,7 @@ describe('gradesFix', () => {
   });
 
   it.each([
-    [false, true, true, '•••'],
+    [false, true, true, '95%'],
     [true, true, false, '•••'],
     [true, true, true, '95%'],
     [true, false, true, '•••'],
@@ -144,7 +169,7 @@ describe('gradesFix', () => {
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
   });
 
-  it('keeps a saved visible override hidden while the main toggle is off', () => {
+  it('shows a saved visible override while the main toggle is off', () => {
     document
       .querySelector('[data-testid="hide-all-grades-checkbox"]')
       ?.setAttribute('data-testid', 'show-all-grades-checkbox');
@@ -154,7 +179,7 @@ describe('gradesFix', () => {
         gradeVisibilities: { 'course-grades-widget': { '107': true } },
       }),
     );
-    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('•••');
+    expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
   });
 
   it('keeps a course hidden after its native card leaves the page', () => {

@@ -5,6 +5,29 @@ See your coursework as a to-do list, and open files, assignments and announcemen
 It works in Chrome, Edge and Firefox.
 It has no account, no server of its own and no telemetry.
 
+## Status
+
+Last update: 2026-11-08.
+
+**Released:** test build 0.1.0.32 for Firefox, signed by Mozilla, for a small group of testers.
+Tools for Canvas is not in the browser stores yet.
+
+What this build adds:
+
+- A Preview button on the new Canvas dashboard opens an assignment beside the list, as on the Assignments list.
+- People search on the new dashboard.
+- "Mark as done" covers what Skip did, and done work from before the span folds into an "older" line.
+- A marked announcement leaves the list with a short animation.
+- Panes fit the page beside them on the new dashboard, the classic dashboard and the Files pages.
+- An open pane closes when you sign out or another student signs in, and it covers itself while Canvas cannot confirm your sign-in.
+- File links work in Firefox private windows and container tabs.
+
+**Working on now:**
+
+- A listing in the Chrome Web Store and on Firefox Add-ons.
+- Fixes from a full code review, for example new courses that show without a reload, and a clear message when a save fails.
+- The next tools on the [roadmap](docs/roadmap.md).
+
 ## What you get
 
 ### Weekly list
@@ -156,7 +179,7 @@ On another Canvas, the side panel offers "Switch to this Canvas?".
 ## Privacy
 
 Tools for Canvas reads your Canvas data in your browser and shows it to you.
-It writes only done marks, your own tasks, announcement read and unread marks and the read mark of your rubric comments, and only to your own Canvas.
+It writes only done marks, your own tasks, announcement read and unread marks, the read mark of your rubric comments and your grade visibility preference, and only to your own Canvas.
 On your device, it stores its settings, which tools are on, your Canvas address, a change time stamp, which one-time notes you have seen, a fingerprint salt and the page and zoom of your PDFs.
 Nothing goes to the developer: there are no analytics, no error reports and no remote configuration.
 A lint rule and a CI check enforce this in the code.

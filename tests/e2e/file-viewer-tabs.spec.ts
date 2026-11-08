@@ -5,7 +5,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/weekrow';
 import {
-  courseHomeHtml,
+  courseHomeWithFileLinks,
   SYLLABUS,
   FILE_META,
   clickInFrame,
@@ -174,6 +174,9 @@ test('the card shows the name, the type and the size, and links to Canvas', asyn
 
   await tabs.nth(2).click();
   await expect(card.locator(FILE_META)).toHaveText('Word document · 20 KB');
+  await expect(card.locator('[data-part="card-note"]')).toHaveText(
+    "This file can't be shown here. Use Download or Open in Canvas.",
+  );
   expect((await links()).canvas.href.pathname).toBe('/courses/101/files/44');
   await expect(card.locator('[data-part="viewer-body"]')).toBeAttached();
   await expect(card.getByRole('button', { name: 'Allow access' })).toHaveCount(0);
@@ -220,11 +223,10 @@ test('an evicted file loads fresh after its failed read succeeds', async ({
   background,
 }) => {
   const ids = Array.from({ length: 8 }, (_, index) => String(50 + index));
-  const html = courseHomeHtml.replace(
-    '</p>',
+  const html = courseHomeWithFileLinks(
     ids
       .map((id) => `<a class="instructure_file_link" href="/files/${id}">File ${id}</a>`)
-      .join(' ') + '</p>',
+      .join(' '),
   );
   const canvas = await openCoursePage(
     context,

@@ -99,13 +99,8 @@
 }
 
 :host([data-panel='dock']) {
-  height: 100% !important;
   /* The host is as tall as the page area, so only the card takes clicks. */
   pointer-events: none !important;
-}
-
-:host([data-panel='dock']) .wr-mount {
-  height: 100%;
 }
 
 :host([data-panel]) .wr[data-surface='inpage'],
@@ -140,24 +135,33 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  height: max(420px, min(100vh - 48px, 760px));
+  --wr-card-height: max(420px, min(100vh - 48px, 760px));
+  height: var(--wr-card-height);
   overflow: hidden auto;
   /* The scroll positions are the student's, kept by the layout code: the browser must not move them. */
   overflow-anchor: none;
 }
 
 /* The host reset sets every property with !important, so the height needs it too. */
+:host([data-panel='dock']),
 :host([data-panel='slot']) {
   height: 100% !important;
 }
 
+:host([data-panel='dock']) .wr-mount,
 :host([data-panel='slot']) .wr-mount {
   height: 100%;
 }
 
-/* The container is laid over the box of the widget it replaces, so the card is that high. */
+/*
+ * The container is laid over the box of the widget it replaces, so the card is that high, but never
+ * higher than the card in the band: a tall widget, such as one that a narrow window stacks, would
+ * make a card as tall as the page, and its day list would not scroll inside it.
+ */
 :host([data-panel='slot']) .wr[data-surface='inpage'] {
+  top: clamp(0px, var(--wr-slot-top, 0px), calc(100% - var(--wr-card-height)));
   height: 100%;
+  max-height: var(--wr-card-height);
 }
 
 .wr[data-surface='inpage'] > * {
@@ -165,6 +169,7 @@
 }
 
 .wr[data-surface='inpage'] > .wr-task-panel > :is(.wr-scroll, .wr-group-area) {
+  box-shadow: 0 -1px var(--wr-line);
   flex: 1 1 0;
   /* In a low window the list keeps room for about one row, and the whole card scrolls instead. */
   min-height: 128px;
@@ -181,6 +186,10 @@
   overflow-y: auto;
   overflow-anchor: none;
   scrollbar-width: thin;
+}
+
+.wr[data-surface='inpage'] > .wr-tabs + .wr-task-panel > :is(.wr-scroll, .wr-group-area) {
+  box-shadow: none;
 }
 
 /*
@@ -709,9 +718,8 @@
   color: var(--wr-text-2);
 }
 
-/* A notice and an offer carry a brand bar, like an InstUI alert, and have no box. */
-.wr-notices > :first-child,
-.wr-offer {
+/* A notice carries a brand bar, like an InstUI alert, and has no box. */
+.wr-notices > :first-child {
   padding-left: 9px;
   border-left: 3px solid var(--wr-brand);
 }
@@ -721,12 +729,6 @@
   padding-left: 12px;
   color: var(--wr-text-2);
   font-size: 12px;
-}
-
-.wr-offer {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
 }
 
 /* Progress chart */

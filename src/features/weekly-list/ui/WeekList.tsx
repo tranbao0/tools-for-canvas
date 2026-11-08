@@ -62,9 +62,12 @@ const VIEWS = [
 
 const isBottom = (kind: GroupKind) => kind === 'no_due_date' || kind === 'done';
 
-/** The number in the group heading. */
+/**
+ * The number in the group heading and on the view switch. Done counts the work of the shown span
+ * only: its older line has a count of its own.
+ */
 export function groupCount(group: ListGroup): number {
-  return group.items.length + group.older.length;
+  return group.kind === 'done' ? group.items.length : group.items.length + group.older.length;
 }
 
 export function isGroupEmpty(group: ListGroup): boolean {
@@ -81,8 +84,12 @@ type Unknown = 'loading' | 'failed' | null;
 const unknownCount = (view: WeekView, empty: boolean): Unknown =>
   !empty ? null : view.loading ? 'loading' : view.incomplete ? 'failed' : null;
 
+/** The count of Done is the work of the shown span, so older work under its line does not make it known. */
 const isUnknown = (view: WeekView, group: ListGroup | undefined): Unknown =>
-  unknownCount(view, group === undefined || isGroupEmpty(group));
+  unknownCount(
+    view,
+    group === undefined || (group.kind === 'done' ? group.items.length === 0 : isGroupEmpty(group)),
+  );
 
 /** The count of a group or of a view, and the item count that a screen reader hears. */
 function Count(props: { n: number; unknown: Unknown }) {
@@ -221,13 +228,14 @@ function GroupBody(props: { group: ListGroup; view: WeekView; handlers: ListHand
   return (
     <>
       <ItemList {...rows} items={group.items} />
-      {group.kind === 'past_due' && (
+      {(group.kind === 'past_due' || group.kind === 'done') && (
         <SubList
           {...rows}
           memoryKey={`older:${place}`}
           label={tp('olderCount', group.older.length)}
           items={group.older}
           action={
+            group.kind === 'past_due' &&
             olderToMarkDone(group).length > 0 && (
               <button
                 type="button"
@@ -365,27 +373,31 @@ export function GroupView(props: {
 }) {
   const group = props.view.groups.find((g) => g.kind === props.kind);
   const [id] = useState(() => newId('group'));
+  // Done with only older work has no row of the shown span: it says so, and its older line follows.
+  const empty = group === undefined || (props.kind === 'done' && groupCount(group) === 0);
   return (
     <section class="wr-group" aria-labelledby={id} data-group={props.kind}>
       <Heading level={props.level} class="wr-group-head" id={id} part="group-head" tabIndex={-1}>
         <span class="wr-group-name">{t(GROUP_NAMES[props.kind])}</span>
         <Count n={group ? groupCount(group) : 0} unknown={isUnknown(props.view, group)} />
       </Heading>
-      {group !== undefined ? (
+      {empty &&
+        (props.view.loading ? (
+          <Spinner text={t('loading')} />
+        ) : props.view.incomplete ? (
+          <p class="wr-empty">
+            {t('cantLoadSpan')}
+            <button type="button" class="wr-btn" onClick={props.onRetry}>
+              {t('retry')}
+            </button>
+          </p>
+        ) : (
+          <p class="wr-empty">
+            {t(props.kind === 'done' ? 'nothingDoneInSpan' : 'nothingUndatedInSpan')}
+          </p>
+        ))}
+      {group !== undefined && (
         <GroupBody group={group} view={props.view} handlers={props.handlers} />
-      ) : props.view.loading ? (
-        <Spinner text={t('loading')} />
-      ) : props.view.incomplete ? (
-        <p class="wr-empty">
-          {t('cantLoadSpan')}
-          <button type="button" class="wr-btn" onClick={props.onRetry}>
-            {t('retry')}
-          </button>
-        </p>
-      ) : (
-        <p class="wr-empty">
-          {t(props.kind === 'done' ? 'nothingDoneInSpan' : 'nothingUndatedInSpan')}
-        </p>
       )}
     </section>
   );

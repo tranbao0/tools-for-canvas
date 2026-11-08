@@ -22,7 +22,6 @@ import {
   joinNames,
   NoticeLine,
   NoticeQueue,
-  OfferBanner,
   staleText,
   type OneTimeNote,
 } from './Notices';
@@ -310,6 +309,7 @@ export function App(props: AppProps) {
         rootRef={rootRef}
         scrollMemory={surface === 'inpage' ? scrollMemory.current : null}
         announcements={props.announcements}
+        offerView={props.offerView}
         settings={props.settings?.value}
         onSettings={openSettings}
         onMinimize={onMinimize}
@@ -324,7 +324,7 @@ export function App(props: AppProps) {
           actions={actions}
           level={subLevel(level)}
           context="surface"
-          showOffer={surface === 'panel'}
+          offerView={props.offerView}
         />
       </>
     );
@@ -391,6 +391,7 @@ function ListView(props: {
   scrollMemory: Record<ListTab | 'group', ScrollMemory> | null;
   /** The Announcements tab, or `undefined` on a surface without the tabs. */
   announcements: AppProps['announcements'];
+  offerView: AppProps['offerView'];
   /** The saved settings, or `undefined` until they load. */
   settings: Settings | undefined;
   onSettings: OpenSettings;
@@ -519,7 +520,7 @@ function ListView(props: {
             actions={actions}
             level={subLevel(level)}
             context="surface"
-            showOffer={surface === 'panel'}
+            offerView={props.offerView}
           />
         ) : (
           <div class="wr-state">
@@ -585,8 +586,9 @@ function ListView(props: {
    * before the lines that stay until the cause goes away, so none of them waits for ever.
    */
   const notices: ComponentChildren[] = [];
-  // The offer is for the side panel only (design decision 4).
-  if (surface === 'panel' && state.offer)
+  // The offer is for the side panel only (design decision 4), which passes its view.
+  const OfferBanner = props.offerView;
+  if (OfferBanner && state.offer)
     notices.push(
       <OfferBanner
         key="offer"

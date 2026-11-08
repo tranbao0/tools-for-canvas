@@ -10,12 +10,15 @@ import { rawRecords } from '../../../../tests/fixtures/assignment-view';
 import { IDS, buildScenario } from '../../../../tests/fixtures/scenario';
 import {
   ORIGIN,
+  PANEL,
   createHarness,
+  expectReady,
   loadReady,
   settleAll,
   signInOtherUser,
   useScenarioClock,
   type Harness,
+  type ReadyState,
 } from './testing/harness';
 
 const TAB = 9;
@@ -303,4 +306,220 @@ it('drops assignment details when another Canvas loads during the settings read'
   await h.owner.settled();
   release();
   await failed;
+});
+
+describe('a hand-in that the list does not show yet', () => {
+  const COURSE = IDS.courses.biology;
+  const ASSIGNMENT = IDS.assignments.bioPreLab7Missing;
+
+  /** Makes Canvas answer the details of the assignment with a submission handed in at `at`. */
+  function handIn(h: Harness, at: string): void {
+    const records = rawRecords();
+    h.canvas.setAssignmentView(COURSE, ASSIGNMENT, {
+      assignment: { ...records.assignment, id: ASSIGNMENT },
+      submission: {
+        ...records.submission,
+        submitted_at: at,
+        workflow_state: 'submitted',
+        attempt: 1,
+      },
+    });
+  }
+
+  const key = `assignment:${ASSIGNMENT}`;
+  const groupOf = (state: ReadyState): string | undefined =>
+    state.view.groups.find((group) => [...group.items, ...group.older].some((i) => i.key === key))
+      ?.kind;
+
+  it.each(['assignmentDetails', 'assignmentOwner'] as const)(
+    'does not cache a hand-in from a dropped %s reply',
+    async (method) => {
+      const h = await createHarness();
+      await loadReady(h);
+      handIn(h, '2026-11-02T10:00:00Z');
+      const read =
+        method === 'assignmentDetails' ? 'getOwnSubmissionRecord' : 'getOwnSubmissionUserRecord';
+      const release = h.canvas.hold(read);
+      const pending = h.owner[method](COURSE, ASSIGNMENT, ORIGIN, TAB);
+      const failed = expect(pending).rejects.toThrow();
+      await vi.waitFor(() => expect(h.canvas.callsOf(read)).toHaveLength(1));
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('changed-session');
+      release();
+      await failed;
+      await h.owner.settled();
+      const stored = await h.deps.store.cache.getValue();
+      expect(stored?.patches.some((patch) => patch.kind === 'hand-in')).toBe(false);
+    },
+  );
+
+  it('does not cache the hand-in of another submission owner', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentOwner(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(groupOf(expectReady(await h.owner.getState(PANEL)))).toBe('past_due');
+  });
+
+  it.each(['done', 'edit'] as const)('sends a %s write after a hand-in', async (kind) => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    if (kind === 'done') {
+      await h.owner.act({
+        kind: 'setDone',
+        keys: [`assignment:${IDS.assignments.bioQuiz3Today}`],
+        done: true,
+      });
+    } else {
+      await h.owner.act({
+        kind: 'updateTask',
+        noteId: IDS.notes.libraryBooksToday,
+        input: {
+          title: 'Return books tomorrow',
+          date: '2026-10-30',
+          time: null,
+          courseId: null,
+          details: '',
+        },
+      });
+    }
+    await h.owner.settled();
+    expect(h.canvas.callsOf(kind === 'done' ? 'createOverride' : 'updateNote')).toHaveLength(1);
+  });
+
+  it('keeps a hand-in when an older planner round lands', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    await vi.advanceTimersByTimeAsync(61_000);
+    const release = h.canvas.hold('listPlannerItems');
+    const round = h.owner.refresh('visible');
+    await vi.advanceTimersByTimeAsync(1);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    release();
+    await round;
+    await h.owner.settled();
+    expect(groupOf(expectReady(await h.owner.getState(PANEL)))).toBe('done');
+  });
+
+  it('moves the row with no round, inside the 60 seconds after the last round', async () => {
+    const h = await createHarness();
+    const before = await loadReady(h);
+    expect(groupOf(before)).toBe('past_due');
+    handIn(h, '2026-11-02T10:00:00Z');
+    h.canvas.resetCalls();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+    const after = expectReady(await h.owner.getState(PANEL));
+    expect(groupOf(after)).not.toBe('past_due');
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+  });
+
+  it('keeps the moved row after the cache is stored and read again', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    const stored = await h.deps.store.cache.getValue();
+    const item = Object.values(stored?.planner.items ?? {}).find(
+      (candidate) => candidate.plannable_id === ASSIGNMENT,
+    );
+    expect(item?.submissions).toMatchObject({ submitted: true, missing: false });
+  });
+
+  it('starts no round for the same hand-in again, and none for work that the list shows as handed in', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    handIn(h, '2026-11-02T10:00:00Z');
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    await vi.advanceTimersByTimeAsync(70_000);
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+    // The list holds this assignment as handed in, so its read changes nothing.
+    const done = IDS.assignments.bioLabReport1;
+    const records = rawRecords();
+    h.canvas.setAssignmentView(COURSE, done, {
+      assignment: { ...records.assignment, id: done },
+      submission: records.submission,
+    });
+    await h.owner.assignmentDetails(COURSE, done, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+  });
+
+  it('starts no round for a submission that is not handed in', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    const records = rawRecords();
+    h.canvas.setAssignmentView(COURSE, ASSIGNMENT, {
+      assignment: { ...records.assignment, id: ASSIGNMENT },
+      submission: { ...records.submission, submitted_at: null, workflow_state: 'unsubmitted' },
+    });
+    h.canvas.resetCalls();
+    await h.owner.assignmentDetails(COURSE, ASSIGNMENT, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+  });
+});
+
+describe('a hand-in that the assignment page shows', () => {
+  it('applies a hand-in whose submission names the student in the sharded id form', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    const course = IDS.courses.biology;
+    const assignment = IDS.assignments.bioPreLab7Missing;
+    const records = rawRecords();
+    h.canvas.setAssignmentView(course, assignment, {
+      assignment: { ...records.assignment, id: assignment },
+      submission: {
+        ...records.submission,
+        user_id: `0~${IDS.user}`,
+        submitted_at: '2026-11-02T10:00:00Z',
+        workflow_state: 'submitted',
+      },
+    });
+    h.canvas.resetCalls();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.owner.assignmentOwner(course, assignment, ORIGIN, TAB);
+    await h.owner.settled();
+    const after = expectReady(await h.owner.getState(PANEL));
+    const group = after.view.groups.find((g) =>
+      [...g.items, ...g.older].some((i) => i.key === `assignment:${assignment}`),
+    );
+    expect(group?.kind).not.toBe('past_due');
+  });
+  it('moves the row with no round when the page reads the owner of a submission handed in', async () => {
+    const h = await createHarness();
+    await loadReady(h);
+    const course = IDS.courses.biology;
+    const assignment = IDS.assignments.bioPreLab7Missing;
+    const records = rawRecords();
+    h.canvas.setAssignmentView(course, assignment, {
+      assignment: { ...records.assignment, id: assignment },
+      submission: {
+        ...records.submission,
+        user_id: IDS.user,
+        submitted_at: '2026-11-02T10:00:00Z',
+        workflow_state: 'submitted',
+      },
+    });
+    h.canvas.resetCalls();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await h.owner.assignmentOwner(course, assignment, ORIGIN, TAB);
+    await h.owner.settled();
+    expect(h.canvas.plannerRanges()).toHaveLength(0);
+    const after = expectReady(await h.owner.getState(PANEL));
+    const group = after.view.groups.find((g) =>
+      [...g.items, ...g.older].some((i) => i.key === `assignment:${assignment}`),
+    );
+    expect(group?.kind).not.toBe('past_due');
+  });
 });

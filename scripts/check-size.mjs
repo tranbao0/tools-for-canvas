@@ -22,16 +22,17 @@ export const BUDGET_BYTES = 45_000;
  * The gzip budget for the in-page list script, in bytes. The page holds the weekly dock, its tab
  * and the shared room lease besides the list (design decision 12).
  */
-export const INPAGE_BUDGET_BYTES = 50_000;
+export const INPAGE_BUDGET_BYTES = 52_000;
 
 /** The built in-page list script. */
 export const INPAGE_ENTRY = 'inpage.js';
 
 /**
  * The gzip budget for the background script, in bytes. It holds the data owner, which checks the
- * Canvas and the student of every page request (design decision 12).
+ * Canvas and the student of every page request (design decision 12), the student check of open
+ * panes, and on Firefox the trusted vault.
  */
-export const BACKGROUND_BUDGET_BYTES = 46_000;
+export const BACKGROUND_BUDGET_BYTES = 48_000;
 
 /** The built background script. */
 export const BACKGROUND_ENTRY = 'background.js';

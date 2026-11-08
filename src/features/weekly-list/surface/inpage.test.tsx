@@ -229,6 +229,31 @@ describe('mountInpageList', () => {
     document.body.style.backgroundColor = '';
   });
 
+  it('follows the Canvas page live with Automatic, in both directions, and an explicit theme does not', async () => {
+    const turn = async (color: string): Promise<void> => {
+      document.body.style.backgroundColor = color;
+      document.documentElement.style.backgroundColor = color;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+    const { host, settings } = setup({ theme: 'auto' });
+    await flushPromises();
+    expect(host().getAttribute('data-theme')).toBe('light');
+
+    await turn('rgb(27, 35, 48)');
+    expect(host().getAttribute('data-theme')).toBe('dark');
+    expect(host().shadowRoot?.querySelector('style + div')?.getAttribute('data-theme')).toBe(
+      'dark',
+    );
+    await turn('rgb(255, 255, 255)');
+    expect(host().getAttribute('data-theme')).toBe('light');
+
+    settings.set({ theme: 'light' });
+    await turn('rgb(27, 35, 48)');
+    expect(host().getAttribute('data-theme')).toBe('light');
+    document.body.removeAttribute('style');
+    document.documentElement.removeAttribute('style');
+  });
+
   it('removes everything it added when the content script ends', () => {
     const { stop, settings, dispose, releaseColumn } = setup();
 

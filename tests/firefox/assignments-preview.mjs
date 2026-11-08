@@ -43,7 +43,7 @@ import { createServer } from 'node:https';
 import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { By } from 'selenium-webdriver';
+import { By, Key } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
 import { DASHBOARD } from './dashboard-dock.mjs';
 import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
@@ -423,6 +423,7 @@ async function main() {
     });
     return json(record[3] === undefined ? made.assignment : made.submission);
   };
+  let blockIdentity = false;
   const canvas = await startCanvas(
     {
       [LIST_PATH]: { type: 'text/html', body: listPage },
@@ -497,7 +498,7 @@ async function main() {
         context_id: COURSE,
       }),
       '/files/503/download': { type: 'text/plain', body: LONG_TEXT },
-      '/api/v1/users/self': json(student),
+      '/api/v1/users/self': () => json(blockIdentity ? {} : student),
       '/api/v1/users/self/profile': json(student),
       '/api/v1/courses': json([]),
       '/api/v1/users/self/groups': json([]),
@@ -585,6 +586,62 @@ async function main() {
     );
     if (process.env.ASSIGNMENTS_PREVIEW_SHOT !== undefined)
       writeFileSync(process.env.ASSIGNMENTS_PREVIEW_SHOT, await driver.takeScreenshot(), 'base64');
+
+    // The cover takes focus out of the frame before more keys can reach the draft.
+    const draftFrame = await frameOf(driver, PANE);
+    await driver.switchTo().frame(draftFrame);
+    const draft = await driver.findElement(By.id('draft'));
+    await draft.sendKeys('Keep this draft');
+    await driver.executeScript(
+      `
+      const form = document.createElement('form');
+      document.getElementById('draft').replaceWith(form);
+      form.append(arguments[0]);
+      const button = document.createElement('button');
+      button.textContent = 'Submit';
+      form.append(button);
+      window.coverSubmits = 0;
+      form.addEventListener('submit', event => { event.preventDefault(); window.coverSubmits++; });
+    `,
+      draft,
+    );
+    await draft.click();
+    await driver.switchTo().defaultContent();
+    blockIdentity = true;
+    await driver
+      .manage()
+      .addCookie({ name: 'canvas_session', value: 'cover-check', path: '/', secure: true });
+    await waitFor(
+      () => driver.findElement(By.css(PANE)).getAttribute('data-identity'),
+      (value) => value === 'unknown',
+      'the identity cover',
+    );
+    await driver.switchTo().frame(draftFrame);
+    if (await driver.executeScript('return document.hasFocus()'))
+      throw new Error('The covered frame still has keyboard focus');
+    const coverFocus = await driver.executeScript(
+      'return window.frameElement.getRootNode().activeElement?.textContent',
+    );
+    if (coverFocus !== 'Retry') throw new Error(`Cover focus is ${coverFocus}, expected Retry`);
+    await driver.switchTo().defaultContent();
+    await driver.actions().sendKeys('XYZ', Key.ENTER, Key.SPACE).perform();
+    await driver.switchTo().frame(draftFrame);
+    const kept = await driver.executeScript(
+      'return { draft: document.getElementById("draft").value, submits: window.coverSubmits }',
+    );
+    if (kept.draft !== 'Keep this draft' || kept.submits !== 0)
+      throw new Error(`Keys reached the covered form: ${JSON.stringify(kept)}`);
+    await driver.switchTo().defaultContent();
+    blockIdentity = false;
+    const coverRoot = await (await driver.findElement(By.css(PANE))).getShadowRoot();
+    const retry = await coverRoot.findElement(By.css('.identity-cover button'));
+    await driver.actions().move({ origin: retry }).click().perform();
+    await waitFor(
+      () => driver.findElement(By.css(PANE)).getAttribute('data-identity'),
+      (value) => value === 'yes',
+      'Retry to restore the pane',
+    );
+    console.log('Identity cover: Firefox blurs the frame, keeps the draft, and sends no form.');
 
     // c. A file link in the frame opens the file pane over the assignment pane.
     const frame = await frameOf(driver, PANE);

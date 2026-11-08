@@ -367,11 +367,21 @@ const EXPECTED_PLACES: Record<string, string> = {
   'assignment:2002': 'done.items',
   'wiki_page:6001': 'done.items',
   'assignment:1010': 'done.items',
+  // Done work from before the span, inside the horizon.
+  'assignment:1008': 'done.older',
+  'assignment:1009': 'done.older',
 };
 
 /** Past due holds the same items in every span, so the other spans show this group too. */
 const PAST_DUE_PLACES: Record<string, string> = Object.fromEntries(
   Object.entries(EXPECTED_PLACES).filter(([, place]) => place.startsWith('past_due.')),
+);
+
+/** Done work is before a later span, so a later span shows all of it under the older line of Done. */
+const DONE_OLDER_PLACES: Record<string, string> = Object.fromEntries(
+  Object.entries(EXPECTED_PLACES)
+    .filter(([, place]) => place.startsWith('done.'))
+    .map(([key]) => [key, 'done.older']),
 );
 
 describe('walk-through: the span that starts today', () => {
@@ -410,7 +420,6 @@ describe('walk-through: the span that starts today', () => {
       'assignment:4002',
       'assignment:5001',
       'assignment:3002',
-      'assignment:1009',
       'assignment:1004',
       'calendar_event:ev1',
       'announcement:an1',
@@ -527,8 +536,8 @@ describe('walk-through: the span that starts today', () => {
 
   it('shows an item that Canvas has as dismissed as done, with no chip', () => {
     expect(findItem(view, 'assignment:2005')).toMatchObject({ state: 'done', chip: null });
-    // Dated before the span, without a warning: done work outside the span does not show.
-    expect(placeOf(view, 'assignment:1008')).toBeUndefined();
+    // Dated before the span, without a warning: done work before the span is under the older line.
+    expect(placeOf(view, 'assignment:1008')).toBe('done.older');
   });
 
   it('offers Move to today only on the past custom task', () => {
@@ -685,6 +694,7 @@ describe('walk-through: other spans', () => {
     ).toEqual({
       'assessment_request:7001': 'day@2026-11-03.items',
       ...PAST_DUE_PLACES,
+      ...DONE_OLDER_PLACES,
     });
     expect(findItem(view, 'assessment_request:7001')).toMatchObject({
       kind: 'peer_review',
@@ -710,6 +720,10 @@ describe('walk-through: other spans', () => {
       'assignment:1011': 'day@2026-10-21.items',
       'assignment:1009': 'done.items',
       'assignment:2002': 'done.items',
+      // Done work before the span, and overdue done work after it, is under the older line.
+      'assignment:1008': 'done.older',
+      'assignment:3003': 'done.older',
+      'wiki_page:6001': 'done.older',
       'assignment:2004': 'day@2026-10-23.items',
       'planner_note:8002': 'day@2026-10-26.items',
       // Overdue work from outside the span is in Past due, and each item shows once.

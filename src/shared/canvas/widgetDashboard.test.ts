@@ -18,6 +18,18 @@ describe('the grid', () => {
     expect(findWidgetGrid(document)?.firstCards).toHaveLength(2);
     expect(inEditMode(document)).toBe(false);
   });
+
+  it('finds a column whatever box holds it, in a row or stacked', () => {
+    document.body.innerHTML = `<span data-testid="widget-columns">
+      <span data-testid="widget-column-1-stacked"><span><span data-testid="widget-container-a-widget"><section data-testid="widget-a-widget"></section></span></span></span>
+      <span><span data-testid="widget-column-2-stacked"><span data-testid="widget-container-b-widget"><section data-testid="widget-b-widget"></section></span></span></span>
+    </span>`;
+    const grid = findWidgetGrid(document);
+    expect(grid?.firstCards.map((card) => card.dataset.testid)).toEqual([
+      'widget-a-widget',
+      'widget-b-widget',
+    ]);
+  });
 });
 
 describe('Announcements', () => {
@@ -126,7 +138,7 @@ describe('Course work slots', () => {
     'course_work-widget-uuid',
     'course_work_combined-widget-uuid',
   ])('finds %s before its data loads', (id) => {
-    document.body.innerHTML = `<div data-testid="widget-container-${id}"><section data-testid="widget-${id}"><div style="height:400px">Loading</div></section></div>`;
+    document.body.innerHTML = `<span data-testid="widget-container-${id}"><section data-testid="widget-${id}"><div style="height:400px">Loading</div></section></span>`;
     expect(findCourseWorkSlot(document)?.loaded).toBe(false);
     document.querySelector('section')!.innerHTML =
       '<input data-testid="submission-status-filter-select">';
@@ -134,6 +146,12 @@ describe('Course work slots', () => {
     document.querySelector('section')!.innerHTML =
       `<button data-testid="${id}-retry-button">Retry</button>`;
     expect(findCourseWorkSlot(document)?.loaded).toBe(true);
+  });
+  it('takes the wrapper and the card by test id, whatever the tags are', () => {
+    document.body.innerHTML = `<div data-testid="widget-container-course-work-widget"><article data-testid="widget-course-work-widget"></article></div>`;
+    const slot = findCourseWorkSlot(document);
+    expect(slot?.wrapper.tagName).toBe('DIV');
+    expect(slot?.widget.tagName).toBe('ARTICLE');
   });
   it('skips summary ids and takes the first candidate in document order', () => {
     document.body.innerHTML = [
@@ -144,7 +162,7 @@ describe('Course work slots', () => {
     ]
       .map(
         (id) =>
-          `<div data-testid="widget-container-${id}"><section data-testid="widget-${id}"></section></div>`,
+          `<span data-testid="widget-container-${id}"><section data-testid="widget-${id}"></section></span>`,
       )
       .join('');
     expect(findCourseWorkSlot(document)?.widget.dataset.testid).toBe(

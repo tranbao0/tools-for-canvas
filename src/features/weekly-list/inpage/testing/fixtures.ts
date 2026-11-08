@@ -123,15 +123,18 @@ export const LIST_VIEW: PageFixture = {
   wrapperStyle: 'display: none;',
 };
 
-/** The widget dashboard: a React root in `#content`, and an empty right column that Canvas hides. */
+/**
+ * The widget dashboard: a React root in `#content`, and an empty right column that Canvas hides.
+ * The grid is drawn as the package draws it: spans, and a flex item around each column.
+ */
 export const WIDGET_DASHBOARD: PageFixture = {
   bodyClass: 'dashboard primary-nav-expanded',
   content: `
     <div data-testid="dashboard-tab-content">
-      <div data-testid="widget-columns">
-        <div data-testid="widget-column-1"><div data-testid="widget-container-course_work_combined"></div></div>
-        <div data-testid="widget-column-2"></div>
-      </div>
+      <span data-testid="widget-columns">
+        <span><span data-testid="widget-column-1"><span data-testid="widget-container-course-work-combined-widget"></span></span></span>
+        <span><span data-testid="widget-column-2"></span></span>
+      </span>
     </div>`,
   rightSide: '',
 };

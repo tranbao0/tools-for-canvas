@@ -1,3 +1,4 @@
+import { paneCookieStore } from '../../shared/canvas/session';
 import { ACK_TIMEOUT_MS, BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
 import {
   checkedMime,
@@ -18,8 +19,8 @@ import {
 import { browser, type Browser } from 'wxt/browser';
 import type { CanvasApi } from '../../shared/canvas/types';
 import { canvasOriginItem } from '../../shared/platform/storage';
-import { browserRouterHost, senderPageOrigin } from '../weekly-list/data/router';
-import type { DataOwner } from '../weekly-list/data/owner';
+import { senderPageOrigin } from '../weekly-list/data/router';
+import type { DataOwner, PaneOwnerVerdict } from '../weekly-list/data/owner';
 import { injectFrameCatchers, injectViewerIntoOrigin } from '../../shared/platform/inject';
 import { toolsSettingsItem } from '../../shared/settings/toolsItem';
 import { logFailure } from '../../shared/platform/log';
@@ -39,13 +40,14 @@ import { STUDENT_KEY, studentName } from './student';
 import { ViewerUnconfirmedError } from './unconfirmed';
 import { readAddress } from './ui/links';
 
-type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId'> & {
+type ViewerSender = Pick<Browser.runtime.MessageSender, 'url' | 'frameId' | 'documentId'> & {
   tab?: { id?: number };
 };
 
 type ViewerApi = Pick<CanvasApi, 'getViewerFile' | 'getViewerModuleItem'>;
 
 export interface ViewerHost {
+  paneCheck(origin: string, tabId: number | undefined, retry?: boolean): Promise<PaneOwnerVerdict>;
   savedOrigin(): Promise<string | null>;
   isExtensionPage(sender: ViewerSender): boolean;
   /**
@@ -71,6 +73,12 @@ export interface ViewerHost {
   permission(origin: string): Promise<boolean>;
   /** The address that a browser tab shows now, or `null` when it cannot be read. */
   tabUrl(tabId: number): Promise<string | null>;
+  /**
+   * The address that a child frame shows now, read from the frame itself, or `null` when it cannot
+   * be read. The `url` of a message sender is not used for this: Chromium can keep the address
+   * `about:blank` there for a frame whose page has loaded since.
+   */
+  frameUrl(tabId: number, frameId: number, documentId?: string): Promise<string | null>;
   /** Puts the click catcher into the same-origin child frames of a submission page or a page that holds the assignment pane. */
   injectFrames(tabId: number, origin: string): Promise<void>;
   /** Passes a file to the viewer script of the top frame. `true` when it took the file. */
@@ -125,14 +133,15 @@ function isPaneFrame(sender: ViewerSender): boolean {
 }
 
 /**
- * The address of a child frame that sent a message, or `null` when the sender is not a frame of a
- * tab. The top frame has the frame id 0 and is not a child frame.
+ * The address of a child frame that sent a message, read from the frame, or `null` when the sender
+ * is not a frame of a tab or the frame cannot be read. The top frame has the frame id 0 and is not
+ * a child frame.
  */
-function childFrameUrl(sender: ViewerSender): URL | null {
-  if (sender.tab?.id === undefined || sender.frameId === undefined || sender.frameId === 0)
-    return null;
+async function childFrameUrl(sender: ViewerSender, host: ViewerHost): Promise<URL | null> {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined || sender.frameId === undefined || sender.frameId === 0) return null;
   try {
-    return new URL(sender.url ?? '');
+    return new URL((await host.frameUrl(tabId, sender.frameId, sender.documentId)) ?? '');
   } catch {
     return null;
   }
@@ -182,7 +191,7 @@ async function openFromFrame(
 ): Promise<{ opened: boolean }> {
   const origin = await host.savedOrigin();
   const tabId = sender.tab?.id;
-  const frame = childFrameUrl(sender);
+  const frame = await childFrameUrl(sender, host);
   if (!origin || tabId === undefined || frame === null)
     throw new Error('Only a frame of the saved Canvas may open a file');
   if (!isFileId(request['fileId'])) throw new Error('Invalid file id');
@@ -202,11 +211,45 @@ async function openFromFrame(
   };
 }
 
+async function tabShowsOrigin(
+  host: Pick<ViewerHost, 'tabUrl'>,
+  tabId: number,
+  origin: string,
+): Promise<boolean> {
+  try {
+    const url = await host.tabUrl(tabId);
+    return url !== null && new URL(url).origin === origin;
+  } catch {
+    return false;
+  }
+}
+
 export function routeViewerMessage(
   message: unknown,
   sender: ViewerSender,
   host: ViewerHost,
 ): Promise<unknown> | null {
+  if (
+    import.meta.env.BROWSER === 'firefox' &&
+    typeof message === 'object' &&
+    message !== null &&
+    'type' in message &&
+    message.type === 'viewer:origin'
+  ) {
+    return (async () => {
+      if (
+        !host.isExtensionPage(sender) ||
+        !isPaneFrame(sender) ||
+        sender.tab?.id === undefined ||
+        Object.keys(message).some((key) => key !== 'type')
+      )
+        throw new Error('Only the pane frame may read its Canvas origin');
+      const origin = await host.savedOrigin();
+      if (!origin || !(await tabShowsOrigin(host, sender.tab.id, origin)))
+        throw new Error('Only a tab of the saved Canvas may read its origin');
+      return { canvasOrigin: origin };
+    })();
+  }
   if (
     typeof message !== 'object' ||
     message === null ||
@@ -221,6 +264,7 @@ export function routeViewerMessage(
       'viewer:permission',
       'viewer:session',
       'viewer:fetch-allowed',
+      'viewer:pane-check',
       'viewer:confirm-cookie',
       'viewer:inject-frames',
       FRAME_OPEN,
@@ -235,6 +279,12 @@ export function routeViewerMessage(
     if (!origin || (!fromPane && senderPageOrigin(sender) !== origin))
       throw new Error('Only the saved Canvas may ask for its data');
     const tabId = sender.tab?.id;
+    if (
+      import.meta.env.BROWSER === 'firefox' &&
+      fromPane &&
+      (tabId === undefined || !(await tabShowsOrigin(host, tabId, origin)))
+    )
+      throw new Error('Only a pane on the saved Canvas may ask');
     const owner = createViewerOwner(host, tabId);
     switch (request['type']) {
       case 'viewer:position-get':
@@ -292,6 +342,26 @@ export function routeViewerMessage(
         );
       case 'viewer:permission':
         return host.permission(origin);
+      case 'viewer:pane-check': {
+        if (tabId === undefined || fromPane || sender.frameId !== 0) return { verdict: 'unknown' };
+        if (request['token'] !== undefined && typeof request['token'] !== 'string')
+          return { verdict: 'unknown' };
+        const epoch = await readEpoch(host);
+        const token = request['token'];
+        const result = await host.paneCheck(origin, tabId, request['retry'] === true);
+        if (result.verdict === 'unknown') return result;
+        // A tab outside the request store uses its own cookies for its Canvas frames, so a
+        // clearing round of the request store does not touch it.
+        if (result.verdict === 'yes' && result.userId === null)
+          return { verdict: 'yes', token: 'store' };
+        if (typeof token === 'string' && token.split(':')[0] !== String(epoch))
+          return { verdict: 'no' };
+        if (epoch !== (await readEpoch(host))) return { verdict: 'no' };
+        if (result.verdict !== 'yes') return result;
+        const current = `${epoch}:${studentName(result.userId!)}`;
+        if (token !== undefined && token !== current) return { verdict: 'no' };
+        return { verdict: 'yes', token: current };
+      }
       case 'viewer:fetch-allowed': {
         if (!(await host.mayFetch(origin, tabId))) return false;
         // The pane names the student and the clearing round of its tabs. A pane that a lost reset
@@ -430,7 +500,7 @@ export function serveBytesPort(
     onDisconnect: Pick<Browser.runtime.Port['onDisconnect'], 'addListener'>;
     onMessage: { addListener(listener: (message: BytesRequest) => void): void };
   },
-  host: Pick<ViewerHost, 'savedOrigin' | 'isExtensionPage' | 'read'>,
+  host: Pick<ViewerHost, 'savedOrigin' | 'isExtensionPage' | 'read' | 'tabUrl'>,
   fetchBytes: typeof fetchFileBytes = fetchFileBytes,
   /** The port clones typed arrays (Firefox). Other ports send JSON, so the bytes go as base64. */
   binary: boolean = BROWSER_KIND === 'firefox',
@@ -471,6 +541,8 @@ export function serveBytesPort(
         const commentRead =
           typeof commentTab === 'string' && isCommentTab(commentTab) && fileId === undefined;
         if (!origin || (!fileRead && !commentRead)) throw new Error('Invalid file read');
+        if (sender.tab?.id === undefined || !(await tabShowsOrigin(host, sender.tab.id, origin)))
+          throw new Error('The tab does not show the saved Canvas');
         if (
           truncateAt !== undefined &&
           (typeof truncateAt !== 'number' || !Number.isSafeInteger(truncateAt) || truncateAt <= 0)
@@ -552,12 +624,17 @@ function toBase64(part: Uint8Array): string {
 }
 
 export function wireViewerRouter(
-  owner: Pick<DataOwner, 'viewerRead' | 'viewerMayFetch' | 'viewerUserId' | 'viewerConfirm'>,
+  owner: Pick<
+    DataOwner,
+    'viewerRead' | 'viewerMayFetch' | 'viewerUserId' | 'viewerConfirm' | 'viewerPaneCheck'
+  >,
 ): void {
   const host: ViewerHost = {
     savedOrigin: () => canvasOriginItem.getValue(),
-    isExtensionPage: browserRouterHost.isExtensionPage,
+    isExtensionPage: (sender) =>
+      sender.url?.startsWith(browser.runtime.getURL('/')) === true && isPaneFrame(sender),
     read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
+    paneCheck: (origin, tabId, retry) => owner.viewerPaneCheck(origin, tabId, retry),
     mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),
     userId: (origin, tabId) => owner.viewerUserId(origin, tabId),
     confirm: (origin, tabId) => owner.viewerConfirm(origin, tabId),
@@ -567,6 +644,23 @@ export function wireViewerRouter(
     permission: (origin) =>
       browser.permissions.contains({ origins: [`${origin}/*`, 'https://*/*'] }),
     tabUrl: async (tabId) => (await browser.tabs.get(tabId).catch(() => undefined))?.url ?? null,
+    frameUrl: async (tabId, frameId, documentId) => {
+      // A document id names the document that sent the message. Firefox before 153 has none.
+      const target =
+        documentId === undefined
+          ? { tabId, frameIds: [frameId] }
+          : { tabId, documentIds: [documentId] };
+      try {
+        const [read] = await browser.scripting.executeScript({
+          target,
+          injectImmediately: true,
+          func: () => location.href,
+        });
+        return typeof read?.result === 'string' ? read.result : null;
+      } catch {
+        return null;
+      }
+    },
     injectFrames: (tabId, origin) => injectFrameCatchers(tabId, origin),
     openInTop: async (tabId, fileId, address) => {
       try {
@@ -631,7 +725,14 @@ export function clearViewerTabs(): Promise<void> {
         Promise.allSettled(
           tabs
             .filter((tab) => tab.id !== undefined)
-            .map(async (tab) => browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' })),
+            .map(async (tab) => {
+              if (
+                import.meta.env.BROWSER === 'firefox' &&
+                (await paneCookieStore(tab.id!).catch(() => 'unknown')) === 'other'
+              )
+                return;
+              await browser.tabs.sendMessage(tab.id!, { type: 'viewer:reset' });
+            }),
         ),
         new Promise((resolve) => setTimeout(resolve, RESET_WAIT_MS)),
       ]);

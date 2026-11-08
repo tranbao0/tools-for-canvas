@@ -81,34 +81,26 @@ export function startFrameCatcher(): void {
       // applies the rule of the start again.
       const mode = currentMode();
       if (mode === null) return;
-      const link = event.target.closest('a[href]');
+      const link = event.target.closest<HTMLAnchorElement>('a[href]');
       const href = link?.getAttribute('href');
       if (!link || href == null) return;
+      const destination = link.href;
       const target =
         mode === 'pane'
-          ? paneFileTarget(link, resolved(href), location.origin, location.pathname)
+          ? paneFileTarget(link, destination, location.origin, location.pathname)
           : frameFileTarget(link, href, location.origin, location.pathname);
       if (!target) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      void forward(target.fileId, keptAddress(resolved(href), location.origin)).then((opened) => {
+      void forward(target.fileId, keptAddress(destination, location.origin)).then((opened) => {
         // A page script that changed the link in the meantime gets no click on the new address.
-        if (!opened && link.isConnected && link.getAttribute('href') === href) {
+        if (!opened && link.isConnected && link.href === destination) {
           (link as HTMLElement).click();
         }
       });
     },
     { capture: true, signal: lifetime.signal },
   );
-}
-
-/** The address that the browser reads in a link, which a relative link gets from this page. */
-function resolved(href: string): string {
-  try {
-    return new URL(href, location.href).href;
-  } catch {
-    return href;
-  }
 }
 
 /** Asks the background to open the file in the top frame. `false` when nothing opened it. */

@@ -68,15 +68,17 @@ test('the arrows show the next and previous spans, and "Today" comes back', asyn
   await expect(doneBox(page, 'Participation: Week 10')).toBeVisible();
   await settledList(page);
   const next = await shownGroups(page);
-  // Past due, then each day of the span with items, and no Today, Tomorrow or No due date.
+  // Past due, then each day of the span with items, and Done, which holds the done work from
+  // before the span under its older line. No Today, Tomorrow or No due date.
   expect(next.map(({ kind, name, date }) => ({ kind, name, date }))).toEqual([
     { kind: 'past_due', name: 'Past due', date: '' },
     { kind: 'day', name: 'Tuesday', date: 'Nov 3' },
     { kind: 'day', name: 'Wednesday', date: 'Nov 4' },
     { kind: 'day', name: 'Thursday', date: 'Nov 5' },
     { kind: 'day', name: 'Friday', date: 'Nov 6' },
+    { kind: 'done', name: 'Done', date: '' },
   ]);
-  expect(next.slice(1).map((shown) => [...shown.titles].sort())).toEqual([
+  expect(next.slice(1, -1).map((shown) => [...shown.titles].sort())).toEqual([
     ['Participation: Week 10', 'Register for spring classes'],
     // The peer review shows on its own date, though Canvas files it under Lab report 3's due date.
     ['Lab report 3: Photosynthesis'],
@@ -179,4 +181,25 @@ test('three quick clicks on Next week land three spans ahead on a slow Canvas', 
   await page.getByRole('button', { name: 'Today', exact: true }).click();
   await expect(weekHeading(page, 'October 27 to November 2')).toBeVisible();
   expect(canvas.unmatched).toEqual([]);
+});
+
+test('a checked reminder stays under Done in a later span', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+}) => {
+  const { canvas } = await serveScenario(context);
+  await addCsrfCookie(context, canvas.origin);
+  await saveAddress(background, canvas.origin);
+  await openExtensionPage(page, extensionUrl('sidepanel.html'));
+  await settledList(page);
+  await doneBox(page, 'Participation: Week 9').click();
+  await group(page, 'done').getByRole('button', { name: /^Done/ }).click();
+  await expect(doneBox(group(page, 'done'), 'Participation: Week 9')).toBeChecked();
+  await page.getByRole('button', { name: 'Next week' }).click();
+  await settledList(page);
+  const done = group(page, 'done');
+  await done.getByRole('button', { name: /older/ }).click();
+  await expect(doneBox(done, 'Participation: Week 9')).toBeChecked();
 });

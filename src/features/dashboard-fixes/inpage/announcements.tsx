@@ -79,6 +79,9 @@ const HOLD_MS = 450;
 /** The row ends its leave by this time even when no transition ends, such as in a hidden tab. */
 const LEAVE_FALLBACK_MS = 400;
 const FIRST_DAY = '2000-01-01';
+/** The path of the arrow that a Select of the widget draws (`IconArrowOpenDown` of InstUI). */
+const ARROW_PATH =
+  'm.153 526.146 92.168-92.299 867.767 867.636 867.636-867.636 92.429 92.299-960.065 959.935z';
 
 export { AVATAR_COLORS, initialsOf };
 
@@ -922,7 +925,11 @@ export function announcementsFix(): Fix {
               </option>
             ))}
           </select>
-          <span class="wr-caret" aria-hidden="true" />
+          <span class="wr-caret" aria-hidden="true">
+            <svg viewBox="0 0 1920 1920" width="1em" height="1em" focusable="false">
+              <path d={ARROW_PATH} fill-rule="evenodd" />
+            </svg>
+          </span>
         </div>
       </>
     );
@@ -1031,14 +1038,18 @@ export function announcementsFix(): Fix {
       }
       lineUp(text, label, box, widget.filterBlock, view);
     }
-    // The arrow takes the color of the arrow that the widget draws, when it can be told.
+    // The arrow takes the size and the color of the arrow that the widget draws, and the box is
+    // never narrower than the box of the read filter. A filter that is not laid out has no box.
     const arrow = input.nextElementSibling;
     const caret = field.querySelector<HTMLElement>('.wr-caret');
     if (arrow !== null && caret !== null) {
       const style = view.getComputedStyle(arrow);
-      const bordered = style.getPropertyValue('border-right-width') !== '0px';
-      caret.style.color = bordered ? style.getPropertyValue('border-right-color') : style.color;
+      caret.style.color = style.color;
+      caret.style.fontSize = style.fontSize;
     }
+    const width = box.getBoundingClientRect().width;
+    const wrapper = field.querySelector<HTMLElement>('.wr-select');
+    if (wrapper !== null && width > 0) wrapper.style.minWidth = `${width}px`;
   }
 
   function drawFilter(context: FixContext, view: View, courses: DashboardCourse[]): void {

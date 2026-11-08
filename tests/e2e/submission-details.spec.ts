@@ -1,3 +1,5 @@
+import { dropResetMessages } from './support/pane-identity';
+import { advanceBackgroundClock } from './support/clock';
 /**
  * The assignment view on the Submission Details page (design decision 26) and the sidebar of the
  * assignment page, on fixtures that follow the markup of canvas-lms 1c9f0bb. The extension hides
@@ -2979,4 +2981,131 @@ test('the Submission box stops after two failed reads', async ({ context, page, 
   await expect(
     page.locator('#sidebar_content a[href*="download="] > [data-av-original]'),
   ).toHaveCount(0);
+});
+
+test('identity verdict: lost reset never opens the earlier feedback session', async ({
+  context,
+  page,
+  background,
+}) => {
+  let student = '42';
+  const canvas = await open(context, page, background, {
+    extra: [
+      {
+        path: '/api/v1/courses/12/assignments/101/submissions/self',
+        respond: () => {
+          const records = rawRecords(details());
+          return { body: json({ ...records.submission, user_id: student }) };
+        },
+      },
+      { path: '/api/v1/users/self', respond: () => ({ body: { id: student, name: 'Student' } }) },
+      {
+        path: '/api/v1/users/self/profile',
+        respond: () => ({
+          body: { id: student, name: 'Student', time_zone: 'America/Los_Angeles' },
+        }),
+      },
+    ],
+  });
+  const feedback = box(page).getByRole('button', { name: 'View Feedback' });
+  await expect(feedback).toBeVisible();
+  await dropResetMessages(background);
+  await advanceBackgroundClock(background, 60000);
+  student = '9001';
+  await context.addCookies([
+    {
+      name: 'canvas_session',
+      value: 'student-b',
+      url: canvas.origin,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+  const world = await contentScriptWorld(page);
+  await world.send({ type: 'viewer:tabs-get' });
+  const before = canvas.requests.filter((request) =>
+    request.path.startsWith('/api/v1/canvadoc_session'),
+  ).length;
+  await feedback.click();
+  await page.waitForTimeout(2500);
+  expect(
+    canvas.requests.filter((request) => request.path.startsWith('/api/v1/canvadoc_session')),
+  ).toHaveLength(before);
+  await expect(page.locator(FEEDBACK)).toHaveCount(0);
+  await expect(feedback).toHaveCount(0);
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`identity verdict: the feedback cover hides its title in ${theme}`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    await open(context, page, background, { width: 1440 });
+    await saveSetting(background, { theme });
+    await box(page).getByRole('button', { name: 'View Feedback' }).click();
+    await expect(page.locator(FEEDBACK)).toHaveAttribute('data-identity', 'yes');
+    const frame = await feedbackFrame(page);
+    const world = await contentScriptWorld(page);
+    expect(
+      await world.evaluate(`(() => {
+      const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+      const send = runtime.sendMessage.bind(runtime);
+      runtime.sendMessage = message => message.type === 'viewer:pane-check'
+        ? Promise.resolve({verdict:'unknown'}) : send(message);
+    })()`),
+    ).toBeNull();
+    await expect(page.locator(FEEDBACK)).toHaveAttribute('data-identity', 'unknown');
+    await expect(page.locator(FEEDBACK)).toHaveAttribute('data-theme', theme);
+    expect(frame.isDetached()).toBe(false);
+    await page.screenshot({ path: `${SHOTS}/feedback-cover-${theme}.png` });
+    // The cover's Close button is in the closed root. The DOM snapshot finds its accessible name.
+    const cdp = await context.newCDPSession(page);
+    const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+    expect(
+      nodes.some(
+        (node) => !node.ignored && node.name?.value === "Canvas can't confirm your sign-in.",
+      ),
+    ).toBe(true);
+    expect(
+      nodes.some(
+        (node) => !node.ignored && node.role?.value === 'button' && node.name?.value === 'Close',
+      ),
+    ).toBe(true);
+    expect(
+      nodes.some((node) => !node.ignored && node.name?.value === `Feedback on ${FILE_NAME}`),
+    ).toBe(false);
+    const close = nodes.find(
+      (node) => !node.ignored && node.role?.value === 'button' && node.name?.value === 'Close',
+    );
+    const { model } = await cdp.send('DOM.getBoxModel', {
+      backendNodeId: close!.backendDOMNodeId!,
+    });
+    await page.mouse.click(
+      (model.border[0]! + model.border[4]!) / 2,
+      (model.border[1]! + model.border[5]!) / 2,
+    );
+    await expect(page.locator(FEEDBACK)).toHaveCount(0);
+    expect(frame.isDetached()).toBe(true);
+    await cdp.detach();
+  });
+}
+
+test('Submission Details waits through several unknown identity replies', async ({
+  context,
+  page,
+  background,
+}) => {
+  await open(context, page, background, { switchOff: true });
+  await expect(page.locator('html')).toHaveAttribute('data-av-started', '');
+  const world = await contentScriptWorld(page);
+  await world.evaluate(`(() => {
+    const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
+    const send = runtime.sendMessage.bind(runtime);
+    let unknown = 3;
+    runtime.sendMessage = message => message.type === 'viewer:pane-check' && unknown-- > 0
+      ? Promise.resolve({ verdict: 'unknown' }) : send(message);
+  })()`);
+  await saveTools(background, DEFAULT_TOOLS_SETTINGS);
+  await expect(host(page)).toBeAttached({ timeout: 10000 });
 });

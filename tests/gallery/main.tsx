@@ -15,6 +15,7 @@ import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import { App } from '../../src/features/weekly-list/ui/App';
 import { SettingsView } from '../../src/features/weekly-list/ui/SettingsView';
 import { APP_CSS, PAGE_LAYOUT_CSS, installStyles } from '../../src/shared/ui/styles';
+import { OfferBanner } from '../../src/features/weekly-list/ui/Notices';
 import { WelcomeView } from '../../src/features/weekly-list/ui/WelcomeView';
 import type { AppProps, SurfaceKind } from '../../src/features/weekly-list/ui/contract';
 import {
@@ -113,7 +114,14 @@ function app(
       ? { value: { ...settings, span: state.view.span }, courses: [] }
       : undefined;
   return () => (
-    <App surface={surface} state={state} actions={actions} settings={loaded} {...options} />
+    <App
+      surface={surface}
+      state={state}
+      actions={actions}
+      settings={loaded}
+      offerView={surface === 'panel' ? OfferBanner : undefined}
+      {...options}
+    />
   );
 }
 

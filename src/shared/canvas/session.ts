@@ -6,10 +6,15 @@ import { createTrustedItem, removeMirror } from '../platform/trustedStorage';
 export const SESSION_COOKIE_NAMES = ['canvas_session', '_normandy_session'] as const;
 
 /**
- * The cookie store that the requests of the extension use: the default store of the browser.
+ * The cookie store that the requests of the background use, including an always-private browser.
  * It is not taken from the list of stores, because that list holds only stores with an open tab.
  */
-const REQUEST_STORE_ID = BROWSER_KIND === 'firefox' ? 'firefox-default' : '0';
+const REQUEST_STORE_ID =
+  BROWSER_KIND === 'firefox'
+    ? import.meta.env.BROWSER === 'firefox' && browser.extension.inIncognitoContext
+      ? 'firefox-private'
+      : 'firefox-default'
+    : '0';
 
 const SALT_KEY = 'sessionFingerprintSalt';
 
@@ -43,6 +48,14 @@ async function installSalt(): Promise<string> {
 export async function surfaceUsesRequestStore(tabId: number): Promise<boolean> {
   const stores = await browser.cookies.getAllCookieStores();
   return stores.find((store) => store.tabIds.includes(tabId))?.id === REQUEST_STORE_ID;
+}
+
+/** A pane needs positive evidence of another store before it can show that tab's own frames. */
+export async function paneCookieStore(tabId: number): Promise<'request' | 'other' | 'unknown'> {
+  const stores = await browser.cookies.getAllCookieStores();
+  const store = stores.find((candidate) => candidate.tabIds.includes(tabId));
+  if (store === undefined) return 'unknown';
+  return store.id === REQUEST_STORE_ID ? 'request' : 'other';
 }
 
 /**

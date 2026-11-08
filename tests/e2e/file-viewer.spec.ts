@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import type { Page, Worker } from '@playwright/test';
-import { test, expect, serveScenario } from './support/weekrow';
+import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
+import { pageQuiet } from './support/settle';
+import { test, expect, serveScenario, saveTools } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
 import {
   FILE_NAME,
@@ -451,6 +453,11 @@ const PREVIEW_VIEWS = {
     path: `${FILES_PATH}/search`,
     href: `${FILES_PATH}/search?search_term=notes&preview=42`,
   },
+  // All My Files of the student: the path and the link that a real Canvas pushes.
+  myFiles: {
+    path: '/files/folder/users_9',
+    href: '/files/folder/users_9?preview=42',
+  },
 } as const;
 const recordNotes = {
   path: '/api/v1/files/42',
@@ -686,4 +693,145 @@ test('a comment attachment that does not load keeps a working Download button', 
   );
   expect(canvas.requests.some((request) => request.path.startsWith('/api/v1/files'))).toBe(false);
   await page.screenshot({ path: 'test-results/f2b-comment-error.png' });
+});
+
+test('a resize key at the window clamp preserves the wider choice', async ({
+  context,
+  page,
+  background,
+}) => {
+  await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, fileViewerWidth: 800 });
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await openCoursePage(context, page, background);
+  await openFirstFile(page, 'Read notes');
+  const host = page.locator('#tools-file-viewer');
+  await expect(host).toHaveCSS('width', '812px');
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(host).toHaveCSS('width', '496px');
+  await focusPaneHandle(page);
+  await page.keyboard.press('ArrowLeft');
+  await expect(host).toHaveCSS('width', '496px');
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await expect(host).toHaveCSS('width', '812px');
+});
+
+for (const width of [1280, 1366, 1440, 1600, 1200])
+  test(`the course menu follows available room at ${width}px`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await openCoursePage(context, page, background);
+    await openFirstFile(page, 'Read notes');
+    const menu = page.locator('.ic-app-course-menu');
+    const toggle = page.locator('#courseMenuToggle');
+    if (width - 492 >= 768) {
+      await expect(menu).toBeVisible();
+      await expect(toggle).toBeVisible();
+    } else {
+      await expect(menu).toBeHidden();
+      await expect(toggle).toBeHidden();
+    }
+    await expect(page.locator('body')).toHaveClass(/course-menu-expanded/);
+    await closePane(page);
+    await expect(menu).toBeVisible();
+    await expect(toggle).toBeVisible();
+  });
+
+test('a reload while a file waits for its pane leaves no pane on the next page', async ({
+  context,
+  page,
+  background,
+}) => {
+  await openCoursePage(context, page, background);
+  const blockHello = () =>
+    window.addEventListener(
+      'message',
+      (event) => {
+        if (event.data?.type === 'viewer-hello') event.stopImmediatePropagation();
+      },
+      true,
+    );
+  await page.addInitScript(blockHello);
+  await page.evaluate(blockHello);
+  await page.getByText('Read notes').first().click();
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
+  await page.reload();
+  await pageQuiet(page);
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+});
+
+test('a failed hello keeps typed work and offers a student link', async ({
+  context,
+  page,
+  background,
+}, testInfo) => {
+  const canvas = await openCoursePage(context, page, background);
+  await page.evaluate(() => {
+    window.addEventListener(
+      'message',
+      (event) => {
+        if (event.data?.type === 'viewer-hello') event.stopImmediatePropagation();
+      },
+      true,
+    );
+  });
+  const before = page.url();
+  await page.evaluate(() => {
+    const input = document.createElement('textarea');
+    input.setAttribute('aria-label', 'Draft');
+    document.body.prepend(input);
+  });
+  await page.getByText('Read notes').first().click();
+  await page.getByRole('textbox', { name: 'Draft' }).fill('Keep my work');
+  const cdp = await context.newCDPSession(page);
+  await expect
+    .poll(
+      async () => {
+        const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+        return nodes.some(
+          (node) => !node.ignored && node.name?.value === "Couldn't open this file.",
+        );
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+  await expect(page).toHaveURL(before);
+  await expect(page.getByRole('textbox', { name: 'Draft' })).toHaveValue('Keep my work');
+  const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+  const link = nodes.find(
+    (node) => !node.ignored && node.role?.value === 'link' && node.name?.value === 'Open in Canvas',
+  )!;
+  const { node } = await cdp.send('DOM.describeNode', { backendNodeId: link.backendDOMNodeId! });
+  expect(node.attributes).toEqual(
+    expect.arrayContaining([
+      'href',
+      `${canvas.origin}/courses/101/files/42`,
+      'target',
+      '_blank',
+      'rel',
+      'noopener',
+    ]),
+  );
+  await page.screenshot({ path: testInfo.outputPath('hello-failure.png') });
+  // The identity tick of each second leaves the keyboard on the link.
+  await cdp.send('DOM.focus', { backendNodeId: link.backendDOMNodeId! });
+  await page.waitForTimeout(1500);
+  const focused = await cdp.send('Accessibility.getFullAXTree');
+  expect(
+    focused.nodes
+      .find((node) => node.backendDOMNodeId === link.backendDOMNodeId)
+      ?.properties?.find((property) => property.name === 'focused')?.value.value,
+  ).toBe(true);
+  const { model } = await cdp.send('DOM.getBoxModel', { backendNodeId: link.backendDOMNodeId! });
+  const popup = page.waitForEvent('popup');
+  await page.mouse.click(
+    (model.border[0]! + model.border[4]!) / 2,
+    (model.border[1]! + model.border[5]!) / 2,
+  );
+  const opened = await popup;
+  await opened.close();
+  await page.reload();
+  await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
 });

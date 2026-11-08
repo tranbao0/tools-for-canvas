@@ -14,7 +14,7 @@ import {
   FILE_META,
   clickInFrame,
   NOTES,
-  courseHomeHtml,
+  courseHomeWithFileLinks,
   openCoursePage,
   openFirstFile,
   pane,
@@ -22,6 +22,7 @@ import {
   simpleHtml,
   waitForListLoaded,
 } from './support/file-viewer';
+import { dropResetMessages, moveTabsToAnotherStore } from './support/pane-identity';
 import { advanceBackgroundClock } from './support/clock';
 import { isExtensionWorker } from './support/extension';
 import { json } from './support/scenario-api';
@@ -94,9 +95,8 @@ const SECOND = {
 };
 
 /** The course page with a link to a second PDF. */
-const html = courseHomeHtml.replace(
-  '<a class="instructure_file_link" href="/files/43">Lecture photo</a>',
-  '<a class="instructure_file_link" href="/files/43">Lecture photo</a> <a class="instructure_file_link" href="/courses/101/files/45">Second notes</a>',
+const html = courseHomeWithFileLinks(
+  '<a class="instructure_file_link" href="/courses/101/files/45">Second notes</a>',
 );
 
 /** A course page whose link to the notes carries a verifier and a location. */
@@ -344,12 +344,13 @@ test('pulls the pages at the end of a one-page PDF, and the wheel never moves th
   await expect.poll(kept).toEqual(['true', 'true']);
   await expect(scroll).not.toHaveClass(/wr-pulling/);
   expect(await page.evaluate(() => window.scrollY)).toBe(behind);
-  // A wheel with Ctrl and a wheel that is mostly sideways are not the pull's.
+  // A wheel with Ctrl is the zoom's, which keeps it from the browser too, and a wheel that is
+  // mostly sideways is not the pull's.
   await page.keyboard.down('Control');
   await page.mouse.wheel(0, 300);
   await page.keyboard.up('Control');
   await page.mouse.wheel(300, 10);
-  await expect.poll(kept).toEqual(['true', 'true', 'false', 'false']);
+  await expect.poll(kept).toEqual(['true', 'true', 'true', 'false']);
 
   // The pages away from their place, in a screenshot of the pane.
   const pulled = await shootPulled(scroll, 100, { file: 'pdf-one-page.png', of: page });
@@ -483,6 +484,71 @@ test('zoom in changes the width of the canvas, and the menu sets fit modes', asy
   // Escape closes the menu only; the pane stays.
   await expect(frame.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('#tools-file-viewer')).toBeVisible();
+});
+
+test('Ctrl and the wheel over the pages zoom in and out by the steps of the buttons', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  const zoomText = frame.locator('[data-part="pdf-zoom-text"]');
+  const scroll = frame.locator('[data-part="pdf-scroll"]');
+  const box = (await scroll.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(zoomText).toHaveText('Fit width');
+  const canvas = pageBox(frame, 1).locator('canvas');
+  const before = (await canvas.boundingBox())!.width;
+  await page.keyboard.down('Control');
+  // A wheel notch up is one step up from the zoom in view.
+  await page.mouse.wheel(0, -100);
+  await expect(zoomText).not.toHaveText('Fit width');
+  await expect.poll(async () => (await canvas.boundingBox())?.width ?? 0).toBeGreaterThan(before);
+  await page.mouse.wheel(0, -100);
+  await expect(zoomText).toHaveText('100%');
+  await page.mouse.wheel(0, 100);
+  await expect(zoomText).toHaveText('75%');
+  await page.keyboard.up('Control');
+  // The zoom stays, and the plain wheel scrolls as before.
+  await page.mouse.wheel(0, 100);
+  await expect(zoomText).toHaveText('75%');
+  await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});
+
+test('the zoom menu lists every zoom that the buttons reach, from 25 to 500 percent', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  const frame = await openPdf(context, page, background, fileHost);
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  const items = frame.getByRole('menuitemradio');
+  await expect(items).toHaveText([
+    'Fit width',
+    'Fit page',
+    '25%',
+    '50%',
+    '75%',
+    '100%',
+    '125%',
+    '150%',
+    '200%',
+    '300%',
+    '400%',
+    '500%',
+  ]);
+  // Zoom out to the smallest step, and the menu names it.
+  await page.keyboard.press('Escape');
+  const out = frame.getByRole('button', { name: 'Zoom out' });
+  for (let press = 0; press < 5; press += 1) await out.click();
+  await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('25%');
+  await frame.getByRole('button', { name: 'Zoom level' }).click();
+  await expect(frame.getByRole('menuitemradio', { name: '25%', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
 });
 
 test('the thumbnails toggle shows 3 thumbnails that draw, and a click goes to the page', async ({
@@ -1062,20 +1128,6 @@ test('the first file of a new student opens while the new cookie is not confirme
   await slowExpect(frame.getByRole('status').filter({ hasText: 'Loading file' })).toHaveCount(0);
 });
 
-/** Makes the background skip the `viewer:reset` message, so no tab learns of the new student. */
-async function dropResetMessages(background: Parameters<typeof openCoursePage>[2]) {
-  await background.evaluate(() => {
-    const tabs = (
-      globalThis as unknown as {
-        chrome: { tabs: { sendMessage(id: number, message: { type?: string }): Promise<unknown> } };
-      }
-    ).chrome.tabs;
-    const send = tabs.sendMessage.bind(tabs);
-    tabs.sendMessage = (id, message) =>
-      message.type === 'viewer:reset' ? Promise.resolve(undefined) : send(id, message);
-  });
-}
-
 test('the pane closes when another student signs in, in this tab and in every other', async ({
   context,
   page,
@@ -1307,7 +1359,7 @@ test('the error card keeps the address of a link with a verifier in memory, and 
   );
 });
 
-test('a pane that stayed open cannot save its position for the next student', async ({
+test('a pane closes after a student change even when the reset broadcast is lost', async ({
   context,
   page,
   background,
@@ -1325,24 +1377,7 @@ test('a pane that stayed open cannot save its position for the next student', as
   const frame = await pane(page);
   await slowExpect(pageBox(frame, 1).locator('canvas')).toBeVisible();
   await saveThirdPageAtZoom(frame, background);
-  // The pane records the answer to each save, so the test waits for it and needs no sleep.
-  await frame.evaluate(() => {
-    const runtime = (globalThis as unknown as { chrome: typeof browser }).chrome.runtime;
-    const send = runtime.sendMessage.bind(runtime) as (message: unknown) => Promise<unknown>;
-    const replies: { zoom: unknown; reply: unknown }[] = [];
-    (globalThis as unknown as { __saves: unknown[] }).__saves = replies;
-    (runtime as unknown as { sendMessage: unknown }).sendMessage = async (message: {
-      type?: string;
-      zoom?: unknown;
-    }) => {
-      const reply = await send(message);
-      if (message.type === 'viewer:position-set') replies.push({ zoom: message.zoom, reply });
-      return reply;
-    };
-  });
-
-  // The reset message of the background does not reach this tab, so its pane stays open. Only the
-  // token of the pane stops the save of the position then.
+  // The pane must check its owner even when the reset broadcast does not reach this tab.
   await dropResetMessages(background);
 
   // The other student signs in, in another tab. That tab opens a file, so the background
@@ -1354,22 +1389,10 @@ test('a pane that stayed open cannot save its position for the next student', as
   await openFirstFile(other, 'Read notes');
   await slowExpect(pageBox(await pane(other), 1).locator('canvas')).toBeVisible();
 
-  // The first tab still shows the first student's pane. A zoom change there saves after a second.
-  await frame.getByRole('button', { name: 'Zoom level' }).click();
-  await frame.getByRole('menuitemradio', { name: '200%' }).click();
-  // The save of the 200 percent zoom reached the background and got its answer.
-  await slowExpect
-    .poll(() =>
-      frame.evaluate(() =>
-        (globalThis as unknown as { __saves: { zoom: unknown }[] }).__saves.some(
-          (save) => save.zoom === 2,
-        ),
-      ),
-    )
-    .toBe(true);
+  await slowExpect(page.locator('#tools-file-viewer')).toHaveCount(0);
+  await expect(pageInput(await pane(other))).toHaveValue('1');
   const stored = await savedPositions(background);
   expect(Object.keys(stored).filter((key) => studentOf(key) === OTHER_STUDENT)).toEqual([]);
-  expect(Object.values(stored).filter((value) => value.zoom === 2)).toEqual([]);
 });
 
 test('a closed tab leaves its saved page and zoom for the next tab', async ({
@@ -1615,4 +1638,39 @@ test('a module file whose item read fails ends with the link followed, and never
   await expect(page).toHaveURL(`${canvas.origin}/courses/101/modules/items/9`);
   await expect(page.getByRole('heading', { name: 'Module item page' })).toBeVisible();
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
+});
+
+test('identity verdict: a cold profile survives a worker restart', async ({
+  context,
+  page,
+  background,
+  extensionUrl,
+  fileHost,
+}) => {
+  const student = studentCanvas();
+  student.failProfile();
+  await openCoursePage(context, page, background, html, [...student.routes, ...routes(fileHost)]);
+  await openFirstFile(page, 'Read notes');
+  await slowExpect(pageBox(await pane(page), 1).locator('canvas')).toBeVisible();
+  await restartWorker(context, page, background, extensionUrl);
+  await page.waitForTimeout(6500);
+  await expect(page.locator('#tools-file-viewer')).toBeVisible();
+});
+
+test('identity verdict: another store keeps the file error card and the click', async ({
+  context,
+  page,
+  background,
+  fileHost,
+}) => {
+  await openCoursePage(context, page, background, html, routes(fileHost));
+  await moveTabsToAnotherStore(background);
+  await openFirstFile(page, 'Read notes');
+  const frame = await pane(page);
+  await expect(frame.getByText("Couldn't load this file")).toBeVisible();
+  await expect(frame.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+  await expect(frame.getByRole('link', { name: 'Download', exact: true })).toBeVisible();
+  await expect(frame.getByRole('link', { name: 'Open in Canvas' })).toBeVisible();
+  await page.waitForTimeout(2000);
+  await expect(page.locator('#tools-file-viewer')).toBeVisible();
 });

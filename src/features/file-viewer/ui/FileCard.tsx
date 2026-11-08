@@ -1,7 +1,7 @@
 /** The card of the active file: its name, type and size, and the links (design decision 25). */
 import { t } from '../../../shared/ui/i18n';
 import { DownloadIcon, ExternalLinkIcon, FileIcon } from '../../../shared/ui/icons';
-import { fileKind, formatSize, typeLabel } from './fileInfo';
+import { canShow, fileKind, formatSize, typeLabel } from './fileInfo';
 import { fileLinks, sameCanvasAddress } from './links';
 
 /** The record of a file, as the background answers `viewer:file`. */
@@ -112,6 +112,11 @@ export function FileCard(props: CardProps) {
           </p>
         </div>
       </div>
+      {!canShow(file.contentType, file.name, file.size) && (
+        <p class="fv-card-note" data-part="card-note" role="status">
+          {t('fileCantShow')}
+        </p>
+      )}
       <div class="fv-actions">
         {links && (
           <a class="wr-btn" href={links.download} data-part="download" {...NEW_TAB}>

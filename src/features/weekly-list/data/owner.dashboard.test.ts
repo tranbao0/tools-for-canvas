@@ -884,3 +884,57 @@ it.each(['dashboard', 'visibility', 'feed', 'viewer', 'state', 'reader'] as cons
     else expect(result).toEqual({ kind: 'loading' });
   },
 );
+
+describe('grade visibility writes', () => {
+  it.each([
+    ['999999', IDS.user, ORIGIN],
+    [C.biology, '999999', ORIGIN],
+    [C.biology, IDS.user, 'https://other.instructure.com'],
+  ])(
+    'refuses a course, student or origin outside the session',
+    async (courseId, userId, origin) => {
+      const h = await loaded();
+      const writer = vi.spyOn(h.canvas, 'withGuard');
+      expect(
+        await h.owner.setGradeVisibility(
+          courseId,
+          false,
+          userId,
+          undefined,
+          origin,
+          'course-grades-widget',
+        ),
+      ).toEqual({
+        ok: false,
+      });
+      expect(writer).not.toHaveBeenCalled();
+    },
+  );
+
+  it('uses a live cookie guard and refuses a late confirmation after an identity change', async () => {
+    const h = await loaded();
+    const write = vi.fn(async () => {
+      vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('changed-session');
+      return true;
+    });
+    const guarded = vi.spyOn(h.canvas, 'withGuard').mockImplementation((guard) => ({
+      ...h.canvas,
+      setWidgetGradeVisibility: async () => {
+        expect(await guard()).toBe(true);
+        return write();
+      },
+    }));
+    expect(
+      await h.owner.setGradeVisibility(
+        C.biology,
+        false,
+        IDS.user,
+        undefined,
+        ORIGIN,
+        'course-grades-widget',
+      ),
+    ).toEqual({ ok: false });
+    expect(guarded).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledOnce();
+  });
+});

@@ -18,13 +18,13 @@
  * never reads the DOM of a frame. It reads only the address of a frame.
  */
 import {
-  createDock,
   filePaneOpen,
   hideFilePane,
   setFullView,
   watchFilePane,
   type Dock,
 } from '../../file-viewer/dock';
+import { createCardDock } from '../../file-viewer/cardDock';
 import { CLOSE_PATH } from '../../../shared/ui/iconPaths';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { OWN } from './own';
@@ -186,8 +186,22 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   let delay = PREVIEW_POLL_MS;
   // A failed read makes the next poll wait longer, and a good read starts over.
   const read = async (ref: PaneRef): Promise<void> => {
-    delay = nextPollDelay(delay, PREVIEW_POLL_MS, await reader(ref)());
+    delay = nextPollDelay(
+      delay,
+      PREVIEW_POLL_MS,
+      await (dock?.host.getAttribute('data-identity') === 'unknown'
+        ? Promise.resolve(false)
+        : reader(ref)()),
+    );
   };
+
+  let deferredIdentityRead = false;
+  const onVisibility = (): void => {
+    if (!deferredIdentityRead || doc.visibilityState !== 'visible' || !visible) return;
+    deferredIdentityRead = false;
+    void read(visible);
+  };
+  doc.addEventListener('visibilitychange', onVisibility);
 
   const shownRef = (): PaneRef | null =>
     visible !== undefined && dock?.shown === true ? refOf(visible) : null;
@@ -404,6 +418,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
   /** Removes every frame and the dock, and shows the file pane again if it was covered. */
   function shut(): void {
     stopPoll();
+    deferredIdentityRead = false;
     for (const slot of slots.values()) slot.remove();
     slots.clear();
     visible = undefined;
@@ -448,12 +463,22 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (next === null) return;
       const left = visible;
       if (!dock) {
-        const created = createDock({
+        const created = createCardDock({
           role: 'turn-in',
+          onClose: shut,
+          onIdentityChange(confirmed) {
+            if (!confirmed) return;
+            for (const slot of slots.values()) {
+              if (!slot.frame.isConnected) parts?.wrapper.append(slot.frame);
+            }
+            if (visible) {
+              deferredIdentityRead = doc.visibilityState !== 'visible';
+              if (!deferredIdentityRead) void read(visible);
+            }
+          },
           id: PREVIEW_HOST_ID,
           label: 'Assignment',
           resizeLabel: 'Resize assignment',
-          card: true,
           width: options.width(),
           onResized: options.saveWidth,
           doc,
@@ -476,7 +501,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (!slot) {
         evict();
         slot = makeSlot(next);
-        parts?.wrapper.append(slot.frame);
+        if (dock?.host.getAttribute('data-identity') === 'yes') parts?.wrapper.append(slot.frame);
       }
       show(slot);
       sync();
@@ -506,6 +531,7 @@ export function createPreviewPane(options: PreviewPaneOptions): PreviewPane {
       if (on && changed && slots.size > 0) options.onFrameLoad();
     },
     stop() {
+      doc.removeEventListener('visibilitychange', onVisibility);
       stopped = true;
       session++;
       shut();

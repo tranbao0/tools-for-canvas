@@ -153,8 +153,12 @@ export function claimDashboardLayout(
   // A minimized card leaves the overlay and closes the column up, so a change of the state in the
   // card places it again.
   let minimizedSeen = false;
+  let revealCard = false;
   const minimizeObserver = new MutationObserver(() => {
-    if (isMinimized() !== minimizedSeen) schedule(false);
+    if (isMinimized() !== minimizedSeen) {
+      revealCard = true;
+      schedule(false);
+    }
   });
 
   function trackCard(): void {
@@ -256,6 +260,15 @@ export function claimDashboardLayout(
     setPanelMode(container, 'slot');
   }
 
+  /**
+   * The width that the page keeps for itself: the window without the room that a pane takes at
+   * the right edge, which is the right padding of `html`. The card never goes into that room.
+   */
+  function pageWidth(): number {
+    const html = doc.documentElement;
+    return html.clientWidth - pixels(view.getComputedStyle(html).paddingRight, 0);
+  }
+
   /** Places the card over the slot, beside the tab panel, or in the flow above it. */
   function arrangeWidget(
     grid: WidgetGrid | null,
@@ -305,9 +318,24 @@ export function claimDashboardLayout(
   }
 
   function arrange(grid: WidgetGrid | null, slot: CourseWorkSlot | null): void {
-    keepCardScroll(container, () => arrangeWidget(grid, slot, doc.documentElement.clientWidth));
+    keepCardScroll(container, () => arrangeWidget(grid, slot, pageWidth()));
     trackCard();
     restoreScroll();
+    if (revealCard) {
+      revealCard = false;
+      const card = cardRoot()?.querySelector<HTMLElement>('.wr');
+      const top = card?.getBoundingClientRect().top;
+      if (top !== undefined && (top < 0 || top >= view.innerHeight))
+        card?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+  }
+
+  /** Canvas has overflow ancestors, so the card follows page scroll within its own slot. */
+  function stick(): void {
+    if (container.firstElementChild?.getAttribute('data-panel') !== 'slot') return;
+    cardRoot()
+      ?.querySelector<HTMLElement>('.wr')
+      ?.style.setProperty('--wr-slot-top', `${12 - container.getBoundingClientRect().top}px`);
   }
 
   function startWait(): void {
@@ -431,6 +459,7 @@ export function claimDashboardLayout(
     observer.disconnect();
     sizeObserver?.disconnect();
     view.removeEventListener('resize', onSize);
+    view.removeEventListener('scroll', stick, true);
     if (frame !== undefined) view.cancelAnimationFrame(frame);
     frame = undefined;
   }
@@ -447,6 +476,7 @@ export function claimDashboardLayout(
       detached = true;
     }
     place(force || !container.isConnected);
+    stick();
     // The card places itself by the size of the content box and of the grid, so a change in
     // either one, such as a window or zoom change that the grid answers, places it again.
     for (const element of [
@@ -459,6 +489,7 @@ export function claimDashboardLayout(
     }
   }
 
+  view.addEventListener('scroll', stick, { passive: true, capture: true });
   body.setAttribute(LAYOUT_ATTRIBUTE, '');
   if (options.waitForGrid === true) startWait();
   observer.observe(doc.documentElement, {

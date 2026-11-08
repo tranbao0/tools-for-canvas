@@ -2,7 +2,8 @@
 import type { ComponentChildren, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { t, tp, type PluralKey } from '../../../shared/ui/i18n';
-import type { Offer, UndoInfo, WeekView } from '../model/types';
+import type { UndoInfo, WeekView } from '../model/types';
+import type { OfferProps } from './contract';
 import { formatTimeOrDateTime, hostOf } from './format';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { HostText, MARKER, withNode } from '../../../shared/ui/parts';
@@ -16,18 +17,6 @@ export function browserIsOffline(): boolean {
 
 /** How long the accept button stays off after the offer shows or its host changes. */
 export const OFFER_ARM_MS = 1000;
-
-interface OfferProps {
-  offer: Offer;
-  mode: 'use' | 'switch';
-  onAccept(origin: string): void;
-  onDismiss(): void;
-  /**
-   * Whether the offer is a labelled region of its own. In the notice queue it is not: the live
-   * region around it already announces it.
-   */
-  region?: boolean;
-}
 
 /**
  * The offer of a Canvas that the detector found. With no address saved (`use`), it reads "Use

@@ -10,8 +10,96 @@
  */
 import { normalizeWidth } from './width';
 
-/** Below this window width the dock covers the page instead of making room beside it. */
-const NARROW_PX = 900;
+/** Below this window width a pane covers the page instead of making room beside it. */
+const NARROW_PX = 876;
+
+/**
+ * The least room that the weekly dock and its tab leave beside them. Canvas starts its mobile
+ * layout below 768 px (`tablet` in `app/stylesheets/base/mixins/_breakpoints.scss`), but its media
+ * queries read the window and not the room, so a room that small cannot get that layout. The list
+ * is a side column, so it lies over the page at its own width and leaves the padding of the page
+ * alone when it would leave less. A file pane or an assignment pane reserves 420 px beside the global
+ * navigation, and the one column layout below handles that room.
+ */
+const MIN_ROOM_PX = 768;
+
+/**
+ * The room from which Canvas lays its right column beside the content, with no course menu
+ * (`desktop`) and with it (`desktop--nav-open`), in the same file. The window decides in Canvas,
+ * so below these widths a room needs the one column layout that Canvas gives a narrow window.
+ */
+const WIDE_ROOM_PX = 992;
+const WIDE_MENU_ROOM_PX = 1140;
+
+/** The attribute of the `html` element, and the style that it turns on, for the one column layout. */
+const STACK_ATTRIBUTE = 'data-weekrow-stack';
+const STACK_STYLE_ID = 'weekrow-stack-style';
+const MENU_ATTRIBUTE = 'data-weekrow-hide-menu';
+/** The window width where Canvas gives the widget dashboard two columns (`RESPONSIVE_QUERY` of `ui/features/widget_dashboard/index.tsx`). */
+const WIDGET_COLUMNS_ROOM_PX = 1380;
+const BESIDE_ATTRIBUTE = 'data-weekrow-beside-pane';
+const WIDGET_STACK_ATTRIBUTE = 'data-weekrow-widget-stack';
+const STACK_CSS = `html[${STACK_ATTRIBUTE}] .ic-app-main-content{display:block!important}html[${STACK_ATTRIBUTE}] .ic-app-main-content__secondary{width:auto!important}html[${MENU_ATTRIBUTE}] .ic-app-course-menu,html[${MENU_ATTRIBUTE}] #courseMenuToggle{display:none!important}html[${MENU_ATTRIBUTE}] .ic-Layout-columns{margin-left:0!important}html[${WIDGET_STACK_ATTRIBUTE}] [data-testid="widget-columns"]{flex-direction:column!important}html[${WIDGET_STACK_ATTRIBUTE}] [data-testid="widget-columns"]> *{width:100%!important;max-width:100%!important;min-width:0!important}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__layout> *{flex-wrap:wrap!important;row-gap:12px}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__layout> *> *{min-width:0;max-width:100%}html[${BESIDE_ATTRIBUTE}] .ic-Dashboard-header__actions{flex-wrap:wrap;row-gap:8px;justify-content:flex-start}html[${BESIDE_ATTRIBUTE}] :has(>#files-table){max-width:100%;overflow-x:auto}html[${BESIDE_ATTRIBUTE}] :has(>[data-testid="upload-button"]){flex-wrap:wrap!important}`;
+
+/** Whether a dock that would take `px` of room leaves the page alone: the window is narrow, or the room of the weekly dock would be. */
+function covers(win: Window, px: number, role: DockRole): boolean {
+  return (
+    win.innerWidth < NARROW_PX ||
+    (role === 'weekly' && (win.innerWidth < 900 || win.innerWidth - px < MIN_ROOM_PX))
+  );
+}
+
+/**
+ * Calls `layout` when the window resizes and when the class list of `body` changes, because the
+ * width that Canvas wants for its two columns depends on the course menu (`course-menu-expanded`),
+ * which a click on its toggle changes with no resize. Returns the function that stops both.
+ */
+function watchLayout(doc: Document, win: Window, layout: () => void): () => void {
+  win.addEventListener('resize', layout);
+  const observer = new MutationObserver(layout);
+  if (doc.body !== null)
+    observer.observe(doc.body, { attributes: true, attributeFilter: ['class'] });
+  return () => {
+    win.removeEventListener('resize', layout);
+    observer.disconnect();
+  };
+}
+
+/**
+ * Gives the page the one column layout that Canvas gives a window as wide as the room, while the
+ * room is below the width of Canvas's two column layout. The rules are the ones that Canvas drops
+ * below that width: the main content stops being a flex row, and the right column fills the row.
+ */
+function markStack(page: HTMLElement, taken: number): void {
+  const doc = page.ownerDocument;
+  const win = doc.defaultView;
+  if (win === null) return;
+  const wide = doc.body?.classList.contains('course-menu-expanded')
+    ? WIDE_MENU_ROOM_PX
+    : WIDE_ROOM_PX;
+  const stack = win.innerWidth - taken < wide;
+  if ((stack || taken > 0) && doc.getElementById(STACK_STYLE_ID) === null) {
+    const style = doc.createElement('style');
+    style.id = STACK_STYLE_ID;
+    style.textContent = STACK_CSS;
+    (doc.head ?? page).append(style);
+  }
+  page.toggleAttribute(STACK_ATTRIBUTE, stack);
+  page.toggleAttribute(BESIDE_ATTRIBUTE, taken > 0);
+  page.toggleAttribute(
+    WIDGET_STACK_ATTRIBUTE,
+    taken > 0 && win.innerWidth - taken < WIDGET_COLUMNS_ROOM_PX,
+  );
+  page.toggleAttribute(MENU_ATTRIBUTE, win.innerWidth - taken < MIN_ROOM_PX);
+}
+
+function clearStack(page: HTMLElement): void {
+  page.removeAttribute(STACK_ATTRIBUTE);
+  page.removeAttribute(BESIDE_ATTRIBUTE);
+  page.removeAttribute(WIDGET_STACK_ATTRIBUTE);
+  page.removeAttribute(MENU_ATTRIBUTE);
+  page.ownerDocument.getElementById(STACK_STYLE_ID)?.remove();
+}
 
 export type DockRole = 'file' | 'turn-in' | 'feedback' | 'weekly';
 
@@ -38,6 +126,8 @@ export interface DockOptions {
    * the width of the card, and the host and the room beside it are one gap wider.
    */
   card?: boolean;
+  /** More rules for the root, after the dock rules. `createCardDock` passes the rules of a card. */
+  css?: string;
   /** Called with the new width when the student has finished a resize. */
   onResized(width: number): void;
   doc?: Document;
@@ -187,18 +277,24 @@ export function giveBackRoom(doc: Document = document): void {
   const saved = state.saved ?? readRecord(page);
   state.saved = null;
   page.removeAttribute(ROOM_ATTRIBUTE);
+  clearStack(page);
   if (saved) page.style.setProperty('padding-right', saved.value, saved.priority);
 }
 
-/** The inline right padding of the page, as one dock or tab writes it. */
-function writePadding(page: HTMLElement, value: string, narrow: boolean): void {
+/**
+ * The inline right padding of the page, as one dock or tab writes it. `taken` is the room that the
+ * writer holds, in px. A writer that `cover`s the page leaves the padding that the page had.
+ */
+function writePadding(page: HTMLElement, taken: number, cover: boolean): void {
   const { saved } = shared();
-  const [text, priority] = narrow && saved ? [saved.value, saved.priority] : [value, 'important'];
+  const [text, priority] =
+    cover && saved ? [saved.value, saved.priority] : [`${taken}px`, 'important'];
   if (
     page.style.getPropertyValue('padding-right') !== text ||
     page.style.getPropertyPriority('padding-right') !== priority
   )
     page.style.setProperty('padding-right', text, priority);
+  markStack(page, cover ? 0 : taken);
 }
 
 function prune(state: Shared): void {
@@ -230,6 +326,7 @@ function releaseRoom(page: HTMLElement, holder: Holder): void {
   if (state.holders.size === 0 && state.saved) {
     page.style.setProperty('padding-right', state.saved.value, state.saved.priority);
     page.removeAttribute(ROOM_ATTRIBUTE);
+    clearStack(page);
     state.saved = null;
   }
 }
@@ -257,13 +354,13 @@ export function leaseRoom(host: HTMLElement, width: number, doc: Document = docu
   claimRoom(page, holder);
   const layout = (): void => {
     if (!live || !host.isConnected) return;
-    writePadding(page, `${width}px`, win.innerWidth < NARROW_PX);
+    writePadding(page, width, covers(win, width, 'weekly'));
   };
+  const stopWatching = watchLayout(doc, win, layout);
   const stop = (): void => {
     live = false;
-    win.removeEventListener('resize', layout);
+    stopWatching();
   };
-  win.addEventListener('resize', layout);
   layout();
   return {
     refresh() {
@@ -387,7 +484,7 @@ function tell(): void {
   for (const watcher of [...shared().watchers]) watcher();
 }
 
-/** The frame, header and handle rules that both panes share. */
+/** The frame, header and handle rules that every dock shares. */
 export const DOCK_CSS = `
 :host{--bg:#fff;--text:#273540;--muted:#586874;--line:#e8eaec;--edge:#c7cdd1;--hover:#f2f4f4;--focus:#0374b5;--btn-line:#d7dade;--btn-hover:#e8eaec;color:var(--text)}
 :host([data-theme='dark']){--bg:#1b2330;--text:#fff;--muted:#aab6c0;--line:#2e3e4e;--edge:#4a5b68;--hover:#253443;--focus:#5a9fd4;--btn-line:#4a5b68;--btn-hover:#2e3e4e}
@@ -395,24 +492,18 @@ section{outline:0;box-sizing:border-box;height:100%;background:var(--bg);border-
 iframe{border:0;width:100%;flex:1;min-height:0;background:transparent}
 .handle{position:absolute;left:-4px;top:0;width:8px;height:100%;cursor:ew-resize;touch-action:none}
 .handle:hover,.handle:focus-visible{background:var(--focus)}
-@media(max-width:899px){.handle{display:none}}
-:host([data-card]){box-sizing:border-box;padding:${CARD_GAP_PX}px ${CARD_GAP_PX}px ${CARD_GAP_PX}px 0;pointer-events:none}
-:host([data-card][data-full]){padding:${CARD_GAP_PX}px;pointer-events:auto}
-:host([data-card]) section{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.2);pointer-events:auto}
-:host([data-card][data-theme='dark']) section{box-shadow:0 2px 14px rgba(0,0,0,.55)}
-:host([data-card]) .handle{z-index:1;top:${CARD_GAP_PX}px;height:calc(100% - ${2 * CARD_GAP_PX}px);pointer-events:auto}
-:host([data-card][data-full]) .handle{display:none}
-@media(max-width:899px){:host([data-card]){padding:0}:host([data-card]) section{border:0;border-left:1px solid var(--edge);border-radius:0;box-shadow:none}}
+@media(max-width:899px){:host(:not([data-card])) .handle{display:none}}
+@media(max-width:875px){.handle{display:none}}
 `;
 
 export function createDock(options: DockOptions): Dock {
   const doc = options.doc ?? document;
   const win = doc.defaultView ?? window;
-  let width = normalizeWidth(options.width, win.innerWidth);
+  let width = normalizeWidth(options.width);
   let hidden = false;
   let opened = false;
   let full = false;
-  let stopResize: (() => void) | undefined;
+  let stopWatching: (() => void) | undefined;
   const card = options.card === true;
   /** The panes that cover the weekly list tell the watchers when they open, close, hide or show. */
   const tellsPanes = options.role === 'file' || options.role === 'turn-in';
@@ -428,7 +519,7 @@ export function createDock(options: DockOptions): Dock {
   // Canvas origin inside the root still reaches the root, so such a frame belongs in a root of its own.
   const root = host.attachShadow({ mode: 'closed' });
   const style = doc.createElement('style');
-  style.textContent = DOCK_CSS;
+  style.textContent = DOCK_CSS + (options.css ?? '');
   const section = doc.createElement('section');
   section.setAttribute('aria-label', options.label);
   // A script can take the focus into the pane, and a Tab from there goes to its first control.
@@ -450,8 +541,8 @@ export function createDock(options: DockOptions): Dock {
 
   const layout = (): void => {
     if (!opened) return;
-    const narrow = win.innerWidth < NARROW_PX;
-    const room = narrow ? '100vw' : `${normalizeWidth(width, win.innerWidth) + gap}px`;
+    const taken = normalizeWidth(width, win.innerWidth, options.role === 'weekly' ? 0 : 516) + gap;
+    const narrow = win.innerWidth < (options.role === 'weekly' ? 900 : NARROW_PX);
     full = card && !narrow && shared().fullView === true;
     host.toggleAttribute('data-full', full);
     // Full view and a narrow window stretch the host from the left edge to the right edge of the
@@ -459,13 +550,13 @@ export function createDock(options: DockOptions): Dock {
     // bar). In full view the room stays as it is, so the page stays put.
     const stretched = full || narrow;
     host.style.left = stretched ? '0' : '';
-    host.style.width = stretched ? '' : room;
+    host.style.width = stretched ? '' : `${taken}px`;
     // A host that a page removed takes no room.
     if (hidden || !host.isConnected) return;
-    writePadding(page, room, narrow);
+    writePadding(page, taken, covers(win, taken, options.role));
   };
   const setWidth = (next: number): void => {
-    width = normalizeWidth(next, win.innerWidth);
+    width = normalizeWidth(next);
     layout();
   };
 
@@ -486,7 +577,15 @@ export function createDock(options: DockOptions): Dock {
   handle.addEventListener('keydown', (event) => {
     if (!event.isTrusted || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
-    setWidth(width + (event.key === 'ArrowLeft' ? 20 : -20));
+    const reserved = options.role === 'weekly' ? 0 : 516;
+    const before = normalizeWidth(width, win.innerWidth, reserved);
+    const next = normalizeWidth(
+      before + (event.key === 'ArrowLeft' ? 20 : -20),
+      win.innerWidth,
+      reserved,
+    );
+    if (next === before) return;
+    setWidth(next);
     options.onResized(width);
   });
   // In full view, Escape leaves it first. A frame of the Canvas page can reach this root, so only
@@ -521,8 +620,7 @@ export function createDock(options: DockOptions): Dock {
       host.style.display = '';
       claimRoom(page, dock);
       doc.body.append(host);
-      win.addEventListener('resize', layout);
-      stopResize = () => win.removeEventListener('resize', layout);
+      stopWatching = watchLayout(doc, win, layout);
       if (card) {
         // A state that a vanished pane left behind (a page removed its host) ends with that pane.
         if (openPanes().size === 0) setFullView(false);
@@ -535,8 +633,8 @@ export function createDock(options: DockOptions): Dock {
     close() {
       if (!opened) return;
       opened = false;
-      stopResize?.();
-      stopResize = undefined;
+      stopWatching?.();
+      stopWatching = undefined;
       releaseRoom(page, dock);
       host.remove();
       if (card) {
@@ -567,8 +665,8 @@ export function createDock(options: DockOptions): Dock {
     },
     forget() {
       opened = false;
-      stopResize?.();
-      stopResize = undefined;
+      stopWatching?.();
+      stopWatching = undefined;
       openPanes().delete(dock);
       if (card && openPanes().size === 0) setFullView(false);
     },

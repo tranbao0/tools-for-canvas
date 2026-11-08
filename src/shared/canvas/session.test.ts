@@ -5,6 +5,7 @@ const ORIGIN = 'https://school.instructure.com';
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   vi.doUnmock('../platform/browserKind');
   vi.resetModules();
 });
@@ -12,6 +13,7 @@ afterEach(() => {
 async function load(kind: 'chrome' | 'firefox' = 'chrome') {
   vi.resetModules();
   vi.doMock('../platform/browserKind', () => ({ BROWSER_KIND: kind }));
+  vi.stubEnv('BROWSER', kind);
   return import('./session');
 }
 
@@ -115,4 +117,43 @@ it('hashes both session cookies and detects a change to either value', async () 
     async (details) => ({ value: details.name === 'canvas_session' ? 'changed' : 'same' }) as never,
   );
   expect(await sessionFingerprint(ORIGIN)).not.toBe(hosted);
+});
+
+it.each(['chrome', 'firefox'] as const)(
+  'pane store reads require a listed tab in %s',
+  async (kind) => {
+    const { paneCookieStore } = await load(kind);
+    const request = kind === 'firefox' ? 'firefox-default' : '0';
+    const other = kind === 'firefox' ? 'firefox-container-1' : '7';
+    stores({ id: request, tabIds: [1] }, { id: other, tabIds: [2] });
+    await expect(paneCookieStore(1)).resolves.toBe('request');
+    await expect(paneCookieStore(2)).resolves.toBe('other');
+    await expect(paneCookieStore(3)).resolves.toBe('unknown');
+    vi.mocked(browser.cookies.getAllCookieStores).mockRejectedValue(
+      new Error('Stores unavailable'),
+    );
+    await expect(paneCookieStore(2)).rejects.toThrow('Stores unavailable');
+  },
+);
+
+it('uses the private request store when the Firefox background is private', async () => {
+  const before = browser.extension.inIncognitoContext;
+  Object.defineProperty(browser.extension, 'inIncognitoContext', {
+    value: true,
+    configurable: true,
+  });
+  try {
+    const { surfaceUsesRequestStore, sessionFingerprint } = await load('firefox');
+    stores({ id: 'firefox-private', tabIds: [9] }, { id: 'firefox-default', tabIds: [4] });
+    expect(await surfaceUsesRequestStore(9)).toBe(true);
+    expect(await surfaceUsesRequestStore(4)).toBe(false);
+    const cookie = vi.spyOn(browser.cookies, 'get').mockResolvedValue(undefined as never);
+    await sessionFingerprint(ORIGIN);
+    expect(cookie).toHaveBeenCalledWith(expect.objectContaining({ storeId: 'firefox-private' }));
+  } finally {
+    Object.defineProperty(browser.extension, 'inIncognitoContext', {
+      value: before,
+      configurable: true,
+    });
+  }
 });

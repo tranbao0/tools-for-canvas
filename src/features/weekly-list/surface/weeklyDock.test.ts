@@ -25,6 +25,9 @@ import {
   type WeeklyDockOptions,
 } from './weeklyDock';
 
+// The weekly dock needs 768 px beside it; panes reserve 420 px besides global navigation. These tests use a wide window.
+window.innerWidth = 1600;
+
 const html = document.documentElement;
 const padding = (): string => html.style.getPropertyValue('padding-right');
 

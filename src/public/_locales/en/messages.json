@@ -941,6 +941,9 @@
   "fileLoadError": {
     "message": "Couldn't load this file"
   },
+  "fileCantShow": {
+    "message": "This file can't be shown here. Use Download or Open in Canvas."
+  },
   "fileRetry": {
     "message": "Retry"
   },

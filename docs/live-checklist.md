@@ -567,7 +567,8 @@ Use Firefox first, and then Chrome and Edge.
 59. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
 60. Check the Firefox Add-ons listing.
-    Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, custom tasks and announcement read marks sent to the student's own Canvas at the student's request, and two-factor authentication is on.
+    Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, custom tasks, announcement read and unread marks, rubric comment read marks and the grade visibility preference sent to the student's own Canvas at the student's request, and two-factor authentication is on.
+    Expect: the privacy policy states that the grade visibility preference write has no corrective write, and the cookie check covers it.
 61. Check every listing.
     Expect: the privacy policy link opens `docs/privacy.md` on the project site.
     Expect: the description ends with the trademark notice at the end of the README.
@@ -859,3 +860,5 @@ Run them on the widget dashboard, on the classic dashboard and on a course home 
 
 1. Install the Firefox build on a phone with Firefox 142 or later, and open the in-page list on a Canvas page.
    Expect: it works, and you write down every control that does not.
+
+- [ ] On the new dashboard, hide a native grade, hide and show a copied grade, reload, and check that plain Canvas agrees.

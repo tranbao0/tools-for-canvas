@@ -71,6 +71,34 @@ describe('the frame catcher', () => {
     expect(replay).not.toHaveBeenCalled();
   });
 
+  it('does not follow a link after its base changes', async () => {
+    // Happy DOM does not resolve anchor hrefs against the document base.
+    vi.spyOn(HTMLAnchorElement.prototype, 'href', 'get').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      return new URL(this.getAttribute('href')!, document.baseURI).href;
+    });
+    let answer!: (reply: unknown) => void;
+    sendMessage.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    startFrameCatcher();
+    const replay = vi.spyOn(HTMLElement.prototype, 'click').mockImplementation(() => undefined);
+    click('file');
+    const base = document.createElement('base');
+    base.href = 'https://other.edu/';
+    document.head.append(base);
+    try {
+      answer({ opened: false });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(replay).not.toHaveBeenCalled();
+    } finally {
+      base.remove();
+    }
+  });
+
   it('leaves a script click, a modifier click, a middle click and the Preview button alone', async () => {
     startFrameCatcher();
     expect(click('file', false).defaultPrevented).toBe(false);

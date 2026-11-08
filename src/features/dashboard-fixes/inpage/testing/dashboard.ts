@@ -92,6 +92,7 @@ export function fakeContext(data: DashboardData | null = dashboardData()): FakeC
     }),
     css: (name, css) => blocks.set(name, css),
     again: vi.fn<() => void>(),
+    refreshGrades: vi.fn<() => void>(),
     answer(next) {
       reply = next;
     },

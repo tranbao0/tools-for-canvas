@@ -387,3 +387,47 @@ describe('headAddress', () => {
     expect(headAddress(`${ORIGIN}/courses/5/files`, ORIGIN)).toBe(`${ORIGIN}/courses/5/files`);
   });
 });
+
+it('gives only the diagnostic frame its origin through the Firefox test-channel API', async () => {
+  vi.stubEnv('BROWSER', 'firefox');
+  const savedOrigin = vi.fn(async () => ORIGIN);
+  const h = host({ savedOrigin });
+  const frame = { url: 'chrome-extension://abc/file-probe.html?n=abc', tab: { id: 7 }, frameId: 3 };
+  const request = { type: 'weekrow:file-probe-origin' };
+  try {
+    expect(await ask(request, frame, h)).toEqual({ canvasOrigin: ORIGIN });
+    savedOrigin.mockClear();
+    for (const sender of [
+      PAGE_SENDER,
+      EXTENSION,
+      { ...frame, frameId: 0 },
+      { ...frame, tab: undefined },
+    ]) {
+      await expect(ask(request, sender, h)).rejects.toThrow();
+    }
+    await expect(ask({ ...request, key: 'sessionFingerprintSalt' }, frame, h)).rejects.toThrow();
+    expect(savedOrigin).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+it('refuses a diagnostic origin read from another top site', async () => {
+  vi.stubEnv('BROWSER', 'firefox');
+  try {
+    const h = host({ tabUrl: async () => 'https://other.edu/' });
+    await expect(
+      ask(
+        { type: 'weekrow:file-probe-origin' },
+        {
+          url: 'chrome-extension://abc/file-probe.html',
+          tab: { id: 7 },
+          frameId: 3,
+        },
+        h,
+      ),
+    ).rejects.toThrow();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});

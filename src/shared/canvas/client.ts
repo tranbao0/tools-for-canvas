@@ -135,12 +135,19 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
   });
   const limit = createLimiter(options.maxConcurrency ?? 3);
 
+  let gradeWrite: Promise<unknown> = Promise.resolve();
+
   function build(priority: () => RequestPriority, guard: RequestGuard | undefined): CanvasApi {
     const attempt = async (request: CanvasRequest): Promise<CanvasResponse> => {
       if (guard !== undefined && !(await guard())) {
         throw new CanvasError('refused', 'The request guard refused the request');
       }
-      return transport(request);
+      // The student can change during the CSRF read of a write, so the guard runs again after it.
+      return transport(
+        guard !== undefined && request.method !== 'GET'
+          ? { ...request, beforeFetch: guard }
+          : request,
+      );
     };
     /** Retries a rate limit answer at most `maxRetries` times. The last answer ends the request. */
     const retryAtMost = (request: CanvasRequest, maxRetries: number): Promise<CanvasResponse> => {
@@ -245,6 +252,91 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
       withGuard: (next) =>
         build(priority, guard === undefined ? next : async () => (await guard()) && (await next())),
+
+      setWidgetGradeVisibility: (userId, courseId, visible, widgetId) => {
+        pathId(userId);
+        pathId(courseId);
+        const result = gradeWrite
+          .catch(() => undefined)
+          .then(() =>
+            limit(async () => {
+              // The whole widget filter is replaced, so each write reads it inside its queue slot.
+              const read = async () => {
+                const response = await attempt({
+                  method: 'POST',
+                  url: GRAPHQL_PATH,
+                  body: {
+                    query:
+                      'query($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
+                    variables: { id: userId },
+                  },
+                });
+                const body = response.data as {
+                  errors?: unknown;
+                  data?: { legacyNode?: { widgetDashboardConfig?: string | null } };
+                };
+                if (body.errors || !body.data?.legacyNode)
+                  throw new Error('Invalid widget preferences');
+                const saved = body.data.legacyNode.widgetDashboardConfig;
+                const config: unknown = saved == null ? {} : JSON.parse(saved);
+                if (!isJsonObject(config)) throw new Error('Invalid widget preferences');
+                const filters = config['filters'] ?? {};
+                if (!isJsonObject(filters)) throw new Error('Invalid widget preferences');
+                const widget = filters[widgetId] ?? {};
+                if (!isJsonObject(widget)) throw new Error('Invalid widget preferences');
+                return widget;
+              };
+              const widget = await read();
+              const values = widget['gradeVisibilities'] ?? {};
+              if (
+                !isJsonObject(values) ||
+                Object.values(values).some((value) => typeof value !== 'boolean')
+              )
+                throw new Error('Invalid widget preferences');
+              const wanted = { ...widget, gradeVisibilities: { ...values, [courseId]: visible } };
+              const written = await attempt({
+                method: 'POST',
+                url: GRAPHQL_PATH,
+                body: {
+                  query:
+                    'mutation($widgetId: String!, $filters: JSON) { updateWidgetDashboardConfig(input: {widgetId: $widgetId, filters: $filters}) { filters errors { message } } }',
+                  variables: {
+                    widgetId,
+                    filters: wanted,
+                  },
+                },
+              });
+              const reply = written.data as {
+                errors?: unknown;
+                data?: {
+                  updateWidgetDashboardConfig?: {
+                    errors?: unknown[];
+                    filters?: { gradeVisibilities?: Record<string, boolean> };
+                  };
+                };
+              };
+              const update = reply.data?.updateWidgetDashboardConfig;
+              if (
+                reply.errors ||
+                update?.errors?.length ||
+                update?.filters?.gradeVisibilities?.[courseId] !== visible
+              )
+                return false;
+              const stable = (value: unknown) =>
+                JSON.stringify(value, (_key, item: unknown) =>
+                  isJsonObject(item)
+                    ? Object.fromEntries(
+                        Object.entries(item).sort(([a], [b]) => a.localeCompare(b)),
+                      )
+                    : item,
+                );
+              return stable(await read()) === stable(wanted);
+            }, 'high'),
+          );
+        // No retry reuses a filter object that another tab may have changed.
+        gradeWrite = result;
+        return result;
+      },
 
       getWidgetGradeVisibility: async (userId) => {
         const overall = AbortSignal.timeout(12000);

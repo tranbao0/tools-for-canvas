@@ -5,6 +5,9 @@ import { FEEDBACK_HOST_ID } from './feedbackPane';
 import { PREVIEW_HOST_ID } from './previewPane';
 import { removeStaleView, STALE_PANE_IDS } from './stale';
 
+// The weekly dock needs 768 px beside it; panes reserve 420 px besides global navigation. These tests use a wide window.
+window.innerWidth = 1600;
+
 const ORIGIN = 'https://school.instructure.com';
 
 /** Two rows as Canvas draws them, with the button, the mark and the style that a dead copy left. */

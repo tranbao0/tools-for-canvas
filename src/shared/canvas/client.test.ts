@@ -870,7 +870,8 @@ describe('request guard', () => {
 
     await testClient().withGuard(guard).deleteNote('5');
 
-    expect(guard).toHaveBeenCalledTimes(1);
+    // Once before the CSRF read and once after it.
+    expect(guard).toHaveBeenCalledTimes(2);
     expect(seen.map((request) => `${request.method} ${request.path}`)).toEqual([
       'DELETE /api/v1/planner_notes/5',
     ]);
@@ -928,14 +929,14 @@ describe('request guard', () => {
     });
     const error = catchError(testClient().withGuard(guard).markRubricCommentsRead('12', '8', '42'));
 
-    await settleUntil(() => events.length === 2);
+    await settleUntil(() => events.length === 3);
     await vi.advanceTimersByTimeAsync(1000);
-    await settleUntil(() => events.length === 4);
+    await settleUntil(() => events.length === 6);
     // A second retry would wait 2 s. The request ends at once instead.
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(await error).toMatchObject({ kind: 'rate_limited', status: 429 });
-    expect(events).toEqual(['guard', 'put', 'guard', 'put']);
+    expect(events).toEqual(['guard', 'guard', 'put', 'guard', 'guard', 'put']);
   });
 
   it('keeps the 3 retries of every other write', async () => {
@@ -1013,7 +1014,7 @@ describe('request guard', () => {
     await expect(guarded.deleteNote('5')).rejects.toMatchObject({ kind: 'refused' });
     await outer.withPriority(() => 'low').deleteNote('6');
 
-    expect(order).toEqual(['outer', 'inner', 'outer']);
+    expect(order).toEqual(['outer', 'inner', 'outer', 'outer']);
     expect(seen.map((request) => request.path)).toEqual(['/api/v1/planner_notes/6']);
   });
 
@@ -1573,4 +1574,149 @@ describe('a stalled reply', () => {
       vi.useRealTimers();
     }
   });
+});
+
+describe('grade visibility writes', () => {
+  it('reads fresh filters for each queued write and preserves every other entry', async () => {
+    let filters = {
+      showGrades: false,
+      extra: { choice: 'keep' },
+      gradeVisibilities: { '101': false },
+    } as Record<string, unknown>;
+    const seen = recordAll((request) => {
+      const body = request.body as {
+        query: string;
+        variables: { filters: Record<string, unknown> };
+      };
+      if (body.query.startsWith('query'))
+        return {
+          data: {
+            legacyNode: {
+              widgetDashboardConfig: JSON.stringify({
+                layout: ['keep'],
+                filters: { 'course-grades-widget': filters },
+              }),
+            },
+          },
+        };
+      filters = body.variables.filters;
+      return { data: { updateWidgetDashboardConfig: { filters, errors: [] } } } as JsonBodyType;
+    });
+    const guard = vi.fn(async () => true);
+    const client = testClient().withGuard(guard);
+    await expect(
+      client.setWidgetGradeVisibility!('5', '107', false, 'course-grades-widget'),
+    ).resolves.toBe(true);
+    filters['fromAnotherTab'] = 'fresh';
+    await expect(
+      client.setWidgetGradeVisibility!('5', '108', true, 'course-grades-widget'),
+    ).resolves.toBe(true);
+    expect(filters).toEqual({
+      showGrades: false,
+      extra: { choice: 'keep' },
+      fromAnotherTab: 'fresh',
+      gradeVisibilities: { '101': false, '107': false, '108': true },
+    });
+    expect(guard).toHaveBeenCalledTimes(12);
+    expect(seen.every((request) => request.csrf === CSRF_TOKEN)).toBe(true);
+  });
+
+  it('refuses the mutation if the guard fails after the fresh read', async () => {
+    const seen = recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }));
+    const guard = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false);
+    await expect(
+      testClient().withGuard(guard).setWidgetGradeVisibility!(
+        '5',
+        '107',
+        true,
+        'course-grades-widget',
+      ),
+    ).rejects.toMatchObject({ kind: 'refused' });
+    expect(seen).toHaveLength(1);
+  });
+
+  it.each([
+    { errors: [{ message: 'refused' }] },
+    { data: { updateWidgetDashboardConfig: { errors: [{ message: 'refused' }] } } },
+  ])('does not confirm a GraphQL refusal', async (failure) => {
+    recordAll((request) =>
+      (request.body as { query: string }).query.startsWith('query')
+        ? { data: { legacyNode: { widgetDashboardConfig: '{}' } } }
+        : failure,
+    );
+    await expect(
+      testClient().setWidgetGradeVisibility!('5', '107', true, 'course-grades-widget'),
+    ).resolves.toBe(false);
+  });
+});
+
+it.each([
+  [
+    'an announcement read mark',
+    (client: CanvasApi) => client.setAnnouncementRead!('12', '8', true),
+  ],
+  ['a task delete', (client: CanvasApi) => client.deleteNote('5')],
+])('refuses %s when the cookie changes during the CSRF read', async (_name, write) => {
+  let sameStudent = true;
+  const seen = recordAll();
+  const client = testClient({
+    getCsrfToken: async () => {
+      sameStudent = false;
+      return CSRF_TOKEN;
+    },
+  }).withGuard(async () => sameStudent);
+  await expect(write(client)).rejects.toMatchObject({ kind: 'refused' });
+  expect(seen).toEqual([]);
+});
+
+it('refuses a grade mutation when the cookie changes during the CSRF read', async () => {
+  let sameStudent = true;
+  let tokens = 0;
+  const seen = recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: '{}' } } }));
+  const client = testClient({
+    getCsrfToken: async () => {
+      if (++tokens === 2) sameStudent = false;
+      return CSRF_TOKEN;
+    },
+  }).withGuard(async () => sameStudent);
+  await expect(
+    client.setWidgetGradeVisibility!('5', '107', false, 'course-grades-widget'),
+  ).rejects.toMatchObject({ kind: 'refused' });
+  expect(seen).toHaveLength(1);
+});
+
+it('does not confirm a grade write when another choice differs on the final read', async () => {
+  let mutated = false;
+  recordAll((request) => {
+    if ((request.body as { query: string }).query.startsWith('query'))
+      return {
+        data: {
+          legacyNode: {
+            widgetDashboardConfig: JSON.stringify({
+              filters: {
+                'course-grades-widget': {
+                  gradeVisibilities: mutated ? { '101': false, '107': false } : {},
+                },
+              },
+            }),
+          },
+        },
+      };
+    mutated = true;
+    return {
+      data: {
+        updateWidgetDashboardConfig: {
+          filters: { gradeVisibilities: { '107': false } },
+          errors: [],
+        },
+      },
+    };
+  });
+  await expect(
+    testClient().setWidgetGradeVisibility!('5', '107', false, 'course-grades-widget'),
+  ).resolves.toBe(false);
 });

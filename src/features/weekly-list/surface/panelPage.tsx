@@ -6,6 +6,7 @@ import { logFailure } from '../../../shared/platform/log';
 import { connectPanelPort } from '../../../shared/platform/panelPort';
 import { settingsItem } from '../data/storage';
 import { App } from '../ui/App';
+import { OfferBanner } from '../ui/Notices';
 import { installStyles } from '../../../shared/ui/styles';
 import { extensionPageHost, mountRuntime } from './hosts';
 import { createSurfaceRuntime, type SurfaceRuntime } from './runtime';
@@ -27,6 +28,7 @@ export function startPanel(root: HTMLElement): SurfaceRuntime {
   mountRuntime(root, runtime, (state, settings, announcements) => (
     <App
       surface="panel"
+      offerView={OfferBanner}
       state={state}
       actions={runtime.actions}
       settings={settings}
