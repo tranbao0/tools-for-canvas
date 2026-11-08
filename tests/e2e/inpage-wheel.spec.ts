@@ -84,16 +84,23 @@ async function scrollStopped(target: Locator): Promise<void> {
   // A scrollend event may precede the listener, so observe stable positions across frames.
   await target.evaluate(
     (el) =>
-      new Promise<void>((resolve) => {
+      new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          cancelAnimationFrame(frameId);
+          reject(new Error('scrollStopped: scroll never settled within 10 seconds'));
+        }, 10_000);
+        let frameId = 0;
         let previous = el.scrollTop;
         let stable = 0;
         const frame = () => {
           stable = el.scrollTop === previous ? stable + 1 : 0;
           previous = el.scrollTop;
-          if (stable >= 3) resolve();
-          else requestAnimationFrame(frame);
+          if (stable >= 3) {
+            clearTimeout(timeout);
+            resolve();
+          } else frameId = requestAnimationFrame(frame);
         };
-        requestAnimationFrame(frame);
+        frameId = requestAnimationFrame(frame);
       }),
   );
 }
@@ -101,6 +108,7 @@ async function scrollStopped(target: Locator): Promise<void> {
 interface Samples {
   /** The most the rows moved from their place, in px. */
   pull: number;
+  pagePositions: number[];
   /** Whether the list shows a scroll bar: it has more to show than its area and may scroll. */
   scrollbars: boolean[];
   boxes: string[];
@@ -120,9 +128,10 @@ function sample(page: Page, ms: number): Promise<Samples> {
           '.wr-scroll:not([hidden]), .wr-group-area:not([hidden])',
         )!;
         const parts = ['.wr-header', '.wr-pinned', '.wr-views', '.wr-chart'];
-        const out: Samples = { pull: 0, scrollbars: [], boxes: [] };
+        const out: Samples = { pull: 0, pagePositions: [], scrollbars: [], boxes: [] };
         const start = performance.now();
         const frame = () => {
+          if (!out.pagePositions.includes(window.scrollY)) out.pagePositions.push(window.scrollY);
           const row = list.firstElementChild as HTMLElement;
           const moved = Math.abs(new DOMMatrix(getComputedStyle(row).transform).m42);
           out.pull = Math.max(out.pull, moved);
@@ -227,7 +236,7 @@ test.describe('the wheel over a list of the card', () => {
     expect(seen.pull).toBeLessThanOrEqual(28);
     expectOnlyRowsMoved(seen);
     expect(seen.scrollbars).not.toContain(true);
-    await expect.poll(() => pageY(page)).toBe(bottom);
+    expect(seen.pagePositions).toEqual([bottom]);
     await expect(list).not.toHaveClass(/wr-pulling/);
     await expect.poll(() => list.evaluate((el) => el.style.overflowY)).toBe('');
 
@@ -239,7 +248,7 @@ test.describe('the wheel over a list of the card', () => {
     expect(seen.pull).toBeGreaterThan(8);
     expectOnlyRowsMoved(seen);
     expect(seen.scrollbars).not.toContain(true);
-    await expect.poll(() => pageY(page)).toBe(0);
+    expect(seen.pagePositions).toEqual([0]);
   });
 
   test('pulls the rows of a long list at its top and its end, and keeps the page still', async ({
@@ -262,7 +271,7 @@ test.describe('the wheel over a list of the card', () => {
     expect(seen.pull).toBeGreaterThan(8);
     expect(seen.pull).toBeLessThanOrEqual(28);
     expectOnlyRowsMoved(seen);
-    await expect.poll(() => pageY(page)).toBe(0);
+    expect(seen.pagePositions).toEqual([0]);
 
     // At the top of the list, with a page that could scroll up.
     await scrollPage(page, 300);
@@ -274,7 +283,7 @@ test.describe('the wheel over a list of the card', () => {
     seen = await samples;
     expect(seen.pull).toBeGreaterThan(8);
     expectOnlyRowsMoved(seen);
-    await expect.poll(() => pageY(page)).toBe(300);
+    expect(seen.pagePositions).toEqual([300]);
   });
 
   test('leaves no pull behind on either list when the view changes between two wheel turns', async ({
@@ -340,7 +349,7 @@ test.describe('the wheel over a list of the card', () => {
     await wheel(page, list, 100);
     await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
     expect((await samples).pull).toBe(0);
-    await expect.poll(() => pageY(page)).toBe(0);
+    expect((await samples).pagePositions).toEqual([0]);
   });
 
   test('makes no pull when the student asks for less motion, and still keeps the page still', async ({
@@ -356,7 +365,7 @@ test.describe('the wheel over a list of the card', () => {
     const samples = sample(page, SETTLE_MS);
     await wheel(page, list, 100);
     expect((await samples).pull).toBe(0);
-    await expect.poll(() => pageY(page)).toBe(0);
+    expect((await samples).pagePositions).toEqual([0]);
   });
 
   test('scrolls a card that scrolls as a whole before it pulls', async ({
@@ -378,19 +387,19 @@ test.describe('the wheel over a list of the card', () => {
       .toBe(true);
     await scrollToEnd(list);
     // The list is at its end: the card scrolls first, and the rows stay.
-    await expect(async () => {
+    {
       await scrollStopped(list);
       const samples = sample(page, SETTLE_MS);
       await wheel(page, list, 100);
       await expect.poll(() => card.evaluate((el) => el.scrollTop)).toBeGreaterThan(20);
       expect((await samples).pull).toBe(0);
-    }).toPass();
-    await expect.poll(() => pageY(page)).toBe(0);
+      expect((await samples).pagePositions).toEqual([0]);
+    }
     // The card is at its end too: now the rows pull, and the page stays still.
     await card.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
     });
-    await expect(async () => {
+    {
       await expect
         .poll(() => card.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1))
         .toBe(true);
@@ -398,7 +407,7 @@ test.describe('the wheel over a list of the card', () => {
       const samples = sample(page, SETTLE_MS);
       await wheel(page, list, 100);
       expect((await samples).pull).toBeGreaterThan(8);
-    }).toPass();
-    await expect.poll(() => pageY(page)).toBe(0);
+      expect((await samples).pagePositions).toEqual([0]);
+    }
   });
 });
