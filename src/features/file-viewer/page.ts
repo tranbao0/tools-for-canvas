@@ -75,6 +75,7 @@ export async function startViewer(): Promise<void> {
   removeStaleFilePane();
   const lifetime = new AbortController();
   let live = true;
+  const active = () => live && !lifetime.signal.aborted;
   let enabled = false;
   const readContext = () =>
     browser.runtime.sendMessage({ type: 'weekrow:page-context' }) as Promise<
@@ -85,11 +86,13 @@ export async function startViewer(): Promise<void> {
   // write, so the background can refuse a write for tabs that it has cleared since.
   type StoredTabs = { tabs: Tabs; token: string | undefined };
   const readTabs = async (): Promise<StoredTabs | null> => {
+    if (!active()) return null;
     let pendingWrites: Promise<unknown>;
     do {
       pendingWrites = writes;
       await pendingWrites;
     } while (pendingWrites !== writes);
+    if (!active()) return null;
     const reply: unknown = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
     if (typeof reply !== 'object' || reply === null) return null;
     const token = (reply as { token?: unknown }).token;
@@ -99,9 +102,10 @@ export async function startViewer(): Promise<void> {
   let changedStore = false;
   const writeTabs = (next: Tabs, token = tabsToken) => {
     changedStore = true;
-    const run = writes.then(() =>
-      browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs: next, token }),
-    );
+    const run = writes.then(() => {
+      if (!active()) return;
+      return browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs: next, token });
+    });
     writes = run.catch(() => undefined);
     return run;
   };
@@ -181,7 +185,11 @@ export async function startViewer(): Promise<void> {
   const addedTabs = new Set<string>();
   let keptTabs: StoredTabs | undefined;
   const rememberStored = (stored: StoredTabs) => {
-    if (keptTabs && keptTabs.token !== stored.token) {
+    if (
+      keptTabs?.token !== undefined &&
+      stored.token !== undefined &&
+      keptTabs.token !== stored.token
+    ) {
       addedTabs.clear();
       waitingFile = null;
       synced = false;
@@ -209,6 +217,7 @@ export async function startViewer(): Promise<void> {
     waitingFile = null;
   };
   const connectionFailed = () => {
+    if (!active()) return;
     failedConnection = true;
     clearTimeout(handshake);
     removeHello?.();
@@ -225,6 +234,7 @@ export async function startViewer(): Promise<void> {
   };
   // Sends the active file to a pane that has not been told yet, and the theme to any pane.
   const send = async () => {
+    if (!active()) return;
     const started = generation;
     const current = attempt;
     const sendingDock = dock;
@@ -234,7 +244,7 @@ export async function startViewer(): Promise<void> {
       readTabs().catch(() => null),
     ]);
     if (
-      !live ||
+      !active() ||
       generation !== started ||
       current.result ||
       dock !== sendingDock ||
@@ -252,7 +262,7 @@ export async function startViewer(): Promise<void> {
     if (port && addedTabs.size > 0) {
       await writeTabs(tabs).catch(() => undefined);
       if (
-        !live ||
+        !active() ||
         generation !== started ||
         current.result ||
         dock !== sendingDock ||
@@ -312,12 +322,14 @@ export async function startViewer(): Promise<void> {
     const latest = (await browser.runtime.sendMessage({ type: 'weekrow:page-context' })) as {
       tools: ToolsSettings;
     };
+    if (!active()) return;
     await browser.runtime.sendMessage({
       type: 'weekrow:save-tools',
       tools: { ...latest.tools, fileViewerWidth: width },
     });
   };
   const close = () => {
+    if (!active()) return;
     if (!sawTabs) removeAddedTabs();
     tabs = sawTabs ? { ids: [], active: null } : { ids: [...tabs.ids], active: null };
     keptTabs = { tabs, token: tabsToken };
@@ -333,10 +345,10 @@ export async function startViewer(): Promise<void> {
   let generation = 0;
   const wantsLink = (result: OpenResult | null) =>
     result === null || result === 'failed' || result === 'ended';
-  const reset = () => {
+  const reset = (result: OpenResult = 'ended') => {
     generation += 1;
     showing = undefined;
-    drop();
+    drop(result);
     tabs = { ids: [], active: null };
     tabsToken = undefined;
     synced = false;
@@ -347,7 +359,7 @@ export async function startViewer(): Promise<void> {
     names.clear();
     addresses.clear();
   };
-  const stopReset = watchPaneReset(reset);
+  const stopReset = watchPaneReset(() => reset());
   lifetime.signal.addEventListener('abort', stopReset, { once: true });
   // A page can remove the host. Then no pane is open, and the next click opens a new one.
   const paneOpen = () => {
@@ -357,6 +369,7 @@ export async function startViewer(): Promise<void> {
   // Opens the pane. A call while another one is in progress waits for the same open.
   let showing: Promise<void> | undefined;
   const show = (): Promise<void> => {
+    if (!active()) return Promise.resolve();
     if (showing === undefined) {
       const run: Promise<void> = showNow(generation, attempt).finally(() => {
         if (showing === run) showing = undefined;
@@ -366,7 +379,7 @@ export async function startViewer(): Promise<void> {
     return showing;
   };
   const showNow = async (started: number, current: Attempt) => {
-    if (!live) return;
+    if (!active()) return;
     if (paneOpen()) {
       void send();
       return;
@@ -382,7 +395,7 @@ export async function startViewer(): Promise<void> {
     } catch {
       return;
     }
-    if (!live || generation !== started || current.result) return;
+    if (!active() || generation !== started || current.result) return;
     lastHelloAt = -Infinity;
     waitForConnection();
     const created = createCardDock({
@@ -423,6 +436,7 @@ export async function startViewer(): Promise<void> {
       }, HANDSHAKE_MS);
     };
     removeHello = listenViewerHello(window, frame, browser.runtime.id, (origin) => {
+      if (!active()) return;
       lastHelloAt = performance.now();
       waitForConnection();
       pending?.close();
@@ -434,6 +448,7 @@ export async function startViewer(): Promise<void> {
       const candidate = channel.port1;
       pending = candidate;
       candidate.onmessage = (message) => {
+        if (!active()) return;
         if (port === candidate) {
           if (!validPaneRequest(message.data)) return;
           // Escape leaves full view first, and a narrow window has none. Full view ends with the
@@ -540,7 +555,8 @@ export async function startViewer(): Promise<void> {
     started: number,
     current: Attempt,
   ): Promise<OpenResult | { connected: Promise<OpenResult> }> => {
-    const ended = () => current.result ?? (!live || generation !== started ? 'ended' : undefined);
+    const ended = () =>
+      current.result ?? (!active() || generation !== started ? 'ended' : undefined);
     if (ended()) return ended()!;
     if (failedConnection) drop();
     // Callers have checked this target against the Canvas origin.
@@ -682,9 +698,9 @@ export async function startViewer(): Promise<void> {
       const click = clicks;
       void (async () => {
         // The click is taken at once, even while the settings and the tabs are still loading.
-        await starting;
+        await waitStarting();
         // The viewer is off, or this copy has ended by now: the click goes to the link after all.
-        if (!enabled || !live) {
+        if (!enabled || !active()) {
           followLink();
           return;
         }
@@ -700,9 +716,10 @@ export async function startViewer(): Promise<void> {
   );
   // The settings and the stored tabs load while the listeners above already work.
   const load = async () => {
+    if (!active()) return;
     const born = generation;
     const context = await readContext();
-    if (!live) return;
+    if (!active() || born !== generation) return;
     // The settings say the switch is off, so this copy ends. A read that failed ends nothing.
     if (context?.tools.fileViewer === false) {
       teardown();
@@ -712,7 +729,7 @@ export async function startViewer(): Promise<void> {
     themeChoice = context.settings?.theme ?? 'auto';
     width = normalizeWidth(context.tools.fileViewerWidth);
     const stored = await readTabs().catch(() => null);
-    if (!live) return;
+    if (!active() || born !== generation) return;
     // A reset during the read drops the answer: those tabs belong to the earlier student.
     if (stored && born === generation) {
       tabs = stored.tabs;
@@ -721,15 +738,23 @@ export async function startViewer(): Promise<void> {
     enabled = true;
   };
   let starting = load().catch(() => undefined);
+  const waitStarting = async () => {
+    let current: Promise<void>;
+    do {
+      current = starting;
+      await current;
+    } while (active() && current !== starting);
+  };
   addEventListener(
     'pageshow',
     (event) => {
-      if (!(event as PageTransitionEvent).persisted) return;
-      reset();
+      if (!active() || !(event as PageTransitionEvent).persisted) return;
+      reset('closed');
+      const restored = generation;
       starting = load().catch(() => undefined);
       void starting
         .then(async () => {
-          if (live && enabled && tabs.active) await show();
+          if (active() && generation === restored && enabled && tabs.active) await show();
         })
         .finally(reportFilePane);
     },
@@ -749,6 +774,7 @@ export async function startViewer(): Promise<void> {
     if (request?.type === 'weekrow:changed') {
       void readContext().then(
         (latest) => {
+          if (!active()) return;
           // The File viewer switch went off. The catcher stops at once, so a click follows the
           // link as Canvas drew it, and the pane closes. The background starts a new copy of
           // this script when the switch goes on again.
@@ -784,12 +810,14 @@ export async function startViewer(): Promise<void> {
     if (address === undefined) addresses.delete(fileId);
     else addresses.set(fileId, address);
     void (async () => {
-      await starting;
+      await waitStarting();
       // The catcher saves the file in the usual way unless the pane has it, so the answer comes
       // after the open.
       // Both channels give the student the link when the pane did not handle the open.
       const result =
-        live && enabled ? await openTarget({ fileId }, `/files/${fileId}`, taken, current) : null;
+        active() && enabled
+          ? await openTarget({ fileId }, `/files/${fileId}`, taken, current)
+          : null;
       respond({ opened: !wantsLink(result) });
     })().catch(() => respond({ opened: false }));
     return true;
@@ -800,12 +828,12 @@ export async function startViewer(): Promise<void> {
     () => browser.runtime.onMessage.removeListener(onBackground),
     { once: true },
   );
-  await starting;
-  if (live && !enabled) {
-    // The viewer is off. A click that came before this point still finds `live`, and follows its link.
+  await waitStarting();
+  if (active() && !enabled) {
+    // A click that came before the settings loaded keeps the link action.
     lifetime.abort();
   }
-  if (live && enabled && isSubmissionPage(location.pathname)) {
+  if (active() && enabled && isSubmissionPage(location.pathname)) {
     // Every load of the frame is a new document, which needs its own catcher. A script of the
     // page can fire a load event, so only a trusted one counts.
     // One ask at a time, and one more after it when a load came meanwhile. A page that loads its
@@ -813,6 +841,7 @@ export async function startViewer(): Promise<void> {
     let asking = false;
     let askAgain = false;
     const askForCatcher = () => {
+      if (!active()) return;
       if (asking) {
         askAgain = true;
         return;
@@ -823,7 +852,7 @@ export async function startViewer(): Promise<void> {
         .catch(() => undefined)
         .finally(() => {
           asking = false;
-          if (askAgain && live) {
+          if (askAgain && active()) {
             askAgain = false;
             askForCatcher();
           }
@@ -846,7 +875,7 @@ export async function startViewer(): Promise<void> {
   // The weekly dock waits for this report before it first shows, so it never shows on a page that
   // opens with a file pane. The pane is open by now, or none will open.
   try {
-    if (live && enabled && tabs.active) await show();
+    if (active() && enabled && tabs.active) await show();
   } finally {
     reportFilePane();
   }
