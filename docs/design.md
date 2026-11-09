@@ -41,7 +41,7 @@ This extension has no account, no server of its own and no telemetry.
 | 11 | Data loading, refresh and errors | One data owner in the background, with a memory-only cache |
 | 12 | Build tools and UI framework | WXT, TypeScript and Preact |
 | 13 | Testing and CI | A live gate test first, then Vitest, Playwright, a Firefox smoke test and a live checklist |
-| 14 | Browsers and versions | Chrome and Edge 144+, Firefox 140+, Firefox for Android 142+ (allowed, not tested on a phone yet) |
+| 14 | Browsers and versions | Chrome and Edge 147+, Firefox 144+, Firefox for Android 144+ (allowed, not tested on a phone yet) |
 | 15 | Publishing and privacy | Three stores, one privacy policy, no data collection |
 | 16 | License | GPL-3.0-only, with DCO sign-off for contributions |
 | 17 | Name | Tools for Canvas |
@@ -801,7 +801,7 @@ An earlier version used option B; schools on their own domain then needed an "Al
 
 - A content script runs inside every https page, so it must not be able to read or change the saved address, the settings or the cached Canvas data.
 - On Chrome and Edge, the background calls `storage.local.setAccessLevel('TRUSTED_CONTEXTS')` when it starts, so only extension pages and the background can use `storage.local`.
-  Chrome 144 is the first version that accepts this call for `local`, which sets the minimum version.
+  Chrome 144 is the first version that accepts this call for `local`.
 - Firefox has no such lock.
   The shipped code opens the existing `weekrow-trusted` IndexedDB database and its `values` store only in the background.
   The database name, version, keys and values stay unchanged, so an update preserves the saved address, settings, notes, positions and salt.
@@ -831,7 +831,7 @@ An earlier version used option B; schools on their own domain then needed an "Al
   The vault stays as it is with these limits.
   All Firefox process and storage measurements here use Firefox 159.
   The `addon_child` gate depends on `sender.envType`.
-  Firefox 140, the desktop manifest minimum, includes that field in `ExtensionParent.sys.mjs` `getSender`; this is a source check, not a browser run on 140.
+  Firefox 140 already includes that field in `ExtensionParent.sys.mjs` `getSender`, and the desktop minimum is 144; this is a source check, not a browser run.
 - The background checks every stored value when it reads it, and uses the default for a field that is not valid.
 - The in-page script has no storage access.
   It talks to the background only through messages, and the background answers only the top frame of the saved Canvas:
@@ -1838,7 +1838,7 @@ These sizes come from one test build of the same small app [19].
    - lint, type checks and unit tests;
    - builds for all browsers, and a check that each built manifest has `manifest_version` 3, the expected permissions and `gecko.id`;
    - the size check and `web-ext lint`;
-   - the Playwright tests, and in a second job beside them every Firefox suite;
+   - the Playwright tests, and in a second job beside them every Firefox suite, once on the Firefox of the runner and once on the minimum version that the manifest names;
    - a rebuild of the Firefox source zip on the `ubuntu-24.04-arm` runner with Node 24.14 and npm 11.9, compared byte for byte with the release build [20].
 
 **Why:**
@@ -1857,14 +1857,19 @@ These sizes come from one test build of the same small app [19].
 
 **Decision:**
 
-- Chrome and Edge 144 or later.
+- Chrome and Edge 147 or later.
+  The PDF viewer uses PDF.js 6.5.438, which calls `Math.sumPrecise` with no fallback, and Chrome and Edge have it from 147 [18].
   Temporal needs 144 and `sidePanel.open` needs 116 [18].
   `sidePanel.close` needs 141 [11].
-- Firefox 140 or later.
+- Firefox 144 or later.
+  PDF.js calls `Map.prototype.getOrInsertComputed` with no fallback, and Firefox has it from 144 [18].
   The data collection setting in the manifest needs 140 [20].
-- Firefox for Android 142 or later is allowed.
-  The manifest names it as `gecko_android`, and the data collection setting needs 142 there.
+- Firefox for Android 144 or later is allowed.
+  The manifest names it as `gecko_android`.
+  PDF.js needs 144 there too, and the data collection setting needs 142 [18].
   Nobody has tested the extension on a phone yet, so the first install on a phone is a step of the live checklist.
+- CI runs every Firefox suite on the minimum Firefox version of the manifest.
+  The Chromium tests run on the Chromium of Playwright, which is newer than 147, so no test runs on Chrome or Edge 147.
 - Chrome and Edge run on desktop only.
 - Safari is out of scope.
   It needs a Mac build and a paid Apple developer account.
@@ -4587,7 +4592,7 @@ These items need a live check or an outside answer.
 15. Chrome permission warnings and permissions API docs, the Instructure school directory, and Chromium site access commits from October 2026. https://developer.chrome.com/docs/extensions/reference/api/permissions and https://piunikaweb.com/2026/10/06/chrome-testing-change-extensions-site-access-default/
 16. Chrome Web Store review process. https://developer.chrome.com/docs/webstore/review-process
 17. Canvas Planner API docs, List planner overrides. https://canvas.instructure.com/doc/api/planner.html
-18. MDN browser compatibility data 8.1.7, Temporal and sidePanel entries. https://github.com/mdn/browser-compat-data
+18. MDN browser compatibility data 8.1.7 and 8.1.8, the Temporal, sidePanel, `Map.prototype.getOrInsertComputed`, `Math.sumPrecise` and `data_collection_permissions` entries. https://github.com/mdn/browser-compat-data
 19. WXT, Playwright, Selenium and framework size tests run on 2026-10-27, and Canvas Lite and Free-for-Teacher status. https://wxt.dev and https://playwright.dev/docs/chrome-extensions and https://www.instructure.com/resources/blog/say-hello-canvas-lite
 20. Chrome Web Store, Firefox Add-ons and Edge Add-ons policies, Instructure brand and API policies, and the MIT, MPL-2.0 and GPL-3.0 licenses. https://developer.chrome.com/docs/webstore/program-policies and https://extensionworkshop.com/documentation/publish/add-on-policies/ and https://learn.microsoft.com/en-us/microsoft-edge/extensions/store-policies/developer-policies and https://www.instructure.com/policies/canvas-api-policy and https://www.gnu.org/licenses/gpl-3.0.html
 21. Name collision checks for twelve candidates on 2026-10-27, using the store search APIs, the iTunes Search API, GitHub, RDAP, the USPTO trademark search API and TMview. https://tmsearch.uspto.gov and https://www.tmdn.org/tmview

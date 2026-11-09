@@ -131,10 +131,10 @@ Then open your Canvas dashboard to see your list.
 
 ## Browsers
 
-- Chrome 144 or later.
-- Microsoft Edge 144 or later.
-- Firefox 140 or later.
-- Firefox for Android 142 or later is allowed, but nobody has tested it on a phone yet.
+- Chrome 147 or later.
+- Microsoft Edge 147 or later.
+- Firefox 144 or later.
+- Firefox for Android 144 or later is allowed, but nobody has tested it on a phone yet.
 
 Chrome and Edge are supported on desktop only.
 Safari is not supported.
