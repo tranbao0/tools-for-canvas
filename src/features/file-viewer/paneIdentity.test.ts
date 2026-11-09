@@ -108,3 +108,13 @@ it('a late tick with no unanswered request does not cover a healthy pane', async
   await vi.advanceTimersByTimeAsync(1000);
   expect(show.mock.calls).toEqual([[true]]);
 });
+
+it('keeps the pane when another cookie store confirms it without a tab-store token', async () => {
+  vi.useFakeTimers();
+  send.mockResolvedValue({ verdict: 'yes', token: 'store' });
+  const show = vi.fn();
+  stops.push(watchPaneIdentity(show, '3:42'));
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(show).toHaveBeenLastCalledWith(true);
+  expect(reset).not.toHaveBeenCalled();
+});
