@@ -7,6 +7,7 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   globalSetup: './tests/e2e/global-setup.ts',
   outputDir: './test-results',
+  use: { trace: process.env.CI ? 'retain-on-first-failure' : 'off' },
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   // The small CI machines fail a different test now and then under load. A real failure fails twice.

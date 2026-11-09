@@ -9,6 +9,7 @@ import {
   trackBlobs,
 } from './support/file-viewer';
 import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
+import { pageQuiet } from './support/settle';
 
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
 
@@ -57,7 +58,7 @@ test('a hostile SVG runs nothing, and no address of it stays open in the extensi
     await page.getByRole('link', { name: 'Hostile drawing', exact: true }).click();
     const picture = frame.getByRole('img', { name: 'hostile.svg' });
     await expect.poll(() => picture.evaluate((node: HTMLCanvasElement) => node.width)).toBe(300);
-    expect(await picture.evaluate((node: HTMLCanvasElement) => node.height)).toBe(200);
+    await expect.poll(() => picture.evaluate((node: HTMLCanvasElement) => node.height)).toBe(200);
     await expect(frame.locator('img, object, embed')).toHaveCount(0);
 
     // The URL is freed right after the image loaded, and nothing in the pane page points to it.
@@ -82,7 +83,9 @@ test('a hostile SVG runs nothing, and no address of it stays open in the extensi
       await frame.evaluate((u) => void window.open(u), url);
       const popup = await opened;
       if (popup) {
-        await popup.waitForTimeout(1000);
+        // Finish the attempted navigation before checking that the revoked SVG cannot run.
+        await popup.waitForLoadState('load');
+        await pageQuiet(popup);
         const type = await popup.evaluate(() => document.contentType).catch(() => 'none');
         expect(type).not.toBe('image/svg+xml');
         expect(

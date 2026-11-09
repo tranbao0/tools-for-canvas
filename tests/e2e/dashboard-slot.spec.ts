@@ -1,3 +1,4 @@
+import { pageQuiet } from './support/settle';
 import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
@@ -120,7 +121,9 @@ for (const size of [
     await page.setViewportSize({ width: size.width - 50, height: 600 });
     await frames(page);
     expectOverSection(await slotBoxes(page));
-    expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
+    await expect(async () => {
+      expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
+    }).toPass();
     // A fresh wrapper: it shows until the placement runs, then it is claimed and hidden again, and
     // the card is its first child.
     await freshClone(page, WRAPPER);
@@ -135,12 +138,14 @@ for (const size of [
       .toBe('weekrow-inpage');
     await frames(page);
     expectOverSection(await slotBoxes(page));
-    expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
+    await expect(async () => {
+      expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
+    }).toPass();
     const next = page.locator('[data-testid="widget-container-course-grades-widget"]');
     const before = (await next.boundingBox())!.y;
     await inpageList(page).getByRole('button', { name: 'Minimize list' }).click();
     await expect.poll(async () => (await card.boundingBox())!.height).toBeLessThan(80);
-    expect((await next.boundingBox())!.y).toBeLessThan(before - 100);
+    await expect.poll(async () => (await next.boundingBox())!.y).toBeLessThan(before - 100);
     await inpageList(page)
       .getByRole('button', { name: /^Weekly list/ })
       .click();
@@ -168,7 +173,9 @@ for (const size of [
     });
     await frames(page);
     expectOverSection(await slotBoxes(page));
-    expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
+    await expect(async () => {
+      expect((await card.boundingBox())!.height).toBeCloseTo((await slotBoxes(page)).limit, 0);
+    }).toPass();
   });
 }
 
@@ -260,7 +267,7 @@ test('covers the box of the widget after the wait, and follows it when the widge
   const card = inpageList(page).locator('.wr');
   // The widget still shows its loading box, so the card covers it.
   await waitOverSection(page);
-  expect((await card.boundingBox())!.height).toBeGreaterThanOrEqual(420);
+  await expect.poll(async () => (await card.boundingBox())!.height).toBeGreaterThanOrEqual(420);
   await page.locator(SECTION).evaluate((node) => {
     node.innerHTML =
       '<input data-testid="submission-status-filter-select"><div style="height:1200px">Loaded</div>';
@@ -297,7 +304,7 @@ for (const state of ['default', 'second', 'pair']) {
     // placed: the window starts once every fix of the fixture has drawn.
     await expect(page.locator('[data-wr-ann]').first()).toBeAttached();
     await expect(page.locator('[data-wr-grades]').first()).toBeAttached();
-    await page.waitForTimeout(500);
+    await pageQuiet(page);
     const records = await page.evaluate(
       () =>
         new Promise<string[]>((resolve) => {

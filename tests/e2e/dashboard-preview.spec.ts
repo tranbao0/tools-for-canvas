@@ -14,6 +14,7 @@ import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
 import { advanceBackgroundClock } from './support/clock';
 import { closePane, pane } from './support/file-viewer';
 import { json, saveAddress } from './support/scenario-api';
+import { pageQuiet } from './support/settle';
 import {
   addCsrfCookie,
   doneBox,
@@ -219,7 +220,7 @@ test('a click opens the pane on the row, another row shows its page, and a secon
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   expect(paneFrames(page)).toHaveLength(0);
   await expect(page.locator('[aria-pressed=true]')).toHaveCount(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
 });
 
 // The pane takes the room at the right edge, so the card must stay beside it at every width: in the
@@ -238,13 +239,12 @@ for (const [place, query] of [
       await open(context, page, background, { path: query, width, height: 1000 });
       await preview(page, LAB_4).click();
       await expect(page.locator(PANE_HOST)).toBeVisible();
-      const paneLeft = (await page.locator(PANE_HOST).boundingBox())!.x;
       await expect
         .poll(async () => {
           const box = (await card(page).boundingBox())!;
-          return box.x + box.width;
+          return box.x + box.width - (await page.locator(PANE_HOST).boundingBox())!.x;
         })
-        .toBeLessThanOrEqual(paneLeft);
+        .toBeLessThanOrEqual(0);
       await preview(page, HOMEWORK_7).click({ timeout: 3000 });
       await expect(preview(page, HOMEWORK_7)).toHaveAttribute('aria-pressed', 'true');
       await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'false');
@@ -268,7 +268,8 @@ test('a script of the page cannot open the pane', async ({ context, page, backgr
       new CustomEvent('weekrow:preview', { detail: { courseId: '101', assignmentId: '1004' } }),
     );
   });
-  await page.waitForTimeout(1000);
+  // Let the synthetic event handlers and the next layout round finish.
+  await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   // The real click still works.
   await preview(page, LAB_4).click();
@@ -289,8 +290,11 @@ test('on the classic dashboard the weekly dock steps aside for the pane and come
   await preview(page, LAB_4).click();
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
-  const box = (await page.locator(PANE_HOST).boundingBox())!;
-  expect(await paddingRight(page)).toBe(box.width);
+  await expect
+    .poll(
+      async () => (await paddingRight(page)) - (await page.locator(PANE_HOST).boundingBox())!.width,
+    )
+    .toBe(0);
   await shot(page, 'classic-dock-open');
   await closeAssignment(page);
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
@@ -324,23 +328,25 @@ for (const [name, options] of [
     const row = rowOf(page, LAB_4);
     await expect(row).toHaveClass(/is-open/);
     await row.scrollIntoViewIfNeeded();
-    const style = await row.evaluate((element) => {
-      const css = getComputedStyle(element, '::before');
-      return { shadow: css.boxShadow, background: css.backgroundColor };
-    });
-    // The bar at the left edge is 3 px wide and inset, and the row has a tint.
+    await expect(async () => {
+      const style = await row.evaluate((element) => {
+        const css = getComputedStyle(element, '::before');
+        return { shadow: css.boxShadow, background: css.backgroundColor };
+      });
+      // The bar at the left edge is 3 px wide and inset, and the row has a tint.
 
-    expect(style.shadow).toMatch(/ 3px 0px 0px 0px inset$/);
-    expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
-    // The bar is inside the part of the card that shows, on every surface.
-    const clip = await row.evaluate((element) => {
-      const left = element.getBoundingClientRect().left;
-      const offset = parseFloat(getComputedStyle(element, '::before').left);
-      const card = element.closest('.wr')!;
-      const inset = parseFloat(getComputedStyle(card).paddingLeft);
-      return { bar: left + offset, edge: card.getBoundingClientRect().left + Math.min(inset, 0) };
-    });
-    expect(clip.bar).toBeGreaterThanOrEqual(clip.edge);
+      expect(style.shadow).toMatch(/ 3px 0px 0px 0px inset$/);
+      expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
+      // The bar is inside the part of the card that shows, on every surface.
+      const clip = await row.evaluate((element) => {
+        const left = element.getBoundingClientRect().left;
+        const offset = parseFloat(getComputedStyle(element, '::before').left);
+        const card = element.closest('.wr')!;
+        const inset = parseFloat(getComputedStyle(card).paddingLeft);
+        return { bar: left + offset, edge: card.getBoundingClientRect().left + Math.min(inset, 0) };
+      });
+      expect(clip.bar).toBeGreaterThanOrEqual(clip.edge);
+    }).toPass();
     await shot(page, `open-${name}`);
   });
 }
@@ -390,14 +396,16 @@ for (const rowSize of ['compact', 'comfortable'] as const) {
       await expect(preview(page, LAB_4)).toBeVisible();
       // The rows differ in more than the button (a course link, a chip), so the pair is two
       // rows of the same kind: a plain row with the button, and a plain row of a note without it.
-      const heights = {
-        withPreview: await heightOf(page, LAB_4),
-        quiz: await heightOf(page, QUIZ_3),
-        withoutPreview: await heightOf(page, NOTE),
-      };
-      console.log(`${rowSize} ${width}px: ${JSON.stringify(heights)}`);
-      // A row with the button is taller by the button and no more than a line of text.
-      expect(heights.withPreview - heights.withoutPreview).toBeLessThanOrEqual(32);
+      await expect(async () => {
+        const heights = {
+          withPreview: await heightOf(page, LAB_4),
+          quiz: await heightOf(page, QUIZ_3),
+          withoutPreview: await heightOf(page, NOTE),
+        };
+        console.log(`${rowSize} ${width}px: ${JSON.stringify(heights)}`);
+        // A row with the button is taller by the button and no more than a line of text.
+        expect(heights.withPreview - heights.withoutPreview).toBeLessThanOrEqual(32);
+      }).toPass();
     });
   }
 }
@@ -456,12 +464,12 @@ for (const { place, options } of PLACES) {
           .toBe(width);
         await expect(preview(page, LAB_4)).toBeVisible();
         // A card of 150 px is narrower than the card of the widget dashboard can be, so only the button is checked there.
-        if (width >= 208) expect(await overflowing(page)).toEqual([]);
+        if (width >= 208) await expect.poll(() => overflowing(page)).toEqual([]);
         // A card too narrow for the word keeps the icon and the name, and the button is 26 px high.
         await expect(preview(page, LAB_4).locator('.wr-preview-text')).toBeVisible({
           visible: width >= 160,
         });
-        expect((await preview(page, LAB_4).boundingBox())!.height).toBe(26);
+        await expect.poll(async () => (await preview(page, LAB_4).boundingBox())!.height).toBe(26);
         await preview(page, LAB_4).scrollIntoViewIfNeeded();
         await shot(page, `narrow-${rowSize}-${width}-${'fixture' in options ? 'home' : 'slot'}`);
       });
@@ -620,7 +628,7 @@ test('the pane and every frame go when another student signs in', async ({
   await panel.close();
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   expect(paneFrames(page)).toHaveLength(0);
-  expect(await paddingRight(page)).toBe(0);
+  await expect.poll(() => paddingRight(page)).toBe(0);
   // The next student starts with no frame: a click makes a new one.
   await preview(page, LAB_4).click();
   await expect(page.locator(PANE_HOST)).toBeVisible();
@@ -704,7 +712,7 @@ test('a file link in the pane of the classic dashboard opens the file pane, and 
   await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
   await closeAssignment(page);
   await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
-  expect(await paddingRight(page)).toBe(360);
+  await expect.poll(() => paddingRight(page)).toBe(360);
 });
 
 test('the classic header controls stay in the room beside a pane', async ({

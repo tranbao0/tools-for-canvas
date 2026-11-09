@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Page, Worker } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
-import { pageQuiet } from './support/settle';
+import { pageQuiet, requestsQuiet, watchPaneIdentityChecks } from './support/settle';
 import { test, expect, serveScenario, saveTools } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
 import {
@@ -81,7 +81,24 @@ test('file pane channel, module resolution, padding and page changes', async ({
   await focusPaneHandle(page);
   await page.keyboard.press('ArrowLeft');
   await expect(host).toHaveCSS('width', '512px');
-  await page.waitForTimeout(300);
+  await expect
+    .poll(() =>
+      background.evaluate(async () => {
+        const { toolsSettings } = await (
+          globalThis as unknown as {
+            chrome: {
+              storage: {
+                local: {
+                  get(key: string): Promise<{ toolsSettings?: { fileViewerWidth?: number } }>;
+                };
+              };
+            };
+          }
+        ).chrome.storage.local.get('toolsSettings');
+        return toolsSettings?.fileViewerWidth;
+      }),
+    )
+    .toBe(500);
   await page.reload();
   await expect(host).toHaveCSS('width', '512px');
   await page.getByText('Next page').click();
@@ -138,7 +155,7 @@ test('Chromium refuses a pane frame that a script makes, and the ports that the 
   const real = await pane(page);
   await expect(real.locator(FILE_NAME)).toHaveText('Course notes.pdf');
   await expect(page.locator('#hostile')).toBeAttached();
-  await page.waitForTimeout(1000);
+  await requestsQuiet(page, canvas.requests, background);
   await page.evaluate(() => {
     const target = document.querySelector<HTMLIFrameElement>('#hostile')!;
     // It tries every first message that a pane would take, and file requests behind them.
@@ -156,7 +173,7 @@ test('Chromium refuses a pane frame that a script makes, and the ports that the 
       channel.port1.postMessage({ type: 'theme', theme: 'dark' });
     }
   });
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   const spy = await page.evaluate(() => window.__spy);
   // Nothing came back on any port: no tab data, and no answer that proves the secret.
   expect(spy.ports).toEqual([]);
@@ -241,7 +258,7 @@ test('a frame that a script navigated to a web page gets no port', async ({
     .poll(() => page.frames().some((frame) => frame.url().endsWith('/courses/101/pages/evil')))
     .toBe(true);
   const stranger = page.frames().find((frame) => frame.url().endsWith('/courses/101/pages/evil'))!;
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   expect(
     await stranger.evaluate(() => (window as unknown as { got?: unknown[] }).got ?? []),
   ).toEqual([]);
@@ -264,7 +281,7 @@ for (const mode of ['ctrl', 'middle', 'download', 'off'] as const) {
       });
     }
     await page.goto(`${canvas.origin}/courses/101/pages/notes`);
-    await page.waitForTimeout(500);
+    await requestsQuiet(page, canvas.requests, background);
     // A real click, with the keys or the button of the mode. The listener runs after the page
     // script, records whether it prevented the action, and then stops the navigation.
     const link = page.getByText('Read notes');
@@ -299,7 +316,7 @@ test('a click that a script of the page makes opens nothing', async ({
   ]);
   await saveAddress(background, canvas.origin);
   await page.goto(`${canvas.origin}/courses/101/pages/notes`);
-  await page.waitForTimeout(1000);
+  await requestsQuiet(page, canvas.requests, background);
   const seen = await page.evaluate(() => {
     const link = document.querySelector<HTMLAnchorElement>('a.instructure_file_link')!;
     const other = document.createElement('a');
@@ -319,7 +336,7 @@ test('a click that a script of the page makes opens nothing', async ({
   });
   // The script clicks four times, and none of them was stopped by the page script.
   expect(seen).toEqual([false, false, false, false]);
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
   expect(canvas.requests.filter((request) => request.path.startsWith('/api/v1/files'))).toEqual([]);
 });
@@ -390,7 +407,7 @@ test('cold startup makes no sign-in check and a click shows a loading pane', asy
   try {
     await saveAddress(background, canvas.origin);
     await page.goto(`${canvas.origin}/courses/101/pages/notes`);
-    await page.waitForTimeout(500);
+    await requestsQuiet(page, canvas.requests, background);
     expect(canvas.requests.filter((request) => request.path === '/api/v1/users/self')).toHaveLength(
       0,
     );
@@ -531,7 +548,7 @@ test('a script cannot open the pane with history calls', async ({ context, page,
   await closePane(page);
   const before = filesRequests();
   const idle = async () => {
-    await page.waitForTimeout(1000);
+    await requestsQuiet(page, canvas.requests, background);
     await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
     expect(filesRequests()).toBe(before);
   };
@@ -578,7 +595,7 @@ test('history changes leave the pane as the student left it', async ({
     history.back();
   });
   await expect(page).not.toHaveURL(/other=1/);
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   await expect(page.locator('#tools-file-viewer')).toHaveCount(1);
   await expect(tabs).toHaveCount(1);
   await closePane(page);
@@ -589,7 +606,7 @@ test('history changes leave the pane as the student left it', async ({
   await expect(page).not.toHaveURL(/preview=42/);
   await page.goForward();
   await expect(page).toHaveURL(/preview=42/);
-  await page.waitForTimeout(500);
+  await pageQuiet(page);
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
 });
 
@@ -817,7 +834,9 @@ test('a failed hello keeps typed work and offers a student link', async ({
   await page.screenshot({ path: testInfo.outputPath('hello-failure.png') });
   // The identity tick of each second leaves the keyboard on the link.
   await cdp.send('DOM.focus', { backendNodeId: link.backendDOMNodeId! });
-  await page.waitForTimeout(1500);
+  const identityChecks = await watchPaneIdentityChecks(page);
+  const completed = await identityChecks();
+  await expect.poll(identityChecks).toBeGreaterThan(completed);
   const focused = await cdp.send('Accessibility.getFullAXTree');
   expect(
     focused.nodes
