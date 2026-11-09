@@ -85,7 +85,7 @@ export async function startViewer(): Promise<void> {
   // tabs in memory stay as they are then. The token comes with the tabs and goes back with a
   // write, so the background can refuse a write for tabs that it has cleared since.
   type StoredTabs = { tabs: Tabs; token: string | undefined };
-  const readTabs = async (): Promise<StoredTabs | null> => {
+  const readTabsNow = async (): Promise<StoredTabs | null> => {
     if (!active()) return null;
     let pendingWrites: Promise<unknown>;
     do {
@@ -97,6 +97,17 @@ export async function startViewer(): Promise<void> {
     if (typeof reply !== 'object' || reply === null) return null;
     const token = (reply as { token?: unknown }).token;
     return { tabs: normalizeTabs(reply), token: typeof token === 'string' ? token : undefined };
+  };
+  let reading: { generation: number; result: Promise<StoredTabs | null> } | undefined;
+  const readTabs = () => {
+    const current = { generation, result: readTabsNow() };
+    reading = current;
+    void current.result
+      .finally(() => {
+        if (reading === current) reading = undefined;
+      })
+      .catch(() => undefined);
+    return current.result;
   };
   let writes: Promise<unknown> = Promise.resolve();
   const enqueue = <T>(run: () => Promise<T>, finishCleanup = false): Promise<T | undefined> => {
@@ -252,20 +263,19 @@ export async function startViewer(): Promise<void> {
     }
     tabsToken = stored.token;
   };
-  let tokenRead: Promise<void> | undefined;
-  const recoverToken = () => {
-    if (tabsToken !== undefined || tokenRead || !active()) return;
+  type ActionToken = string | undefined | Promise<string | undefined>;
+  // An action shares the read running at that moment, and never a later read.
+  const captureToken = (): ActionToken => {
+    if (tabsToken !== undefined) return tabsToken;
     const born = generation;
-    const pending = readTabs()
+    const pending = reading?.generation === born ? reading.result : readTabs();
+    return pending
       .then((stored) => {
-        if (active() && born === generation && tabsToken === undefined && stored)
-          rememberStored(stored);
+        if (!active() || born !== generation || !stored) return undefined;
+        if (tabsToken === undefined) rememberStored(stored);
+        return stored.token;
       })
-      .catch(() => undefined)
-      .finally(() => {
-        if (tokenRead === pending) tokenRead = undefined;
-      });
-    tokenRead = pending;
+      .catch(() => undefined);
   };
   let failureAddress = '';
   let failedConnection = false;
@@ -596,7 +606,7 @@ export async function startViewer(): Promise<void> {
     href: string,
     taken: number,
     current: Attempt,
-    actionToken: string | undefined,
+    actionToken: ActionToken,
   ): Promise<OpenResult> => {
     waitingOpens += 1;
     const run = opens
@@ -618,7 +628,7 @@ export async function startViewer(): Promise<void> {
     href: string,
     started: number,
     current: Attempt,
-    actionToken: string | undefined,
+    actionToken: ActionToken,
   ): Promise<OpenResult | { connected: Promise<OpenResult> }> => {
     const ended = () =>
       current.result ?? (!active() || generation !== started ? 'ended' : undefined);
@@ -653,7 +663,10 @@ export async function startViewer(): Promise<void> {
       return 'failed';
     }
     emptyPane = false;
-    actionTokens.set(file.fileId, actionToken);
+    const credential = await actionToken;
+    if (ended()) return ended()!;
+    if (!paneOpen()) return 'ended';
+    actionTokens.set(file.fileId, credential);
     const courseId = 'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
     if (courseId) courses.set(file.fileId, courseId);
     failureAddress =
@@ -756,8 +769,7 @@ export async function startViewer(): Promise<void> {
       // A reset that comes while the click waits ends it: the click belongs to this moment.
       const taken = generation;
       const current = attempt;
-      const actionToken = tabsToken;
-      recoverToken();
+      const actionToken = captureToken();
       clicks += 1;
       const click = clicks;
       void (async () => {
@@ -875,8 +887,7 @@ export async function startViewer(): Promise<void> {
     const fileId = request.fileId;
     const taken = generation;
     const current = attempt;
-    const actionToken = tabsToken;
-    recoverToken();
+    const actionToken = captureToken();
     const address = keptAddress(String(request.address ?? ''), location.origin);
     if (address === undefined) addresses.delete(fileId);
     else addresses.set(fileId, address);

@@ -54,8 +54,37 @@ test('file pane channel, module resolution, padding and page changes', async ({
     },
   ]);
   await saveAddress(background, canvas.origin);
+  await background.evaluate(() => {
+    const scope = globalThis as unknown as {
+      chrome: { storage: { session: { get(key: string): Promise<unknown> } } };
+      __startupTabs: { hit: boolean; release(): void };
+    };
+    const area = scope.chrome.storage.session;
+    const get = area.get.bind(area);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    scope.__startupTabs = { hit: false, release };
+    area.get = async (key) => {
+      const reply = await get(key);
+      if (typeof key === 'string' && key.startsWith('viewer:http')) {
+        scope.__startupTabs.hit = true;
+        await held;
+      }
+      return reply;
+    };
+  });
   await page.goto(`${canvas.origin}/courses/101/pages/notes`);
-  await openFirstFile(page, 'Read notes');
+  await expect
+    .poll(() =>
+      background.evaluate(
+        () => (globalThis as unknown as { __startupTabs: { hit: boolean } }).__startupTabs.hit,
+      ),
+    )
+    .toBe(true);
+  await page.getByRole('link', { name: 'Read notes', exact: true }).first().click();
+  await background.evaluate(() =>
+    (globalThis as unknown as { __startupTabs: { release(): void } }).__startupTabs.release(),
+  );
   const host = page.locator('#tools-file-viewer');
   await expect(host).toBeVisible();
   await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');

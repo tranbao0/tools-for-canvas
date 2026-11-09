@@ -132,7 +132,31 @@ describe('file pane lifetime and unseen changes', () => {
   };
   const host = () => document.getElementById('tools-file-viewer');
 
-  it('saves only clicks taken after a tokenless synced pane recovers its token', async () => {
+  it.each([false, true])(
+    'binds early clicks to their startup read without crossing a reset: %s',
+    async (reset) => {
+      setup({ ids: [], active: null });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      sendMessage.mockImplementation(async (message) => {
+        if (message.type === 'viewer:tabs-get') await held;
+        return base(message);
+      });
+      const starting = startViewer();
+      await settle();
+      click('file');
+      click('other');
+      if (reset) resetPanes();
+      release();
+      await starting;
+      await settle();
+      if (!reset) await connect();
+      else expect(host()).toBeNull();
+      expect(stored).toEqual(reset ? { ids: [], active: null } : { ids: ['5', '6'], active: '6' });
+    },
+  );
+
+  it('saves the recovery click and later clicks after a tokenless pane syncs', async () => {
     setup({ ids: [], active: null });
     answerTabs = false;
     await startViewer();
@@ -146,11 +170,11 @@ describe('file pane lifetime and unseen changes', () => {
     answerTabs = true;
     click('other');
     await settle();
-    expect(writes).toEqual([]);
+    expect(stored).toEqual({ ids: ['6'], active: '6' });
     click('third');
     await settle();
-    expect(stored).toEqual({ ids: ['7'], active: '7' });
-    expect(writes).toHaveLength(1);
+    expect(stored).toEqual({ ids: ['6', '7'], active: '7' });
+    expect(writes).toHaveLength(2);
   });
 
   it('a restore handles the open it ends without following the link', async () => {

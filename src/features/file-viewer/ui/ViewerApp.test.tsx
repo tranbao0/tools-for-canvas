@@ -219,6 +219,39 @@ describe('pane tabs', () => {
     expect(changeTabs).not.toHaveBeenCalled();
   });
 
+  it('saves a pane action with the token read it starts at once', async () => {
+    let credential: string | undefined;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const getTabs = vi.fn(async () => {
+      await held;
+      credential = '1:A';
+      return { ids: [], active: null };
+    });
+    const { opens, host } = setup({ tabToken: () => credential, getTabs });
+    await act(async () => {
+      opens.emit({ fileId: '1' });
+    });
+    await waitFor(() => expect(getTabs).toHaveBeenCalled());
+    release();
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes.docx' })).toBeTruthy());
+    credential = undefined;
+    let finish!: () => void;
+    const next = new Promise<void>((resolve) => (finish = resolve));
+    getTabs.mockImplementation(async () => {
+      await next;
+      credential = '1:A';
+      return { ids: [], active: null };
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Close.*Notes/ }));
+    });
+    finish();
+    await waitFor(() =>
+      expect(host.changeTabs).toHaveBeenCalledWith({ action: 'close', fileId: '1' }, '1:A'),
+    );
+  });
+
   it('keeps the action token when a pane intent waits behind an earlier write', async () => {
     let credential = '1:A';
     let release: (() => void) | undefined;
