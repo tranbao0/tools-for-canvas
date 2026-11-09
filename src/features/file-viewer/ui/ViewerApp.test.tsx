@@ -88,7 +88,9 @@ describe('failed tab writes', () => {
     await act(async () => opens.emit({ fileId: '2', token: '1:1' }));
     await waitFor(() => expect(stored.ids).toEqual(['1', '2']));
     stored = { ids: ['1'], active: '1' };
-    await act(async () => fireEvent.click(tabs()[0]!));
+    await act(async () => {
+      fireEvent.click(tabs()[0]!);
+    });
     await waitFor(() => expect(tabs()).toHaveLength(1));
     cleanup();
     const next = setup({}, { ids: ['3'], active: '3' });

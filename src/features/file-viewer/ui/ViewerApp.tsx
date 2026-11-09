@@ -156,7 +156,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             latest = await host.changeTabs(intent, token);
             for (const id of touched) {
               localTabs.current.delete(id);
-              if (intent.action === 'open') memory.current.delete(id);
+              memory.current.delete(id);
             }
             if (selects && failedSelection.current === selectedAt)
               failedSelection.current = undefined;
