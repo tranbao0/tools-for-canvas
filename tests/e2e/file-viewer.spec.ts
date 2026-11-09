@@ -3,6 +3,7 @@ import type { Page, Worker } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { pageQuiet } from './support/settle';
 import { test, expect, serveScenario, saveTools } from './support/weekrow';
+import { expectStartupDecision } from './support/file-pane';
 import { saveAddress } from './support/scenario-api';
 import {
   FILE_NAME,
@@ -622,6 +623,7 @@ async function openCommentPage(
   ]);
   await saveAddress(background, canvas.origin);
   await page.goto(`${canvas.origin}/courses/101/pages/notes`);
+  await expectStartupDecision(background, page);
   return canvas;
 }
 
