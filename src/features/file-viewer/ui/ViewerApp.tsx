@@ -50,7 +50,6 @@ export interface OpenRequest {
   fileId: string;
   /** The token at the page click; an absent token never permits a store write. */
   token?: string;
-  saved?: boolean;
   courseId?: string;
   name?: string;
   /**
@@ -234,13 +233,13 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
                 // The tabs in memory stay, and they are not written.
               }
             }
-            if (!request.saved && token === undefined && !known.ids.includes(request.fileId))
+            if (token === undefined && !known.ids.includes(request.fileId))
               memory.current.add(request.fileId);
-            else if (request.saved || token !== undefined) memory.current.delete(request.fileId);
+            else if (token !== undefined) memory.current.delete(request.fileId);
             const next = openFile(known, request.fileId);
             tabsRef.current = next;
             setTabs(next);
-            if (!request.saved) save({ action: 'open', fileId: request.fileId }, token);
+            save({ action: 'open', fileId: request.fileId }, token);
           })
           .catch(() => undefined);
       }),

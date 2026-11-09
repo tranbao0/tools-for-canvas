@@ -20,8 +20,6 @@ export interface OpenFileMessage {
   fileId: string;
   /** The token at the click; an absent token keeps the action in memory only. */
   token?: string;
-  /** The page has already saved this open and recorded its effects. */
-  saved?: boolean;
   courseId?: string;
   name?: string;
   address?: string;
@@ -91,12 +89,11 @@ export function validOpenFile(value: unknown): value is OpenFileMessage {
   const message = value as Record<string, unknown>;
   return (
     Object.keys(message).every((key) =>
-      ['type', 'fileId', 'courseId', 'name', 'address', 'token', 'saved'].includes(key),
+      ['type', 'fileId', 'courseId', 'name', 'address', 'token'].includes(key),
     ) &&
     message['type'] === 'open-file' &&
     isTabId(message['fileId']) &&
     (message['token'] === undefined || typeof message['token'] === 'string') &&
-    (message['saved'] === undefined || typeof message['saved'] === 'boolean') &&
     (message['address'] === undefined || webAddress(message['address'])) &&
     (message['name'] === undefined ||
       (typeof message['name'] === 'string' && linkName(message['name']) === message['name'])) &&

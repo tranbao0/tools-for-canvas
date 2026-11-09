@@ -122,9 +122,8 @@ export async function startViewer(): Promise<void> {
     evicted: new Set<string>(),
     token: undefined as string | undefined,
   };
-  const savedOpens = new Set<string>();
-  const flushOpens = (files: Iterable<string> = addedTabs) => {
-    const ids = [...files].map((id) => [id, actionTokens.get(id)] as const);
+  const flushOpens = () => {
+    const ids = [...addedTabs].map((id) => [id, actionTokens.get(id)] as const);
     const effects = unseen;
     const current = attempt;
     const started = generation;
@@ -142,7 +141,6 @@ export async function startViewer(): Promise<void> {
         if (!reply || typeof reply !== 'object') {
           if (active() && !current.result && started === generation) {
             actionTokens.set(fileId, undefined);
-            savedOpens.delete(fileId);
           }
           continue;
         }
@@ -157,7 +155,6 @@ export async function startViewer(): Promise<void> {
         const kept = normalizeTabs(reply);
         for (const id of effects.added) if (!kept.ids.includes(id)) effects.added.delete(id);
         if (active() && !current.result && started === generation) {
-          savedOpens.add(fileId);
           tabs = normalizeTabs(reply);
           for (const [id] of ids) if (actionTokens.get(id) === undefined) tabs = openFile(tabs, id);
           if (waitingFile) tabs = openFile(tabs, waitingFile);
@@ -246,7 +243,6 @@ export async function startViewer(): Promise<void> {
       type: 'open-file' as const,
       fileId,
       token: actionTokens.get(fileId),
-      saved: savedOpens.has(fileId),
       ...(courseId ? { courseId } : {}),
       ...(name ? { name } : {}),
       ...(address ? { address } : {}),
@@ -443,7 +439,6 @@ export async function startViewer(): Promise<void> {
     names.clear();
     addresses.clear();
     actionTokens.clear();
-    savedOpens.clear();
   };
   const stopReset = watchPaneReset(() => reset());
   lifetime.signal.addEventListener('abort', stopReset, { once: true });
@@ -686,9 +681,9 @@ export async function startViewer(): Promise<void> {
       keptAddress(href, location.origin) ??
       canvasAddress(file.fileId, courseId);
     const open = async () => {
-      // Page opens share the write queue so Close can undo every unseen addition and eviction.
-      if (synced || addedTabs.size > 0) {
-        await flushOpens(synced ? [file.fileId] : addedTabs).catch(() => undefined);
+      // The pane owns synced opens and orders their writes with its other tab actions.
+      if (!synced && addedTabs.size > 0) {
+        await flushOpens().catch(() => undefined);
         if (ended()) return ended()!;
         if (!paneOpen() || (!port && !connection)) {
           removeAddedTabs();

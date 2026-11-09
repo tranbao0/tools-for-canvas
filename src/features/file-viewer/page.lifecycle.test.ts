@@ -177,28 +177,6 @@ describe('file pane lifetime and unseen changes', () => {
     },
   );
 
-  it.each([1, 8])(
-    'Close under the cover undoes a synced open and its eviction with %s stored tabs',
-    async (count) => {
-      capture();
-      identity.confirmed = false;
-      const ids = Array.from({ length: count }, (_, i) => String(i + 11));
-      setup({ ids, active: ids.at(-1)! });
-      await startViewer();
-      await connect();
-      ports.at(-1)!.postMessage.mockImplementation((message) => {
-        if (message.type === 'open-file' && message.token !== undefined && !message.saved)
-          void base({ ...message, type: 'viewer:tabs-open' });
-      });
-      click('other');
-      await settle();
-      expect(stored.ids).toContain('6');
-      close();
-      await settle();
-      expect(stored).toEqual({ ids, active: null });
-    },
-  );
-
   it.each([false, true])(
     'binds early clicks to their startup read without crossing a reset: %s',
     async (reset) => {
@@ -231,7 +209,7 @@ describe('file pane lifetime and unseen changes', () => {
     await settle();
     await connect();
     ports.at(-1)!.postMessage.mockImplementation((message) => {
-      if (message.type === 'open-file' && message.token !== undefined && !message.saved)
+      if (message.type === 'open-file' && message.token !== undefined)
         void base({ ...message, type: 'viewer:tabs-open', fileId: message.fileId });
     });
     answerTabs = true;

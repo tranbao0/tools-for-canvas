@@ -185,15 +185,6 @@ describe('pane tabs', () => {
     expect(tabs()).toHaveLength(0);
   });
 
-  it('shows an open saved by the page without writing it twice', async () => {
-    const { opens, host } = setup();
-    await act(async () => {
-      opens.emit({ fileId: '1', token: '1:1', saved: true });
-    });
-    await waitFor(() => expect(tabs()).toHaveLength(1));
-    expect(host.changeTabs).not.toHaveBeenCalled();
-  });
-
   it('uses the page action token when the pane first read is refused', async () => {
     const getTabs = vi
       .fn<PaneHost['getTabs']>()

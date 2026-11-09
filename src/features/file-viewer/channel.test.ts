@@ -25,11 +25,6 @@ describe('viewer identities', () => {
     expect(validOpenFile({ type: 'open-file', fileId: '42' })).toBe(true);
     expect(validOpenFile({ type: 'open-file', fileId: '45~678', courseId: '12~345' })).toBe(true);
   });
-  it('accepts only a boolean saved flag for a page open', () => {
-    expect(validOpenFile({ ...open, saved: true })).toBe(true);
-    expect(validOpenFile({ ...open, saved: false })).toBe(true);
-    expect(validOpenFile({ ...open, saved: 'yes' })).toBe(false);
-  });
   it('rejects addresses and extra fields', () => {
     for (const field of ['fileId', 'courseId']) {
       for (const value of [
