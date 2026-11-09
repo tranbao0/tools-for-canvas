@@ -395,7 +395,7 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
     session = await loadSession(api, context.now);
     context.onSession?.(session);
   } else if (
-    kind === 'full' &&
+    (kind === 'full' || (session.courses.length === 0 && context.reloadSession)) &&
     (context.reloadSession ||
       session.loadedAt === undefined ||
       session.loadedAt > context.now ||
