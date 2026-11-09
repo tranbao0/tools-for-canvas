@@ -112,6 +112,10 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const writes = useRef<Promise<unknown>>(Promise.resolve());
   const memory = useRef(new Set<string>());
   const changes = useRef(0);
+  // Failed writes belong to this mounted pane, just like tokenless opens.
+  const localTabs = useRef(new Map<string, boolean>());
+  const selection = useRef(0);
+  const failedSelection = useRef<number | undefined>(undefined);
   const reading = useRef<Promise<{ tabs: Tabs; token: string | undefined }> | undefined>(undefined);
   const readTabs = useCallback(() => {
     if (reading.current) return reading.current;
@@ -125,18 +129,57 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     return result;
   }, [host]);
   const save = useCallback(
-    (intent: TabIntent, credential: string | undefined | Promise<string | undefined>) => {
+    (
+      intent: TabIntent,
+      credential: string | undefined | Promise<string | undefined>,
+      before: Tabs,
+    ) => {
+      const after = tabsRef.current;
+      // Include evictions as well as the file named by the intent.
+      const touched = new Set(
+        [...before.ids, ...after.ids].filter(
+          (id) => before.ids.includes(id) !== after.ids.includes(id),
+        ),
+      );
+      if ('fileId' in intent && intent.action !== 'activate') touched.add(intent.fileId);
+      const selects =
+        before.active !== after.active || intent.action === 'open' || intent.action === 'activate';
+      const selectedAt = selects ? ++selection.current : selection.current;
       const change = ++changes.current;
       if (credential === undefined) return;
       writes.current = writes.current
         .then(async () => {
           const token = await credential;
           if (token === undefined) return;
-          let latest = await host.changeTabs(intent, token);
+          let latest: Tabs;
+          try {
+            latest = await host.changeTabs(intent, token);
+            for (const id of touched) {
+              localTabs.current.delete(id);
+              if (intent.action === 'open') memory.current.delete(id);
+            }
+            if (selects && failedSelection.current === selectedAt)
+              failedSelection.current = undefined;
+          } catch {
+            for (const id of touched) {
+              const present = after.ids.includes(id);
+              localTabs.current.set(id, present);
+              if (present) memory.current.add(id);
+              else memory.current.delete(id);
+            }
+            if (selects) failedSelection.current = selectedAt;
+            return;
+          }
           if (change !== changes.current) return;
           const local = tabsRef.current;
+          for (const [id, present] of localTabs.current) {
+            if (!present) latest = closeFile(latest, id);
+          }
           const selected =
-            local.active && memory.current.has(local.active) ? local.active : latest.active;
+            failedSelection.current === selection.current ||
+            (local.active && memory.current.has(local.active))
+              ? local.active
+              : latest.active;
           for (const [index, id] of local.ids.entries()) {
             if (!memory.current.has(id)) continue;
             latest = openFile({ ids: latest.ids, active: selected }, id);
@@ -144,6 +187,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             ids.splice(Math.min(index, ids.length), 0, id);
             latest = { ids, active: selected };
           }
+          latest = { ...latest, active: selected };
           tabsRef.current = latest;
           setTabs(latest);
         })
@@ -153,6 +197,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   );
   const commit = useCallback(
     (next: Tabs, intent: TabIntent) => {
+      const before = tabsRef.current;
       tabsRef.current = next;
       setTabs(next);
       if (intent.action === 'close') memory.current.delete(intent.fileId);
@@ -162,7 +207,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           (reply) => reply.token,
           () => undefined,
         );
-      save(intent, token);
+      save(intent, token, before);
     },
     [host, readTabs, save],
   );
@@ -239,7 +284,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             const next = openFile(known, request.fileId);
             tabsRef.current = next;
             setTabs(next);
-            save({ action: 'open', fileId: request.fileId }, token);
+            save({ action: 'open', fileId: request.fileId }, token, known);
           })
           .catch(() => undefined);
       }),

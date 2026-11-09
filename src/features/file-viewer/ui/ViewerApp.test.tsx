@@ -72,6 +72,68 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
 
 const tabs = () => screen.queryAllByRole('tab');
 
+describe('failed tab writes', () => {
+  it('stores a reopened file after its open failed and drops local state on teardown', async () => {
+    let stored: Tabs = { ids: ['1'], active: '1' };
+    const changeTabs = vi
+      .fn(async (intent: TabIntent) => {
+        stored = applyTabIntent(stored, intent);
+        return stored;
+      })
+      .mockRejectedValueOnce(new Error('write refused'));
+    const { opens } = setup({ changeTabs }, stored);
+    await act(async () => opens.emit({ fileId: '2', token: '1:1' }));
+    await waitFor(() => expect(tabs()).toHaveLength(2));
+    expect(stored.ids).toEqual(['1']);
+    await act(async () => opens.emit({ fileId: '2', token: '1:1' }));
+    await waitFor(() => expect(stored.ids).toEqual(['1', '2']));
+    stored = { ids: ['1'], active: '1' };
+    await act(async () => fireEvent.click(tabs()[0]!));
+    await waitFor(() => expect(tabs()).toHaveLength(1));
+    cleanup();
+    const next = setup({}, { ids: ['3'], active: '3' });
+    await next.open('3');
+    await waitFor(() =>
+      expect(tabs().map((tab) => tab.getAttribute('data-file-id'))).toEqual(['3']),
+    );
+  });
+
+  for (const action of ['open', 'close', 'activate'] as const) {
+    it(`keeps a failed ${action} local after another write`, async () => {
+      let stored: Tabs = { ids: action === 'open' ? ['1', '3'] : ['1', '2', '3'], active: '3' };
+      let fail = true;
+      const changeTabs = vi.fn(async (intent: TabIntent) => {
+        if (fail && intent.action === action) {
+          fail = false;
+          throw new Error('write refused');
+        }
+        stored = applyTabIntent(stored, intent);
+        return stored;
+      });
+      const { opens } = setup({ changeTabs }, stored);
+      await act(async () => opens.emit({ fileId: '3' }));
+      await screen.findByRole('tab', { name: /Deck/ });
+      await act(async () => {
+        if (action === 'open') opens.emit({ fileId: '2', token: '1:1' });
+        else if (action === 'close')
+          fireEvent.click(screen.getByRole('button', { name: 'Close Photo.png' }));
+        else fireEvent.click(tabs()[0]!);
+      });
+      await waitFor(() => expect(fail).toBe(false));
+      await act(async () => {
+        if (action === 'activate')
+          fireEvent.click(screen.getByRole('button', { name: 'Close Photo.png' }));
+        else fireEvent.click(tabs()[0]!);
+      });
+      await waitFor(() => expect(changeTabs).toHaveBeenCalledTimes(2));
+      expect(tabs().map((tab) => tab.getAttribute('data-file-id'))).toEqual(
+        action === 'open' ? ['1', '3', '2'] : ['1', '3'],
+      );
+      if (action === 'activate') expect(tabs()[0]!.getAttribute('aria-selected')).toBe('true');
+    });
+  }
+});
+
 describe('the Full view button', () => {
   it('shows only after the Canvas page says that the window is wide enough, before the close button', async () => {
     const fullView = createFullViewStore(vi.fn());
