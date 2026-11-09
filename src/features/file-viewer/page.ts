@@ -252,6 +252,21 @@ export async function startViewer(): Promise<void> {
     }
     tabsToken = stored.token;
   };
+  let tokenRead: Promise<void> | undefined;
+  const recoverToken = () => {
+    if (tabsToken !== undefined || tokenRead || !active()) return;
+    const born = generation;
+    const pending = readTabs()
+      .then((stored) => {
+        if (active() && born === generation && tabsToken === undefined && stored)
+          rememberStored(stored);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (tokenRead === pending) tokenRead = undefined;
+      });
+    tokenRead = pending;
+  };
   let failureAddress = '';
   let failedConnection = false;
   /** The address of a file or a comment attachment in Canvas. */
@@ -742,6 +757,7 @@ export async function startViewer(): Promise<void> {
       const taken = generation;
       const current = attempt;
       const actionToken = tabsToken;
+      recoverToken();
       clicks += 1;
       const click = clicks;
       void (async () => {
@@ -860,6 +876,7 @@ export async function startViewer(): Promise<void> {
     const taken = generation;
     const current = attempt;
     const actionToken = tabsToken;
+    recoverToken();
     const address = keptAddress(String(request.address ?? ''), location.origin);
     if (address === undefined) addresses.delete(fileId);
     else addresses.set(fileId, address);

@@ -132,6 +132,27 @@ describe('file pane lifetime and unseen changes', () => {
   };
   const host = () => document.getElementById('tools-file-viewer');
 
+  it('saves only clicks taken after a tokenless synced pane recovers its token', async () => {
+    setup({ ids: [], active: null });
+    answerTabs = false;
+    await startViewer();
+    click('file');
+    await settle();
+    await connect();
+    ports.at(-1)!.postMessage.mockImplementation((message) => {
+      if (message.type === 'open-file' && message.token !== undefined)
+        void base({ ...message, type: 'viewer:tabs-open', fileId: message.fileId });
+    });
+    answerTabs = true;
+    click('other');
+    await settle();
+    expect(writes).toEqual([]);
+    click('third');
+    await settle();
+    expect(stored).toEqual({ ids: ['7'], active: '7' });
+    expect(writes).toHaveLength(1);
+  });
+
   it('a restore handles the open it ends without following the link', async () => {
     capture();
     setup({ ids: [], active: null });
