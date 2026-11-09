@@ -134,12 +134,19 @@ export async function startViewer(): Promise<void> {
       for (const [fileId, credential] of ids) {
         if (credential === undefined) continue;
         if (!active() || current.result || started !== generation) return;
-        const reply = await browser.runtime.sendMessage({
-          type: 'viewer:tabs-open',
-          fileId,
-          token: credential,
-        });
-        if (!reply || typeof reply !== 'object') throw new Error('The tabs did not save');
+        const reply = await browser.runtime
+          .sendMessage({
+            type: 'viewer:tabs-open',
+            fileId,
+            token: credential,
+          })
+          .catch(() => undefined);
+        if (!reply || typeof reply !== 'object') {
+          if (active() && !current.result && started === generation) {
+            actionTokens.set(fileId, undefined);
+          }
+          continue;
+        }
         effects.token = credential;
         if (reply.added) effects.added.add(fileId);
         if (
@@ -152,7 +159,7 @@ export async function startViewer(): Promise<void> {
         for (const id of effects.added) if (!kept.ids.includes(id)) effects.added.delete(id);
         if (active() && !current.result && started === generation) {
           tabs = normalizeTabs(reply);
-          for (const [id, token] of ids) if (token === undefined) tabs = openFile(tabs, id);
+          for (const [id] of ids) if (actionTokens.get(id) === undefined) tabs = openFile(tabs, id);
           if (waitingFile) tabs = openFile(tabs, waitingFile);
           tabsToken = credential;
         }
@@ -677,9 +684,7 @@ export async function startViewer(): Promise<void> {
       keptAddress(href, location.origin) ??
       canvasAddress(file.fileId, courseId);
     const open = async () => {
-      // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
-      // request also makes a pane that has not been told yet restore the stored tabs, so the files
-      // that waited for the pane join the store first.
+      // The pane owns synced opens and orders their writes with its other tab actions.
       if (!synced && addedTabs.size > 0) {
         await flushOpens().catch(() => undefined);
         if (ended()) return ended()!;
@@ -831,8 +836,6 @@ export async function startViewer(): Promise<void> {
     'pageshow',
     (event) => {
       if (!active() || !(event as PageTransitionEvent).persisted) return;
-      if (waitingFile || addedTabs.size || unseen.added.size || unseen.evicted.size)
-        void undoUnseen().catch(() => undefined);
       reset('closed');
       const restored = generation;
       starting = load().catch(() => undefined);
