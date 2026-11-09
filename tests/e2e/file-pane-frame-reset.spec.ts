@@ -12,6 +12,9 @@ import { saveAddress } from './support/scenario-api';
 import { previewFrame, SUBMISSION_PATH, submissionRoute } from './support/file-viewer';
 import { expectStartupDecision } from './support/file-pane';
 
+// The pane must not be covered by a slow identity reply under load; see support/extension.ts.
+test.use({ longPaneIdentityTimeout: true });
+
 type WorkerScope = {
   chrome: {
     storage: { session: { set(items: Record<string, unknown>): Promise<void> } };

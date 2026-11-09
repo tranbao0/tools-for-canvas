@@ -9,6 +9,9 @@ import { test, expect } from './support/weekrow';
 import { FILE_NAME, openCoursePage, openFirstFile, pane } from './support/file-viewer';
 import { expectStartupDecision } from './support/file-pane';
 
+// The pane must not be covered by a slow identity reply under load; see support/extension.ts.
+test.use({ longPaneIdentityTimeout: true });
+
 const HOST = '#tools-file-viewer';
 
 /** Blocks the hello of the pane page while the flag of this tab is set. It survives a reload. */
