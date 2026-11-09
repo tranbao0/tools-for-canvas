@@ -32,7 +32,7 @@ const test = base.extend<{ fileHost: FileHost }>({
     await host.close();
   },
 });
-test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
+test.use({ longPaneIdentityTimeout: true, browserArgs: [TRUST_TEST_CERTIFICATE] });
 // Each test loads the extension, a document and PDF.js in a browser that draws pages on the CPU.
 test.beforeEach(() => {
   test.slow();

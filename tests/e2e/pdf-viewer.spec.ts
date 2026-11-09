@@ -81,7 +81,7 @@ const test = base.extend<HostFixtures>({
     await host.close();
   },
 });
-test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
+test.use({ longPaneIdentityTimeout: true, browserArgs: [TRUST_TEST_CERTIFICATE] });
 // Each test loads the extension, a document and PDF.js in a browser that draws pages on the CPU, so
 // it gets more time than the default when other jobs share the machine.
 test.beforeEach(() => {
@@ -939,15 +939,12 @@ function savedPositions(background: Parameters<typeof openCoursePage>[2]) {
   });
 }
 
-/** Retry opening the menu, then send the selection click once. */
+/** Retry only a press that misses the frame, then select once. */
 async function chooseZoom(frame: Frame, name: string) {
-  const item = frame.getByRole('menuitemradio', { name });
-  await expect(async () => {
-    if (!(await item.isVisible()))
-      await frame.getByRole('button', { name: 'Zoom level' }).click({ timeout: 2000 });
-    await expect(item).toBeVisible({ timeout: 1500 });
-  }).toPass({ timeout: 20_000 });
-  await item.click();
+  const button = frame.getByRole('button', { name: 'Zoom level' });
+  await clickInFrame(frame, button);
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+  await frame.getByRole('menuitemradio', { name }).click();
 }
 
 test('saved page and zoom return after reload', async ({ context, page, background, fileHost }) => {

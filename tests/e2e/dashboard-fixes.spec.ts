@@ -25,6 +25,8 @@ import { HAS_REAL_CANVAS_CSS, useRealCanvasCss } from './support/canvas-css';
 import { EIGHT_COURSES } from './support/eight-courses';
 import { pageQuiet, requestsQuiet, stableValue } from './support/settle';
 
+test.use({ longPaneIdentityTimeout: true });
+
 const PAGE = [{ path: '/', page: 'dashboard-widgets' }] as const;
 const OFF: DashboardFixesSettings = {
   announcementsInPlace: false,

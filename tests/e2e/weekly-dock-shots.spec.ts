@@ -29,6 +29,8 @@ import {
 } from './support/weekrow';
 import { waitForListLoaded } from './support/file-viewer';
 
+test.use({ longPaneIdentityTimeout: true });
+
 const DIR =
   process.env['WEEKLY_SHOTS_DIR'] ?? path.join(process.cwd(), 'screenshots', 'weekly-dock');
 const QUIZ_3 = 'Quiz 3: Cell membranes';

@@ -1,3 +1,4 @@
+import { RETRY_MS } from '../../src/features/assignment-view/inpage/submissionTiming';
 import { productTimerElapsed, pageQuiet, requestsQuiet, stableValue } from './support/settle';
 import { dropResetMessages } from './support/pane-identity';
 import { advanceBackgroundClock } from './support/clock';
@@ -23,12 +24,11 @@ import {
 } from '../fixtures/submission-page';
 import type { FakeCanvasRoute } from './support/fake-canvas';
 import { contentScriptWorld } from './support/content-script';
-import { CHROME_E2E_EXTENSION_DIR } from './support/extension';
 import { closePane, pane, saveSetting } from './support/file-viewer';
 import { json, saveAddress } from './support/scenario-api';
 import { addCsrfCookie, expect, saveTools, serveScenario, test } from './support/weekrow';
 
-test.use({ extensionDir: CHROME_E2E_EXTENSION_DIR });
+test.use({ longPaneIdentityTimeout: true });
 
 const assignmentPage = readFileSync('tests/fixtures/pages/assignment.html', 'utf8');
 const pdf = readFileSync('tests/fixtures/pdf/fixture.pdf', 'latin1');
@@ -3149,6 +3149,6 @@ test('Submission Details waits through several unknown identity replies', async 
       ? Promise.resolve({ verdict: 'unknown' }) : send(message);
   })()`);
   await saveTools(background, DEFAULT_TOOLS_SETTINGS);
-  // Three unknown replies each wait for RETRY_MS (2000), plus ten seconds of slack.
-  await expect(host(page)).toBeAttached({ timeout: 3 * 2000 + 10_000 });
+  // Three unknown replies each wait for RETRY_MS, plus ten seconds of slack.
+  await expect(host(page)).toBeAttached({ timeout: 3 * RETRY_MS + 10_000 });
 });

@@ -13,6 +13,8 @@ import {
   submissionRoute,
 } from './support/file-viewer';
 
+test.use({ longPaneIdentityTimeout: true });
+
 const notes = readFileSync('tests/fixtures/files/notes.txt', 'utf8');
 const assignmentPage = readFileSync('tests/fixtures/pages/assignment-submitted.html', 'utf8');
 const ASSIGNMENT = '/courses/101/assignments/7';

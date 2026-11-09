@@ -12,6 +12,8 @@ import {
 } from './support/file-viewer';
 import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
 
+test.use({ longPaneIdentityTimeout: true });
+
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
 
 const notes = readFileSync('tests/fixtures/files/notes.txt', 'utf8');

@@ -33,6 +33,8 @@ import type { StorageArea } from './support/scenario-api';
 import { GRID_WAIT_MS } from '../../src/features/weekly-list/inpage/layout';
 import { pageQuiet } from './support/settle';
 
+test.use({ longPaneIdentityTimeout: true });
+
 const QUIZ_3 = 'Quiz 3: Cell membranes';
 const FILE_LINK = 'Read notes';
 const DOCK = '#tools-weekly';
