@@ -33,6 +33,8 @@ import {
   isPaneFramePage,
   isSubmissionPage,
   isTabId,
+  applyTabIntent,
+  type TabIntent,
   keptAddress,
   normalizeTabs,
 } from './model';
@@ -258,7 +260,11 @@ export function routeViewerMessage(
       'viewer:position-set',
       'viewer:module-item',
       'viewer:tabs-get',
-      'viewer:tabs-set',
+      'viewer:tabs-open',
+      'viewer:tabs-undo',
+      'viewer:tabs-clear',
+      'viewer:tabs-close',
+      'viewer:tabs-activate',
       'viewer:permission',
       'viewer:session',
       'viewer:fetch-allowed',
@@ -416,16 +422,37 @@ export function routeViewerMessage(
         // token that the last read gave, so a pane that stayed open cannot write the tabs of one
         // student back as the tabs of another, or after a clearing. The round comes first: a
         // clearing between the two reads leaves this token with the old round.
-        const token = `${await readEpoch(host)}:${userId}`;
         if (request['type'] === 'viewer:tabs-get') {
           await recordStudent(host, userId);
+          const token = `${await readEpoch(host)}:${userId}`;
           const stored = await host.get(key);
           const tabs = storedUser(stored) === userId ? normalizeTabs(stored) : normalizeTabs(null);
           return { ...tabs, token };
         }
-        if (request['token'] !== token) throw new Error('The tabs changed since they were read');
-        await host.set(key, { ...normalizeTabs(request['tabs']), userId });
-        return { ok: true };
+        return withPositions(async () => {
+          const token = `${await readEpoch(host)}:${userId}`;
+          if (request['token'] !== token) throw new Error('The tabs changed since they were read');
+          const stored = await host.get(key);
+          const current = normalizeTabs(storedUser(stored) === userId ? stored : null);
+          const action = String(request['type']).slice(
+            'viewer:tabs-'.length,
+          ) as TabIntent['action'];
+          if (action === 'undo') {
+            if (
+              ![request['added'], request['evicted']].every(
+                (ids) => Array.isArray(ids) && ids.length <= 8 && ids.every(isTabId),
+              )
+            )
+              throw new Error('Invalid tab intent');
+          } else if (action !== 'clear' && !isTabId(request['fileId']))
+            throw new Error('Invalid tab intent');
+          const next = applyTabIntent(current, { ...request, action } as TabIntent);
+          const added = action === 'open' && !current.ids.includes(String(request['fileId']));
+          const evicted =
+            action === 'open' ? (current.ids.find((id) => !next.ids.includes(id)) ?? null) : null;
+          await host.set(key, { ...next, userId });
+          return { ...next, token, added, evicted };
+        });
       }
     }
   };
@@ -446,7 +473,9 @@ export function routeViewerMessage(
   // The reads and writes of the tabs of one browser tab run in the order they arrive, so the last
   // write that arrives is the last one stored.
   return tabId !== undefined &&
-    /^viewer:(?:tabs|position)-(?:get|set)$/.test(String(request['type']))
+    /^viewer:(?:tabs-(?:get|open|undo|clear|close|activate)|position-(?:get|set))$/.test(
+      String(request['type']),
+    )
     ? enqueue(tabId, attempt)
     : attempt();
 }

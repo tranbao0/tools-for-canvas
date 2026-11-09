@@ -3269,6 +3269,8 @@ With the pane read alone, the default run of the test failed before the fix.
      The order of the tabs is also the order of the clicks.
    - The page script tells a pane what to open once for each port (`synced`).
      The first `open-file` request makes the pane restore the stored tabs, and from then on the pane owns them.
+     A student close hides the pane and always writes after earlier tab writes: it clears the stored tabs if this page view synced them while visible without the identity cover; otherwise it removes this page view's added tabs, keeps the stored list and token, and sets active to none so the pane stays closed on the next page.
+     A close or reset cancels pending opens after every await; both channels give the link for a null, failed or ended open, and handle an opened, timeout or student-closed open.
      A copy that the page script read from the store is older than the pane, so it is never sent again.
      Otherwise it would undo what the student did in the pane since.
      A click that finishes writing the tabs after the pane has connected sends its file as a request.

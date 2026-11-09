@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { BrowserContext, Frame, Locator, Page, Worker } from '@playwright/test';
 import type { FakeCanvasRoute } from './fake-canvas';
+import { expectStartupDecision } from './file-pane';
 import { expect, serveScenario } from './weekrow';
 import { saveAddress, type StorageArea } from './scenario-api';
 
@@ -273,6 +274,7 @@ export async function openCoursePage(
   ]);
   await saveAddress(background, canvas.origin);
   await page.goto(`${canvas.origin}/courses/101/pages/notes`);
+  await expectStartupDecision(background, page);
   return canvas;
 }
 

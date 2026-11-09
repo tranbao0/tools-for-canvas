@@ -1672,8 +1672,10 @@ test('identity verdict: another store keeps the file error card and the click', 
   background,
   fileHost,
 }) => {
-  await openCoursePage(context, page, background, html, routes(fileHost));
+  // The tab lives in another cookie store from the start, as in a Firefox container or private
+  // window: no browser moves a live tab between stores.
   await moveTabsToAnotherStore(background);
+  await openCoursePage(context, page, background, html, routes(fileHost));
   await openFirstFile(page, 'Read notes');
   const frame = await pane(page);
   await expect(frame.getByText("Couldn't load this file")).toBeVisible();

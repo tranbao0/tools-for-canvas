@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { applyTabIntent, type TabIntent } from '../model';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_FILE_BYTES } from '../../../shared/canvas/fileBytes';
@@ -45,8 +46,10 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
     hasAccess: vi.fn(async () => true),
     requestAccess: vi.fn(async () => true),
     getTabs: vi.fn(async () => saved),
-    setTabs: vi.fn(async (tabs: Tabs) => {
-      saved = tabs;
+    tabToken: () => '1:1',
+    changeTabs: vi.fn(async (intent: TabIntent) => {
+      saved = applyTabIntent(saved, intent);
+      return saved;
     }),
     closePane: vi.fn(),
     fullView: createFullViewStore(vi.fn()),
@@ -58,12 +61,10 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
   const opens = createOpenSource();
   render(<ViewerApp host={host} opens={opens} />);
   const open = async (fileId: string, courseId?: string) => {
-    saved = {
-      ids: saved.ids.includes(fileId) ? saved.ids : [...saved.ids, fileId],
-      active: fileId,
-    };
+    const token = host.tabToken();
+    if (token !== undefined) saved = applyTabIntent(saved, { action: 'open', fileId });
     await act(async () => {
-      opens.emit({ fileId, ...(courseId ? { courseId } : {}) });
+      opens.emit({ fileId, token, ...(courseId ? { courseId } : {}) });
     });
   };
   return { host, open, opens, saved: () => saved };
@@ -184,16 +185,82 @@ describe('pane tabs', () => {
     expect(tabs()).toHaveLength(0);
   });
 
-  it('saves the first cold tab after its file check confirms the student', async () => {
+  it('uses the page action token when the pane first read is refused', async () => {
     const getTabs = vi
       .fn<PaneHost['getTabs']>()
       .mockRejectedValueOnce(new Error('The cookie is not confirmed'))
       .mockResolvedValue({ ids: [], active: null });
     const { open, host } = setup({ getTabs });
     await open('1');
-    await waitFor(() => expect(host.setTabs).toHaveBeenCalledWith({ ids: ['1'], active: '1' }));
-    // The refused read, the read before the file loads, and the read after it confirms the student.
-    expect(getTabs).toHaveBeenCalledTimes(3);
+    await waitFor(() =>
+      expect(host.changeTabs).toHaveBeenCalledWith({ action: 'open', fileId: '1' }, '1:1'),
+    );
+    // The file check refreshes the pane token independently of the queued action.
+    await waitFor(() => expect(getTabs).toHaveBeenCalledTimes(3));
+  });
+
+  it('shows a tokenless request without persisting it under the token of a later read', async () => {
+    let credential: string | undefined;
+    const changeTabs = vi.fn(async () => ({ ids: ['3', '1'], active: '1' }));
+    const { opens } = setup({
+      tabToken: () => credential,
+      getTabs: vi.fn(async () => {
+        credential = '2:B';
+        return { ids: ['3'], active: '3' };
+      }),
+      changeTabs,
+    } as Partial<PaneHost>);
+    await act(async () => {
+      opens.emit({ fileId: '1' });
+    });
+    await waitFor(() =>
+      expect(tabs().some((tab) => tab.getAttribute('data-file-id') === '1')).toBe(true),
+    );
+    expect(changeTabs).not.toHaveBeenCalled();
+  });
+
+  it('keeps the action token when a pane intent waits behind an earlier write', async () => {
+    let credential = '1:A';
+    let release: (() => void) | undefined;
+    let saved: Tabs = { ids: [], active: null };
+    const changeTabs = vi.fn(async (intent: TabIntent, _token?: string) => {
+      if (!release)
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      saved = applyTabIntent(saved, intent);
+      return saved;
+    });
+    const { open } = setup({ tabToken: () => credential, changeTabs } as Partial<PaneHost>, {
+      ids: ['1', '2'],
+      active: '1',
+    });
+    await open('2');
+    await waitFor(() => expect(release).toBeDefined());
+    await act(async () => {
+      fireEvent.click(tabs().find((tab) => tab.getAttribute('data-file-id') === '1')!);
+    });
+    credential = '2:B';
+    release!();
+    await waitFor(() => expect(changeTabs).toHaveBeenCalledTimes(2));
+    expect(changeTabs).toHaveBeenNthCalledWith(2, { action: 'activate', fileId: '1' }, '1:A');
+  });
+
+  it('keeps a memory-only tab in place and keeps the next stored tab selected', async () => {
+    const { opens, open, host } = setup();
+    await act(async () => {
+      opens.emit({ fileId: '1' });
+    });
+    await waitFor(() => expect(tabs()).toHaveLength(1));
+    await open('2');
+    await waitFor(() => expect(host.changeTabs).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await vi.mocked(host.changeTabs).mock.results[0]!.value;
+    });
+    await waitFor(() =>
+      expect(tabs().map((tab) => tab.getAttribute('data-file-id'))).toEqual(['1', '2']),
+    );
+    expect(tabs()[1]!.getAttribute('aria-selected')).toBe('true');
   });
 
   it('opens one tab for each file and activates an open file again', async () => {
@@ -284,7 +351,7 @@ describe('pane tabs', () => {
     });
     // The page asks for a third file while its own copy of the tabs is old.
     await act(async () => {
-      opens.emit({ fileId: '3' });
+      opens.emit({ fileId: '3', token: '1:1' });
     });
     expect(tabs().map((tab) => tab.getAttribute('data-file-id'))).toEqual(['1', '3']);
     await waitFor(() => expect(saved().ids).toEqual(['1', '3']));
@@ -292,12 +359,15 @@ describe('pane tabs', () => {
 
   it('keeps both files when two requests come before the stored tabs are read', async () => {
     let release: (tabs: Tabs) => void = () => undefined;
-    const { opens, saved } = setup({
-      getTabs: vi.fn(() => new Promise<Tabs>((resolve) => (release = resolve))),
-    });
+    const { opens, saved } = setup(
+      {
+        getTabs: vi.fn(() => new Promise<Tabs>((resolve) => (release = resolve))),
+      },
+      { ids: ['1'], active: '1' },
+    );
     await act(async () => {
-      opens.emit({ fileId: '2' });
-      opens.emit({ fileId: '1' });
+      opens.emit({ fileId: '2', token: '1:1' });
+      opens.emit({ fileId: '1', token: '1:1' });
     });
     await act(async () => {
       release({ ids: ['1'], active: '1' });
@@ -320,22 +390,26 @@ describe('tabs that fail to load', () => {
   it('does not treat a refused read as no tabs, and reads again at the next request', async () => {
     let refuse = true;
     const stored: Tabs = { ids: ['1'], active: '1' };
-    const { open, host, saved } = setup({
-      getTabs: vi.fn(async () => {
-        if (refuse) throw new Error('The tabs did not load');
-        return stored;
-      }),
-    });
+    const { open, host, saved } = setup(
+      {
+        tabToken: () => (refuse ? undefined : '1:1'),
+        getTabs: vi.fn(async () => {
+          if (refuse) throw new Error('The tabs did not load');
+          return stored;
+        }),
+      },
+      stored,
+    );
     await open('2');
     await waitFor(() => expect(tabs()).toHaveLength(1));
     // The read failed, so nothing was written, which would have replaced the stored tabs.
-    expect(host.setTabs).not.toHaveBeenCalled();
+    expect(host.changeTabs).not.toHaveBeenCalled();
     refuse = false;
     await open('3');
-    await waitFor(() => expect(tabs()).toHaveLength(2));
+    await waitFor(() => expect(tabs()).toHaveLength(3));
     expect(host.getTabs).toHaveBeenCalledTimes(2);
-    // The tab that opened while the read failed stays, and the tabs are written with the token.
-    await waitFor(() => expect(saved().ids).toEqual(['2', '3']));
+    // The tokenless tab stays in memory; only the later action changes the store.
+    await waitFor(() => expect(saved().ids).toEqual(['1', '3']));
   });
 });
 
@@ -390,7 +464,7 @@ describe('the address that the student clicked', () => {
       opens.emit({ fileId: '1', address: CLICKED });
     });
     await waitFor(() => expect(screen.getByText("Couldn't load this file")).toBeTruthy());
-    expect(JSON.stringify(vi.mocked(host.setTabs).mock.calls)).not.toContain('SECRET');
+    expect(JSON.stringify(vi.mocked(host.changeTabs).mock.calls)).not.toContain('SECRET');
     expect(JSON.stringify(vi.mocked(host.loadFile).mock.calls)).not.toContain('SECRET');
   });
 
