@@ -1762,13 +1762,23 @@ test('the dock clears the last row for Undo and a three-line failure at 400 px',
       };
     });
   };
-  await expect
-    .poll(async () => {
-      const m = await measure();
-      return m.rowBottom - m.toastTop;
-    })
-    .toBeLessThanOrEqual(0);
-  const undo = await measure();
+  // The list draws again as rows come and go, so the checks use one measure that held still for two
+  // reads in a row and already kept the last row clear.
+  const settled = async (): Promise<Awaited<ReturnType<typeof measure>>> => {
+    let last: Awaited<ReturnType<typeof measure>> | undefined;
+    let held: Awaited<ReturnType<typeof measure>> | undefined;
+    await expect
+      .poll(async () => {
+        const m = await measure();
+        const still = last !== undefined && JSON.stringify(m) === JSON.stringify(last);
+        last = m;
+        if (still && m.rowBottom <= m.toastTop) held = m;
+        return held !== undefined;
+      })
+      .toBe(true);
+    return held!;
+  };
+  const undo = await settled();
   expect(undo.height).toBe(40);
   expect(undo.bottomSpace).toBe(64);
   expect(undo.rowBottom).toBeLessThanOrEqual(undo.toastTop);
@@ -1780,13 +1790,7 @@ test('the dock clears the last row for Undo and a three-line failure at 400 px',
   await clickListControl(list.getByRole('button', { name: /\d+ older/ }).first());
   await clickListControl(list.getByRole('button', { name: 'Mark all older done' }));
   await expect(toast).toContainText("Couldn't mark those");
-  await expect
-    .poll(async () => {
-      const m = await measure();
-      return m.rowBottom - m.toastTop;
-    })
-    .toBeLessThanOrEqual(0);
-  const failure = await measure();
+  const failure = await settled();
   expect(failure.height).toBeGreaterThan(60);
   expect(failure.rowBottom).toBeLessThanOrEqual(failure.toastTop);
   expect(failure.toastBottom).toBeLessThan(failure.barTop);
