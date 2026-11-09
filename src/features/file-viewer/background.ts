@@ -33,6 +33,7 @@ import {
   isPaneFramePage,
   isSubmissionPage,
   isTabId,
+  openFile,
   keptAddress,
   normalizeTabs,
 } from './model';
@@ -261,6 +262,9 @@ export function routeViewerMessage(
       'viewer:module-item',
       'viewer:tabs-get',
       'viewer:tabs-set',
+      'viewer:tabs-open',
+      'viewer:tabs-undo',
+      'viewer:tabs-clear',
       'viewer:permission',
       'viewer:session',
       'viewer:fetch-allowed',
@@ -422,8 +426,35 @@ export function routeViewerMessage(
           return { ...tabs, token };
         }
         if (request['token'] !== token) throw new Error('The tabs changed since they were read');
-        await host.set(key, { ...normalizeTabs(request['tabs']), userId });
-        return { ok: true };
+        if (request['type'] === 'viewer:tabs-set') {
+          await host.set(key, { ...normalizeTabs(request['tabs']), userId });
+          return { ok: true };
+        }
+        const stored = await host.get(key);
+        const current = normalizeTabs(storedUser(stored) === userId ? stored : null);
+        let next = current;
+        let added = false;
+        let evicted: string | null = null;
+        if (request['type'] === 'viewer:tabs-open') {
+          if (!isTabId(request['fileId'])) throw new Error('Invalid tab intent');
+          next = openFile(current, request['fileId']);
+          added = !current.ids.includes(request['fileId']);
+          evicted = current.ids.find((id) => !next.ids.includes(id)) ?? null;
+        } else if (request['type'] === 'viewer:tabs-undo') {
+          const remove = request['added'];
+          const restore = request['evicted'];
+          if (
+            ![remove, restore].every(
+              (ids) => Array.isArray(ids) && ids.length <= 8 && ids.every(isTabId),
+            )
+          )
+            throw new Error('Invalid tab intent');
+          const ids = current.ids.filter((id) => !(remove as string[]).includes(id));
+          const kept = [...new Set(restore as string[])].filter((id) => !ids.includes(id));
+          next = { ids: [...kept.slice(0, 8 - ids.length), ...ids], active: null };
+        } else next = { ids: [], active: null };
+        await host.set(key, { ...next, userId });
+        return { ...next, token, added, evicted };
       }
     }
   };
@@ -444,7 +475,9 @@ export function routeViewerMessage(
   // The reads and writes of the tabs of one browser tab run in the order they arrive, so the last
   // write that arrives is the last one stored.
   return tabId !== undefined &&
-    /^viewer:(?:tabs|position)-(?:get|set)$/.test(String(request['type']))
+    /^viewer:(?:tabs-(?:get|set|open|undo|clear)|position-(?:get|set))$/.test(
+      String(request['type']),
+    )
     ? enqueue(tabId, attempt)
     : attempt();
 }

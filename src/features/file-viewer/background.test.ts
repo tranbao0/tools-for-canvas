@@ -1341,3 +1341,59 @@ it('leaves the watcher of another store pane alone when the request store clears
   stopReset();
   vi.useRealTimers();
 });
+
+describe('atomic page tab intents', () => {
+  const intent = (sender: Sender, host: ViewerHost, token: string, type: string, data = {}) =>
+    routeViewerMessage({ type: 'viewer:tabs-' + type, token, ...data }, sender, host);
+
+  it('opens against the current store and returns the evicted tab', async () => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    const ids = Array.from({ length: 8 }, (_, i) => String(i + 11));
+    await tabsSet(sender, host, { ids, active: '18' }, token);
+    expect(await intent(sender, host, token, 'open', { fileId: '5' })).toMatchObject({
+      added: true,
+      evicted: '11',
+      ids: [...ids.slice(1), '5'],
+      active: '5',
+    });
+    expect(await intent(sender, host, token, 'open', { fileId: '5' })).toMatchObject({
+      added: false,
+      evicted: null,
+    });
+  });
+
+  it('undoes only unseen additions and evictions against the current store', async () => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['12', '5', '7'], active: '7' }, token);
+    await intent(sender, host, token, 'undo', { added: ['5'], evicted: ['11'] });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['11', '12', '7'], active: null });
+  });
+
+  it('clears seen tabs', async () => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['4'], active: '4' }, token);
+    await intent(sender, host, token, 'clear');
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: [], active: null });
+  });
+
+  it('retains pane changes between a page open and a page close', async () => {
+    const { sender, pane, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['4'], active: '4' }, token);
+    await intent(sender, host, token, 'open', { fileId: '5' });
+    await tabsSet(pane as Sender, host, { ids: ['5', '8'], active: '8' }, token);
+    await intent(sender, host, token, 'undo', { added: ['5'], evicted: [] });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['8'], active: null });
+  });
+
+  it.each(['open', 'undo', 'clear'])('rejects a stale token for %s', async (type) => {
+    const { sender, host } = setup();
+    await tabsGet(sender, host);
+    await expect(
+      intent(sender, host, 'wrong', type, { fileId: '5', added: [], evicted: [] }),
+    ).rejects.toThrow();
+  });
+});
