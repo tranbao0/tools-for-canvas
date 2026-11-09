@@ -148,12 +148,12 @@ jobs:
           npm run build:firefox
           node -e "console.log('version=' + JSON.parse(require('fs').readFileSync('.output/firefox-mv3/manifest.json')).browser_specific_settings.gecko.strict_min_version)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache the minimum Firefox version
+      - name: Cache the Firefox and geckodriver archives
         if: matrix.firefox == 'minimum'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/weekrow-test/firefox-${{ steps.minimum.outputs.version }}
-          key: firefox-${{ steps.minimum.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+          path: ~/.cache/weekrow-test/archives
+          key: firefox-archives-${{ steps.minimum.outputs.version }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/firefox/install-firefox.sh') }}
 
       - name: Install the minimum Firefox version
         if: matrix.firefox == 'minimum'
@@ -162,8 +162,7 @@ jobs:
         run: |
           install_output="$(bash tests/firefox/install-firefox.sh)"
           printf '%s\n' "$install_output"
-          printf '%s\n' "$install_output" | grep '^FIREFOX_BIN=' >> "$GITHUB_ENV"
-          echo "GECKODRIVER_BIN=$GECKOWEBDRIVER/geckodriver" >> "$GITHUB_ENV"
+          printf '%s\n' "$install_output" | grep -E '^(FIREFOX_BIN|GECKODRIVER_BIN)=' >> "$GITHUB_ENV"
 
       - name: Find Firefox and geckodriver
         if: matrix.firefox == 'runner'

@@ -50,50 +50,45 @@ if [[ "$FIREFOX_VERSION" == 159.0 ]]; then
 fi
 FIREFOX_URL="https://ftp.mozilla.org/pub/firefox/releases/${FIREFOX_VERSION}/${FIREFOX_PLATFORM}/en-US/firefox-${FIREFOX_VERSION}.tar.xz"
 GECKODRIVER_URL="https://github.com/mozilla/geckodriver/releases/download/v${GECKODRIVER_VERSION}/geckodriver-v${GECKODRIVER_VERSION}-${GECKODRIVER_PLATFORM}.tar.gz"
-VERSION_FILE="$FIREFOX_DIR/.weekrow-version"
-WANTED_VERSION="firefox=${FIREFOX_VERSION} platform=${FIREFOX_PLATFORM}"
+ARCHIVE_DIR="$CACHE_DIR/archives"
+FIREFOX_ARCHIVE="$ARCHIVE_DIR/firefox-${FIREFOX_VERSION}-${FIREFOX_PLATFORM}.tar.xz"
+GECKODRIVER_ARCHIVE="$ARCHIVE_DIR/geckodriver-${GECKODRIVER_VERSION}-${GECKODRIVER_PLATFORM}.tar.gz"
 
-if [[ -x "$FIREFOX_DIR/firefox" && -f "$VERSION_FILE" && "$(cat "$VERSION_FILE")" == "$WANTED_VERSION" ]]; then
-  echo "Firefox ${FIREFOX_VERSION} is already installed in $FIREFOX_DIR."
-  echo "FIREFOX_BIN=$FIREFOX_DIR/firefox"
-  exit 0
-fi
-if [[ "$FIREFOX_VERSION" == 159.0 && -x "$FIREFOX_DIR/firefox" && -f "$CACHE_DIR/versions.txt" && "$(cat "$CACHE_DIR/versions.txt")" == "firefox=159.0 geckodriver=${GECKODRIVER_VERSION} platform=${FIREFOX_PLATFORM}" ]]; then
-  echo "Firefox ${FIREFOX_VERSION} is already installed in $FIREFOX_DIR."
-  echo "FIREFOX_BIN=$FIREFOX_DIR/firefox"
-  exit 0
-fi
-
-mkdir -p "$CACHE_DIR"
+mkdir -p "$ARCHIVE_DIR"
 WORK_DIR="$(mktemp -d "$CACHE_DIR/download.XXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-# download <url> <sha256> <file>
+# Verify cached archives too; an installed folder or marker never proves its contents.
+# download <url> <sha256> <archive>
 download() {
-  echo "Downloading $1"
-  curl --fail --location --silent --show-error --output "$3" "$1"
-  echo "$2  $3" | sha256sum --check --quiet -
+  if [[ ! -f "$3" ]]; then
+    echo "Downloading $1"
+    curl --fail --location --silent --show-error --output "$WORK_DIR/archive" "$1"
+    mv "$WORK_DIR/archive" "$3"
+  else
+    echo "Using cached archive $3"
+  fi
+  echo "Verifying SHA256 $3"
+  echo "$2  $3" | sha256sum --check -
 }
 
-download "$FIREFOX_URL" "$FIREFOX_SHA256" "$WORK_DIR/firefox.tar.xz"
-if [[ "$FIREFOX_VERSION" == 159.0 && ! -x "$CACHE_DIR/geckodriver" ]]; then
-  download "$GECKODRIVER_URL" "$GECKODRIVER_SHA256" "$WORK_DIR/geckodriver.tar.gz"
-fi
+download "$FIREFOX_URL" "$FIREFOX_SHA256" "$FIREFOX_ARCHIVE"
+download "$GECKODRIVER_URL" "$GECKODRIVER_SHA256" "$GECKODRIVER_ARCHIVE"
 
-mkdir "$WORK_DIR/firefox-unpacked"
-tar -xJf "$WORK_DIR/firefox.tar.xz" -C "$WORK_DIR/firefox-unpacked"
-if [[ -f "$WORK_DIR/geckodriver.tar.gz" ]]; then
-  mkdir "$WORK_DIR/geckodriver-unpacked"
-  tar -xzf "$WORK_DIR/geckodriver.tar.gz" -C "$WORK_DIR/geckodriver-unpacked"
-fi
+# Extract only verified archives, on every run, so planted installed binaries are replaced.
+mkdir "$WORK_DIR/firefox-unpacked" "$WORK_DIR/geckodriver-unpacked"
+tar -xJf "$FIREFOX_ARCHIVE" -C "$WORK_DIR/firefox-unpacked"
+tar -xzf "$GECKODRIVER_ARCHIVE" -C "$WORK_DIR/geckodriver-unpacked"
 
+echo "firefox=${FIREFOX_VERSION} platform=${FIREFOX_PLATFORM} sha256=${FIREFOX_SHA256}" > "$WORK_DIR/firefox-unpacked/firefox/.weekrow-version"
+echo "geckodriver=${GECKODRIVER_VERSION} platform=${GECKODRIVER_PLATFORM} sha256=${GECKODRIVER_SHA256}" > "$WORK_DIR/geckodriver-unpacked/.geckodriver-version"
 rm -rf "$FIREFOX_DIR"
 mv "$WORK_DIR/firefox-unpacked/firefox" "$FIREFOX_DIR"
-if [[ -d "$WORK_DIR/geckodriver-unpacked" ]]; then
-  mv "$WORK_DIR/geckodriver-unpacked/geckodriver" "$CACHE_DIR/geckodriver"
-  chmod +x "$CACHE_DIR/geckodriver"
-fi
-echo "$WANTED_VERSION" > "$VERSION_FILE"
+mv "$WORK_DIR/geckodriver-unpacked/geckodriver" "$CACHE_DIR/geckodriver"
+chmod +x "$CACHE_DIR/geckodriver"
+mv "$WORK_DIR/geckodriver-unpacked/.geckodriver-version" "$CACHE_DIR/.geckodriver-version"
 
 echo "Installed Firefox ${FIREFOX_VERSION} in $FIREFOX_DIR."
+echo "Installed geckodriver ${GECKODRIVER_VERSION} in $CACHE_DIR."
 echo "FIREFOX_BIN=$FIREFOX_DIR/firefox"
+echo "GECKODRIVER_BIN=$CACHE_DIR/geckodriver"
