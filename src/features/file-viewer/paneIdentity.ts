@@ -74,7 +74,6 @@ export function watchPaneIdentity(show: (confirmed: boolean) => void, token?: st
       if (
         reply.verdict === 'no' ||
         (reply.verdict === 'yes' &&
-          reply.token !== 'store' &&
           [...state.panes].some((pane) => pane.token !== undefined && pane.token !== reply.token))
       ) {
         resetPanes();
