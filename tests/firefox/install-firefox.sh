@@ -63,7 +63,10 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 download() {
   if [[ ! -f "$3" ]]; then
     echo "Downloading $1"
-    curl --fail --location --silent --show-error --output "$WORK_DIR/archive" "$1"
+    # Mozilla's mirror and GitHub answer an error now and then (an HTTP 504 was seen), so a
+    # download tries again before it fails. The checksum check below still decides.
+    curl --fail --location --silent --show-error --retry 4 --retry-delay 5 --retry-all-errors \
+      --output "$WORK_DIR/archive" "$1"
     mv "$WORK_DIR/archive" "$3"
   else
     echo "Using cached archive $3"
