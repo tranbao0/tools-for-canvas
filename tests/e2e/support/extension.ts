@@ -96,6 +96,29 @@ export async function waitForExtensionWorker(context: BrowserContext): Promise<W
   });
 }
 
+/** Whether a tab shows the welcome page of the extension. */
+function isWelcomeTab(tab: Page): boolean {
+  const url = tab.url();
+  return url.startsWith('chrome-extension://') && url.endsWith('/welcome.html');
+}
+
+/**
+ * Waits until the welcome page that the install opens is a tab of the context, and returns it.
+ * The install opens it as the active tab, at a time that no test step controls. A tab that is not
+ * the active tab draws at about one frame per second and gets no fullscreen, so a test must not
+ * start before this tab is open. Before the test starts, no Canvas tab is open, so the install
+ * always opens the welcome page.
+ */
+export async function waitForInstallWelcome(context: BrowserContext): Promise<Page> {
+  await expect
+    .poll(() => context.pages().some(isWelcomeTab), {
+      message: 'The install opened no welcome page.',
+      timeout: WORKER_TIMEOUT_MS,
+    })
+    .toBe(true);
+  return context.pages().find(isWelcomeTab)!;
+}
+
 type LaunchOptions = NonNullable<Parameters<typeof chromium.launchPersistentContext>[1]>;
 
 function describeError(error: unknown): string {
@@ -185,6 +208,7 @@ export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
         },
         `Chromium may have rejected ${extensionDir}; run "npm run check:manifest" to look for manifest problems.`,
       );
+      await timedStep(testInfo, 'install welcome page', () => waitForInstallWelcome(context));
       await use(context);
       await context.close();
     },
@@ -200,6 +224,8 @@ export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
   page: [
     async ({ context }, use, testInfo) => {
       const page: Page = await timedStep(testInfo, 'new page', () => context.newPage());
+      // The welcome page of the install may still be the active tab.
+      await page.bringToFront();
       await use(page);
     },
     { scope: 'test', timeout: START_UP_FIXTURE_TIMEOUT_MS },
