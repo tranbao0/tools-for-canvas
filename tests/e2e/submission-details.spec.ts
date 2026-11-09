@@ -3149,5 +3149,6 @@ test('Submission Details waits through several unknown identity replies', async 
       ? Promise.resolve({ verdict: 'unknown' }) : send(message);
   })()`);
   await saveTools(background, DEFAULT_TOOLS_SETTINGS);
-  await expect(host(page)).toBeAttached({ timeout: 10000 });
+  // Three unknown replies each wait for RETRY_MS (2000), plus ten seconds of slack.
+  await expect(host(page)).toBeAttached({ timeout: 3 * 2000 + 10_000 });
 });

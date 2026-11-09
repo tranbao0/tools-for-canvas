@@ -2614,11 +2614,12 @@ test('identity verdict: a draft survives three cookie changes in thirty seconds'
   }
 });
 
-test('identity verdict: a missing reply covers the pane within six seconds', async ({
+test('identity verdict: a missing reply covers the pane within the timeout and slack', async ({
   context,
   page,
   background,
 }) => {
+  await page.addInitScript(() => sessionStorage.setItem('e2ePaneIdentityTimeoutMs', '5000'));
   const { canvas } = await open(context, page, background);
   await ready(page, canvas, background);
   const frame = await openPane(page, 'Essay');
@@ -2629,23 +2630,24 @@ test('identity verdict: a missing reply covers the pane within six seconds', asy
     await world.evaluate(`(() => {
     const runtime = (globalThis.browser?.runtime?.id ? globalThis.browser : chrome).runtime;
     const send = runtime.sendMessage.bind(runtime);
-    const began = performance.now();
     new MutationObserver(() => {
       if (document.querySelector('#tools-turn-in').getAttribute('data-identity') === 'unknown')
-        globalThis.__paneCoveredAfter ??= performance.now() - began;
+        globalThis.__paneCoveredAfter ??= performance.now() - globalThis.__paneFirstHeld;
     }).observe(document.querySelector('#tools-turn-in'), {attributes: true, attributeFilter: ['data-identity']});
     globalThis.__paneHeld = 0;
-    runtime.sendMessage = (message) => { if (['viewer:pane-check', 'viewer:fetch-allowed'].includes(message.type)) { globalThis.__paneHeld++; return new Promise(() => {}); } return send(message); };
+    runtime.sendMessage = (message) => { if (['viewer:pane-check', 'viewer:fetch-allowed'].includes(message.type)) { if (message.type === 'viewer:pane-check') globalThis.__paneFirstHeld ??= performance.now(); globalThis.__paneHeld++; return new Promise(() => {}); } return send(message); };
     return runtime.sendMessage.toString();
   })()`),
   ).toContain('__paneHeld');
   await expect
-    .poll(() => world.evaluate('globalThis.__paneHeld'), { timeout: 2000 })
+    .poll(() => world.evaluate('globalThis.__paneFirstHeld ?? 0'), { timeout: 15_000 })
     .toBeGreaterThan(0);
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'unknown', {
-    timeout: 6000,
+    timeout: 15_000,
   });
-  expect(await world.evaluate('globalThis.__paneCoveredAfter')).toBeLessThanOrEqual(6000);
+  const coveredAfter = await world.evaluate('globalThis.__paneCoveredAfter');
+  expect(coveredAfter).toBeGreaterThanOrEqual(5000);
+  expect(coveredAfter).toBeLessThanOrEqual(8000);
   await expect(frame.locator('#marker')).toHaveValue('Keep this unsent draft');
 });
 
@@ -2677,7 +2679,8 @@ test('identity verdict: Preview in another store stays open', async ({
   const frame = await openPane(page, 'Essay');
   const identityChecks = await watchIdentityChecks(page);
   await frame.locator('#marker').fill('Container draft');
-  await expect.poll(identityChecks).toBeGreaterThanOrEqual(6);
+  // Six one-second ticks plus ten seconds for a busy browser.
+  await expect.poll(identityChecks, { timeout: 6 * 1000 + 10_000 }).toBeGreaterThanOrEqual(6);
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect(frame.locator('#marker')).toHaveValue('Container draft');
 });

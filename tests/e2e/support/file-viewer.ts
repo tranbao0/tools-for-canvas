@@ -190,7 +190,11 @@ async function paneBox(page: Page) {
  * the frame has its hit test data goes to the page, not to the frame, and then the click does
  * nothing. A press that arrived is counted, so a click is not repeated after it landed.
  */
-export async function clickInFrame(frame: Frame, target: Locator): Promise<void> {
+export async function clickInFrame(
+  frame: Frame,
+  target: Locator,
+  options: { button?: 'left' | 'middle' | 'right' } = {},
+): Promise<void> {
   const presses = () =>
     frame.evaluate(() => {
       const counter = window as unknown as { pointerPresses?: number };
@@ -202,7 +206,7 @@ export async function clickInFrame(frame: Frame, target: Locator): Promise<void>
     });
   const before = await presses();
   await expect(async () => {
-    if ((await presses()) === before) await target.click({ timeout: 2000 });
+    if ((await presses()) === before) await target.click({ ...options, timeout: 2000 });
     await expect.poll(presses, { timeout: 1500 }).toBeGreaterThan(before);
   }).toPass({ timeout: 20_000 });
 }

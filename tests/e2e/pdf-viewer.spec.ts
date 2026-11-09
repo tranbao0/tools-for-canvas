@@ -617,7 +617,7 @@ test('links: an internal link has no address, so a middle click opens nothing', 
       once: true,
     });
   });
-  await internal.click({ button: 'middle' });
+  await clickInFrame(frame, internal, { button: 'middle' });
   await expect(internal).toHaveAttribute('data-middle-clicked', 'true');
   expect(opened).toBe(0);
   await expect(pageInput(frame)).toHaveValue('1');
@@ -939,12 +939,22 @@ function savedPositions(background: Parameters<typeof openCoursePage>[2]) {
   });
 }
 
+/** Retry opening the menu, then send the selection click once. */
+async function chooseZoom(frame: Frame, name: string) {
+  const item = frame.getByRole('menuitemradio', { name });
+  await expect(async () => {
+    if (!(await item.isVisible()))
+      await frame.getByRole('button', { name: 'Zoom level' }).click({ timeout: 2000 });
+    await expect(item).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 20_000 });
+  await item.click();
+}
+
 test('saved page and zoom return after reload', async ({ context, page, background, fileHost }) => {
   let frame = await openPdf(context, page, background, fileHost);
   await pageInput(frame).fill('3');
   await pageInput(frame).press('Enter');
-  await clickInFrame(frame, frame.getByRole('button', { name: 'Zoom level' }));
-  await frame.getByRole('menuitemradio', { name: '150%' }).click();
+  await chooseZoom(frame, '150%');
   await expect
     .poll(async () =>
       Object.values(await savedPositions(background)).some(
@@ -964,8 +974,7 @@ test('saved page and zoom return after reload', async ({ context, page, backgrou
 async function saveThirdPageAtZoom(frame: Frame, background: Parameters<typeof openCoursePage>[2]) {
   await pageInput(frame).fill('3');
   await pageInput(frame).press('Enter');
-  await clickInFrame(frame, frame.getByRole('button', { name: 'Zoom level' }));
-  await frame.getByRole('menuitemradio', { name: '150%' }).click();
+  await chooseZoom(frame, '150%');
   await expect
     .poll(async () =>
       Object.values(await savedPositions(background)).some(
@@ -1450,8 +1459,7 @@ test('a reload right after a move saves the page and zoom', async ({
   await holdIdleSaves(frame);
   await pageInput(frame).fill('3');
   await pageInput(frame).press('Enter');
-  await frame.getByRole('button', { name: 'Zoom level' }).click();
-  await frame.getByRole('menuitemradio', { name: '150%' }).click();
+  await chooseZoom(frame, '150%');
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
   await expect(pageInput(frame)).toHaveValue('3');
   // The idle save waits and did not run. Only the unload can send the position.
@@ -1474,8 +1482,7 @@ test('closing a file tab right after a move saves the page and zoom', async ({
   await holdIdleSaves(frame);
   await pageInput(frame).fill('3');
   await pageInput(frame).press('Enter');
-  await frame.getByRole('button', { name: 'Zoom level' }).click();
-  await frame.getByRole('menuitemradio', { name: '150%' }).click();
+  await chooseZoom(frame, '150%');
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
   await expect(pageInput(frame)).toHaveValue('3');
   // A second file keeps the pane open, so the close of the first tab does not unload the pane.

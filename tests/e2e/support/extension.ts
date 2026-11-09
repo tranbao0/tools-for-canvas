@@ -41,7 +41,7 @@ const CLOSE_TIMEOUT_MS = 15_000;
 const SLOW_STEP_MS = 5_000;
 
 export interface ExtensionOptions {
-  /** The unpacked extension that the context loads. Defaults to {@link CHROME_EXTENSION_DIR}. */
+  /** The unpacked extension that the context loads. Defaults to {@link CHROME_E2E_EXTENSION_DIR}. */
   extensionDir: string;
   /** More command line flags for Chromium. */
   browserArgs: string[];
@@ -158,7 +158,7 @@ export async function launchBrowser(
  * The built-in `page` fixture opens a tab in the extension context.
  */
 export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
-  extensionDir: [CHROME_EXTENSION_DIR, { option: true }],
+  extensionDir: [CHROME_E2E_EXTENSION_DIR, { option: true }],
   browserArgs: [[], { option: true }],
   scrollBars: [false, { option: true }],
   context: [
