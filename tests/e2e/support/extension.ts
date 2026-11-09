@@ -30,16 +30,17 @@ export const WORKER_TIMEOUT_MS = 30_000;
 /** How long the welcome page of the install may take to open after the service worker starts. */
 const WELCOME_TIMEOUT_MS = 30_000;
 
+/** How long to wait for the close of a browser from a failed attempt. */
+const CLOSE_TIMEOUT_MS = 15_000;
+
 /**
  * The timeout of a fixture that starts the browser or the extension. A fixture with its own
  * timeout does not use the time of the test, so a slow start-up never shortens the test body.
- * It covers two attempts of a launch and a start-up, and a slow close.
+ * It covers two attempts of a launch and a start-up, each with a slow close, and a margin, so the
+ * error of the last attempt shows before the fixture timeout.
  */
 export const START_UP_FIXTURE_TIMEOUT_MS =
-  2 * (LAUNCH_TIMEOUT_MS + WORKER_TIMEOUT_MS + WELCOME_TIMEOUT_MS) + 30_000;
-
-/** How long to wait for the close of a browser from a failed attempt. */
-const CLOSE_TIMEOUT_MS = 15_000;
+  2 * (LAUNCH_TIMEOUT_MS + WORKER_TIMEOUT_MS + WELCOME_TIMEOUT_MS + CLOSE_TIMEOUT_MS) + 10_000;
 
 /** A start-up step slower than this is logged even when `E2E_STEP_TIMING` is not set. */
 const SLOW_STEP_MS = 5_000;
