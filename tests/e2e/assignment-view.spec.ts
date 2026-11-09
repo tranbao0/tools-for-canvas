@@ -2645,7 +2645,9 @@ test('identity verdict: a missing reply covers the pane within the timeout and s
     timeout: 15_000,
   });
   const coveredAfter = await world.evaluate('globalThis.__paneCoveredAfter');
-  expect(coveredAfter).toBeGreaterThanOrEqual(5000);
+  // The product reads the clock for its 5 s limit just before it sends the check, and the test
+  // reads it a moment later when it holds that check, so the two can differ by 1 ms.
+  expect(coveredAfter).toBeGreaterThanOrEqual(4999);
   expect(coveredAfter).toBeLessThanOrEqual(6000);
   await expect(frame.locator('#marker')).toHaveValue('Keep this unsent draft');
 });
