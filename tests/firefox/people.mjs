@@ -25,7 +25,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { By } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
-import { installAddon, findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+import {
+  waitForExtensionPage,
+  installAddon,
+  findBrowserTools,
+  readAddonId,
+  startFirefox,
+  waitForTab,
+} from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const WAIT_MS = 15000;
@@ -254,6 +261,7 @@ async function main() {
     if (problems.length > 0) {
       await driver.switchTo().newWindow('tab');
       await driver.get(`moz-extension://${UUID}/welcome.html`);
+      await waitForExtensionPage(driver, `moz-extension://${UUID}/welcome.html`);
       const background = await driver.executeAsyncScript(`
         const done = arguments[arguments.length - 1];
         browser.runtime.sendMessage({ type: 'weekrow:get-state', request: { surface: 'panel', spanOffset: 0, scopeCourseId: null } })

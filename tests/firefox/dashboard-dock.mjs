@@ -29,6 +29,7 @@ import { By } from 'selenium-webdriver';
 import { startFileHost } from '../e2e/support/file-host.ts';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
 import {
+  waitForExtensionPage,
   installAddon,
   clickClosingFrame,
   findBrowserTools,
@@ -239,6 +240,7 @@ async function closeFilePane(driver) {
   const host = await driver.findElement(By.css('#tools-file-viewer'));
   const frame = await (await host.getShadowRoot()).findElement(By.css('iframe'));
   await driver.switchTo().frame(frame);
+  await waitForExtensionPage(driver, `moz-extension://${UUID}/viewer.html`);
   try {
     await waitFor(
       async () => (await driver.findElements(By.css('[aria-label="Close file viewer"]'))).length,

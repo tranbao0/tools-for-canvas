@@ -47,6 +47,7 @@ import { By, Key } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
 import { DASHBOARD } from './dashboard-dock.mjs';
 import {
+  waitForExtensionPage,
   installAddon,
   clickClosingFrame,
   findBrowserTools,
@@ -335,6 +336,7 @@ async function checkCard(driver, origin, cardLoads) {
     throw new Error(`The file pane did not cover the pane: ${JSON.stringify(covered)}`);
   const fileFrame = await frameOf(driver, FILE_PANE);
   await driver.switchTo().frame(fileFrame);
+  await waitForExtensionPage(driver, `moz-extension://${UUID}/viewer.html`);
   const close = await driver.wait(
     async () => (await driver.findElements(By.css('[aria-label="Close file viewer"]')))[0] ?? false,
     10_000,
@@ -666,6 +668,7 @@ async function main() {
       throw new Error('The row stays pressed while the file pane covers the pane');
     const fileFrame = await frameOf(driver, FILE_PANE);
     await driver.switchTo().frame(fileFrame);
+    await waitForExtensionPage(driver, `moz-extension://${UUID}/viewer.html`);
     await waitFor(
       async () =>
         (await driver.findElements(By.css('.fv-media:not([hidden]) pre')))[0]
@@ -869,6 +872,7 @@ async function main() {
       const placeOf = async () => {
         await driver.switchTo().defaultContent();
         await driver.switchTo().frame(coveredFrame);
+        await waitForExtensionPage(driver, `moz-extension://${UUID}/viewer.html`);
         return driver.executeScript(
           `
           const scroller = document.querySelector(arguments[0]);

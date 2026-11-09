@@ -3,7 +3,14 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { By } from 'selenium-webdriver';
 import { startFileHost } from '../e2e/support/file-host.ts';
-import { installAddon, findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+import {
+  waitForExtensionPage,
+  installAddon,
+  findBrowserTools,
+  readAddonId,
+  startFirefox,
+  waitForTab,
+} from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const PDF = '%PDF-1.4\n%%EOF\n';
@@ -62,6 +69,7 @@ try {
   const canvasTab = await driver.getWindowHandle();
   await driver.switchTo().newWindow('tab');
   await driver.get(`moz-extension://${UUID}/file-check.html`);
+  await waitForExtensionPage(driver, `moz-extension://${UUID}/file-check.html`);
   const runCheck = await driver.wait(
     async () =>
       (await driver.findElements(By.xpath('//button[normalize-space()="Run check"]')))[0] ?? false,
