@@ -817,6 +817,7 @@ test('a failed hello keeps typed work and offers a student link', async ({
   page,
   background,
 }, testInfo) => {
+  await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
   const canvas = await openCoursePage(context, page, background);
   await page.evaluate(() => {
     window.addEventListener(

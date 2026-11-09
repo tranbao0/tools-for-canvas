@@ -754,7 +754,9 @@ describe('the page script', () => {
         await vi.advanceTimersByTimeAsync(100);
         expect(document.getElementById('tools-file-viewer')).not.toBeNull();
         expect(respond).not.toHaveBeenCalled();
-        await vi.advanceTimersByTimeAsync(15_000);
+        await vi.advanceTimersByTimeAsync(14_000);
+        expect(respond).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1000);
         expect(respond).toHaveBeenCalledWith({ opened: true });
         expect(document.getElementById('tools-file-viewer')).not.toBeNull();
         expect(

@@ -15,6 +15,7 @@ import { advanceBackgroundClock } from './support/clock';
 import type { FakeCanvas, FakeCanvasRoute } from './support/fake-canvas';
 import { json, saveAddress } from './support/scenario-api';
 import {
+  clickListControl,
   addCsrfCookie,
   doneBox,
   inpageList,
@@ -170,7 +171,7 @@ test.describe('the courses of the session', () => {
     enrolled.add(IDS.courses.biology);
     const retry = page.getByRole('button', { name: 'Retry' });
     await expect(retry).toBeVisible();
-    await retry.click();
+    await clickListControl(retry);
 
     await expect(doneBox(page, QUIZ_3)).toBeVisible();
     expect(courseListRequests()).toBe(2);

@@ -18,6 +18,7 @@ import {
   waitForListLoaded,
 } from './support/file-viewer';
 import {
+  clickListControl,
   addCsrfCookie,
   doneBox,
   expect,
@@ -144,7 +145,7 @@ const tab = (page: Page) => page.getByRole('button', { name: /^Open weekly list/
 
 /** Minimizes the list with its own button, as a student does. */
 async function minimize(page: Page): Promise<void> {
-  await minimizeButton(page).click();
+  await clickListControl(minimizeButton(page));
   await expect(page.locator(DOCK)).toBeHidden();
   await expect(tab(page)).toBeVisible();
 }
@@ -401,7 +402,7 @@ test.describe('the dock on the classic dashboard', () => {
     });
     await expect.poll(() => region(page).evaluate((element) => element.scrollTop)).toBe(240);
     await minimize(page);
-    await tab(page).click();
+    await clickListControl(tab(page));
     await expect(page.locator(DOCK)).toBeVisible();
     await expect.poll(() => region(page).evaluate((element) => element.scrollTop)).toBe(240);
   });
@@ -426,7 +427,7 @@ test.describe('Canvas overlays on List View', () => {
     await open(context, page, background, { fixture: 'dashboard-list-view' });
     await expect(page.locator(DOCK)).toBeVisible();
     expect(await topAt(page, 1600, 400)).toBe('tools-weekly');
-    await page.getByRole('button', { name: '+ To Do' }).click();
+    await clickListControl(page.getByRole('button', { name: '+ To Do' }));
     await expect(page.getByRole('dialog', { name: 'Add To Do' })).toBeVisible();
     // The tray stands at the right window edge, over the dock, with the z-index of Canvas.
     expect(await topAt(page, 1600, 400)).toBe('planner-todo-tray');
@@ -445,7 +446,7 @@ test.describe('Canvas overlays on List View', () => {
     });
     const box = await boxOf(page, TAB);
     expect(await topAt(page, box.x + 19, box.y + 40)).toBe('tools-weekly-tab');
-    await page.getByRole('button', { name: '+ To Do' }).click();
+    await clickListControl(page.getByRole('button', { name: '+ To Do' }));
     await expect(page.getByRole('dialog', { name: 'Add To Do' })).toBeVisible();
     expect(await topAt(page, box.x + 19, box.y + 40)).toBe('planner-todo-tray');
     await page.screenshot({ path: '/tmp/ticket-d/e2e-tray-over-tab.png' });
@@ -491,7 +492,7 @@ test.describe('minimize and the tab', () => {
     expect(look.writing).toBe('vertical-rl');
     expect(look.label).toMatch(/^Open weekly list, Oct 27 - Nov 2, \d+ open$/);
     expect(look.text).toContain('Oct 27 - Nov 2');
-    await tab(page).click();
+    await clickListControl(tab(page));
     // At once: the room is taken and the dock shows in the same moment.
     await expect(page.locator(DOCK)).toBeVisible();
     expect(await padding(page)).toBe('360px');
@@ -504,7 +505,7 @@ test.describe('minimize and the tab', () => {
     background,
   }) => {
     await open(context, page, background);
-    await minimizeButton(page).click();
+    await clickListControl(minimizeButton(page));
     await expect(tab(page)).toBeFocused();
     // The stored change reaches the page before the next change is made.
     await pageQuiet(page);
@@ -533,7 +534,7 @@ test.describe('minimize and the tab', () => {
     await expect(page.locator(DOCK)).toHaveCount(0);
     await expect.poll(() => padding(page)).toBe('38px');
     expect(await tab(page).getAttribute('aria-label')).toBe(label);
-    await tab(page).click();
+    await clickListControl(tab(page));
     await expect(page.locator(DOCK)).toBeVisible();
     await page.reload();
     await expect(page.locator(DOCK)).toBeVisible();
@@ -561,8 +562,8 @@ test.describe('minimize and the tab', () => {
     await minimize(page);
     const pill = await tab(page).evaluate((button) => button.querySelector('.pill')?.textContent);
     expect(Number(pill)).toBe(before);
-    await tab(page).click();
-    await doneBox(inpageList(page), QUIZ_3).click();
+    await clickListControl(tab(page));
+    await clickListControl(doneBox(inpageList(page), QUIZ_3));
     await settledList(page);
     await expect.poll(ringsOpen).toBe(before - 1);
     await minimize(page);
@@ -960,7 +961,7 @@ test.describe('the Courses tab of the new dashboard', () => {
     await region(page).evaluate((element) => {
       element.scrollTop = 150;
     });
-    await page.getByRole('tab', { name: 'Courses', exact: true }).click();
+    await clickListControl(page.getByRole('tab', { name: 'Courses', exact: true }));
     await expect(page.getByRole('tab', { name: 'Courses', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -971,7 +972,7 @@ test.describe('the Courses tab of the new dashboard', () => {
     // Nothing of the list takes room, even after the page settles.
     await pageQuiet(page);
     await expect(inpageList(page)).toBeHidden();
-    await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
+    await clickListControl(page.getByRole('tab', { name: 'Dashboard', exact: true }));
     await expect(inpageList(page)).toBeVisible();
     // No reload: the page object and the same container are still there.
     expect(await page.evaluate(() => (window as unknown as { loaded?: number }).loaded)).toBe(1);
@@ -1001,7 +1002,7 @@ test.describe('the Courses tab of the new dashboard', () => {
     await pageQuiet(page, 3, GRID_WAIT_MS + 100);
     await expect(inpageList(page)).toBeHidden();
     await expect(page.locator('weekrow-list')).toBeHidden();
-    await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
+    await clickListControl(page.getByRole('tab', { name: 'Dashboard', exact: true }));
     await expect(inpageList(page)).toBeVisible();
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
   });

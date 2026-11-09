@@ -9,6 +9,7 @@ import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/
 import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
 import { json, saveAddress } from './support/scenario-api';
 import {
+  clickListControl,
   addCsrfCookie,
   doneBox,
   expect,
@@ -87,19 +88,19 @@ test.describe('what stays open when another view replaces the list', () => {
     background,
   }) => {
     const list = await openCard(context, page, background, DEFAULT_SETTINGS);
-    await olderToggle(list).click();
+    await clickListControl(olderToggle(list));
     await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'true');
 
-    await list.getByRole('button', { name: 'Settings' }).click();
-    await list.getByRole('button', { name: /Back/ }).click();
+    await clickListControl(list.getByRole('button', { name: 'Settings' }));
+    await clickListControl(list.getByRole('button', { name: /Back/ }));
     await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'true');
 
-    await list.getByRole('button', { name: 'Add task' }).click();
-    await list.getByRole('button', { name: 'Cancel' }).click();
+    await clickListControl(list.getByRole('button', { name: 'Add task' }));
+    await clickListControl(list.getByRole('button', { name: 'Cancel' }));
     await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'true');
 
     // A click on the returned line closes it.
-    await olderToggle(list).click();
+    await clickListControl(olderToggle(list));
     await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'false');
   });
 
@@ -109,12 +110,12 @@ test.describe('what stays open when another view replaces the list', () => {
     background,
   }) => {
     const list = await openCard(context, page, background, DEFAULT_SETTINGS);
-    await olderToggle(list).click();
-    await list.getByRole('button', { name: 'Minimize list' }).click();
+    await clickListControl(olderToggle(list));
+    await clickListControl(list.getByRole('button', { name: 'Minimize list' }));
     await expect(list.locator('.wr-minbar')).toBeVisible();
-    await list.locator('.wr-minbar').click();
+    await clickListControl(list.locator('.wr-minbar'));
     await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'true');
-    await olderToggle(list).click();
+    await clickListControl(olderToggle(list));
     await expect(olderToggle(list)).toHaveAttribute('aria-expanded', 'false');
   });
 
@@ -130,13 +131,13 @@ test.describe('what stays open when another view replaces the list', () => {
     await openExtensionPage(page, extensionUrl('sidepanel.html'));
     await settledList(page);
     const toggle = group(page, 'done').locator('.wr-group-toggle');
-    await toggle.click();
+    await clickListControl(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
-    await page.getByRole('button', { name: 'Add task' }).click();
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    await clickListControl(page.getByRole('button', { name: 'Add task' }));
+    await clickListControl(page.getByRole('button', { name: 'Cancel' }));
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await toggle.click();
+    await clickListControl(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
@@ -161,8 +162,8 @@ test.describe('what stays open when another view replaces the list', () => {
     });
     await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(150);
 
-    await list.getByRole('button', { name: 'Settings' }).click();
-    await list.getByRole('button', { name: /Back/ }).click();
+    await clickListControl(list.getByRole('button', { name: 'Settings' }));
+    await clickListControl(list.getByRole('button', { name: /Back/ }));
     await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(150);
   });
 });
@@ -208,7 +209,7 @@ test.describe('Ctrl+Z', () => {
     await expect(doneBox(page, QUIZ_3)).toBeVisible();
     await settledList(page);
     const from = canvas.requests.length;
-    await doneBox(page, QUIZ_3).click();
+    await clickListControl(doneBox(page, QUIZ_3));
     const toast = page.locator('.wr-toast');
     await expect(toast).toContainText('Marked done');
     // The refresh round that follows the write ends before the session does.
@@ -217,7 +218,7 @@ test.describe('Ctrl+Z', () => {
     // The session ends. The next span cannot load, and the notice stays over the signed-out page.
     signedOut = true;
     state.plannerReply = errorReply(CANVAS_ERRORS.signedOut);
-    await page.getByRole('button', { name: /^Next/ }).click();
+    await clickListControl(page.getByRole('button', { name: /^Next/ }));
     await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
     await expect(toast).toBeVisible();
 

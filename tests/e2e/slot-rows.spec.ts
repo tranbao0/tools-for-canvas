@@ -7,6 +7,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import {
+  clickListControl,
   addCsrfCookie,
   doneBox,
   expect,
@@ -191,7 +192,7 @@ test('opening a tip moves nothing above it', async ({ context, page, background 
       };
     });
   const before = await tops();
-  await row.getByRole('button', { name: /confirm/i }).click();
+  await clickListControl(row.getByRole('button', { name: /confirm/i }));
   await expect(row.locator('.wr-item-tip')).toBeVisible();
   const after = await tops();
   for (const key of Object.keys(before) as (keyof typeof before)[]) {

@@ -15,6 +15,7 @@ import { closePane, pane } from './support/file-viewer';
 import { json, saveAddress } from './support/scenario-api';
 import { pageQuiet } from './support/settle';
 import {
+  clickListControl,
   addCsrfCookie,
   doneBox,
   expect,
@@ -197,7 +198,7 @@ test('a click opens the pane on the row, another row shows its page, and a secon
 }) => {
   await open(context, page, background);
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect
     .poll(() => paneFrames(page).map((frame) => frame.url()))
@@ -206,7 +207,7 @@ test('a click opens the pane on the row, another row shows its page, and a secon
   await expect(rowOf(page, LAB_4)).toHaveClass(/is-open/);
   await shot(page, 'pane-open');
   // A row of another course shows that course's page, and the first frame stays.
-  await preview(page, HOMEWORK_7).click();
+  await clickListControl(preview(page, HOMEWORK_7));
   await expect.poll(() => paneFrames(page).length).toBe(2);
   expect(paneFrames(page).map((frame) => new URL(frame.url()).pathname)).toEqual([
     '/courses/101/assignments/1004',
@@ -215,7 +216,7 @@ test('a click opens the pane on the row, another row shows its page, and a secon
   await expect(preview(page, HOMEWORK_7)).toHaveAttribute('aria-pressed', 'true');
   await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'false');
   // The second click on the same row closes the pane and removes every frame.
-  await preview(page, HOMEWORK_7).click();
+  await clickListControl(preview(page, HOMEWORK_7));
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   expect(paneFrames(page)).toHaveLength(0);
   await expect(page.locator('[aria-pressed=true]')).toHaveCount(0);
@@ -236,7 +237,7 @@ for (const [place, query] of [
       background,
     }) => {
       await open(context, page, background, { path: query, width, height: 1000 });
-      await preview(page, LAB_4).click();
+      await clickListControl(preview(page, LAB_4));
       await expect(page.locator(PANE_HOST)).toBeVisible();
       await expect
         .poll(async () => {
@@ -244,10 +245,10 @@ for (const [place, query] of [
           return box.x + box.width - (await page.locator(PANE_HOST).boundingBox())!.x;
         })
         .toBeLessThanOrEqual(0);
-      await preview(page, HOMEWORK_7).click({ timeout: 3000 });
+      await clickListControl(preview(page, HOMEWORK_7), { timeout: 3000 });
       await expect(preview(page, HOMEWORK_7)).toHaveAttribute('aria-pressed', 'true');
       await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'false');
-      await preview(page, HOMEWORK_7).click({ timeout: 3000 });
+      await clickListControl(preview(page, HOMEWORK_7), { timeout: 3000 });
       await expect(page.locator(PANE_HOST)).toHaveCount(0);
     });
   }
@@ -271,7 +272,7 @@ test('a script of the page cannot open the pane', async ({ context, page, backgr
   await pageQuiet(page);
   await expect(page.locator(PANE_HOST)).toHaveCount(0);
   // The real click still works.
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   await expect(page.locator(PANE_HOST)).toBeVisible();
 });
 
@@ -286,7 +287,7 @@ test('on the classic dashboard the weekly dock steps aside for the pane and come
     height: 1074,
   });
   await expect(page.locator(WEEKLY_DOCK)).toBeVisible();
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
   await expect
@@ -322,7 +323,7 @@ for (const [name, options] of [
   }) => {
     await open(context, page, background, options);
     await expect(preview(page, LAB_4)).toBeVisible();
-    await preview(page, LAB_4).click();
+    await clickListControl(preview(page, LAB_4));
     await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'true');
     const row = rowOf(page, LAB_4);
     await expect(row).toHaveClass(/is-open/);
@@ -356,7 +357,7 @@ test('the pane covers its draft when the extension context ends', async ({
   background,
 }) => {
   await open(context, page, background);
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   await expect(page.locator(PANE_HOST)).toHaveAttribute('data-identity', 'yes');
   const frame = await readyPaneFrame(page);
   await frame.locator('#marker').fill('Keep this draft after the context ends');
@@ -509,7 +510,7 @@ test('closing a pane that the card opened reads the submission and refreshes the
 }) => {
   const refreshes = await watchRefreshes(background);
   const { canvas, state } = await open(context, page, background);
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   // The first read of the assignment is its baseline.
   await expect
     .poll(
@@ -539,7 +540,7 @@ test('the buttons follow the switch of the assignment view, and an open pane sta
   await expect(rowOf(page, LAB_4).locator('.wr-item-actions')).toHaveCount(0);
   await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: true });
   await expect(preview(page, LAB_4)).toBeVisible();
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   await expect(preview(page, LAB_4)).toHaveAttribute('aria-pressed', 'true');
   await saveTools(background, { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false });
   await expect(card(page).locator('[data-part="preview"]')).toHaveCount(0);
@@ -586,8 +587,8 @@ test('the pane and every frame go when another student signs in', async ({
       },
     ],
   });
-  await preview(page, LAB_4).click();
-  await preview(page, HOMEWORK_7).click();
+  await clickListControl(preview(page, LAB_4));
+  await clickListControl(preview(page, HOMEWORK_7));
   await expect.poll(() => paneFrames(page).length).toBe(2);
   signedIn = '9001';
   // The owner starts at most two sign-in checks in 30 seconds, so the clock moves on.
@@ -629,7 +630,7 @@ test('the pane and every frame go when another student signs in', async ({
   expect(paneFrames(page)).toHaveLength(0);
   await expect.poll(() => paddingRight(page)).toBe(0);
   // The next student starts with no frame: a click makes a new one.
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect.poll(() => paneFrames(page).length).toBe(1);
 });
@@ -670,15 +671,15 @@ test('a file pane and a pane from the card cover each other in turn, and nothing
   await open(context, page, background);
   await addFileLink(page);
   // File pane first, then Preview: the assignment pane shows over the file pane.
-  await openFilePane(page, () => page.locator('#page-file').click({ timeout: 2000 }));
-  await preview(page, LAB_4).click();
+  await openFilePane(page, () => clickListControl(page.locator('#page-file'), { timeout: 2000 }));
+  await clickListControl(preview(page, LAB_4));
   await expect(page.locator(PANE_HOST)).toBeVisible();
   await expect(page.locator(FILE_PANE)).toBeHidden();
   const first = (await page.locator(PANE_HOST).boundingBox())!;
   await expect.poll(() => paddingRight(page)).toBe(first.width);
   // A file link inside the pane opens the file pane over it.
   const frame = await readyPaneFrame(page);
-  await openFilePane(page, () => frame.locator('#file').click({ timeout: 2000 }));
+  await openFilePane(page, () => clickListControl(frame.locator('#file'), { timeout: 2000 }));
   await expect(page.locator(PANE_HOST)).toBeHidden();
   const second = (await page.locator(FILE_PANE).boundingBox())!;
   await expect.poll(() => paddingRight(page)).toBe(second.width);
@@ -701,10 +702,10 @@ test('a file link in the pane of the classic dashboard opens the file pane, and 
     width: 1797,
     height: 1074,
   });
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   await expect(page.locator(PANE_HOST)).toBeVisible();
   const frame = await readyPaneFrame(page);
-  await openFilePane(page, () => frame.locator('#file').click({ timeout: 2000 }));
+  await openFilePane(page, () => clickListControl(frame.locator('#file'), { timeout: 2000 }));
   await expect(page.locator(WEEKLY_DOCK)).toBeHidden();
   await closePane(page);
   await expect(page.locator(PANE_HOST)).toBeVisible();
@@ -724,7 +725,7 @@ test('the classic header controls stay in the room beside a pane', async ({
     width: 1797,
     height: 900,
   });
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   const pane = page.locator(PANE_HOST);
   await expect(pane).toBeVisible();
   const clear = async (selector: string): Promise<boolean> => {
@@ -786,7 +787,7 @@ test('a hand-in in the pane that the card opened moves the row at the close, tho
   };
   const { canvas, state } = await open(context, page, background, { extra: [planner] });
   await expect(rowOf(page, LAB_4)).toBeVisible();
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   await expect
     .poll(
       () =>
@@ -805,11 +806,11 @@ test('a hand-in in the pane that the card opened moves the row at the close, tho
 
 test('a done mark after a hand-in reaches Canvas', async ({ context, page, background }) => {
   const { canvas, state } = await open(context, page, background);
-  await preview(page, LAB_4).click();
+  await clickListControl(preview(page, LAB_4));
   state.submitted = true;
   await closeAssignment(page);
   await expect(rowOf(page, LAB_4)).toHaveCount(0);
-  await doneBox(inpageList(page), QUIZ_3).click();
+  await clickListControl(doneBox(inpageList(page), QUIZ_3));
   await expect
     .poll(
       () =>
@@ -826,7 +827,7 @@ test('a wide pane stacks the widget columns in the room beside it', async ({
   background,
 }) => {
   await open(context, page, background);
-  await preview(page, QUIZ_3).click();
+  await clickListControl(preview(page, QUIZ_3));
   const host = page.locator(PANE_HOST);
   const box = await host.boundingBox();
   if (!box) throw new Error('No assignment pane');
@@ -855,7 +856,7 @@ test('the widget columns stack below the room where Canvas stacks them', async (
 }) => {
   await page.setViewportSize({ width: 1872, height: 900 });
   await open(context, page, background);
-  await preview(page, QUIZ_3).click();
+  await clickListControl(preview(page, QUIZ_3));
   const box = await page.locator(PANE_HOST).boundingBox();
   if (!box) throw new Error('No assignment pane');
   const columns = page.locator('[data-testid="widget-columns"]');

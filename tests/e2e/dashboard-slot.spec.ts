@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import {
+  clickListControl,
   addCsrfCookie,
   expect,
   doneBox,
@@ -102,9 +103,9 @@ for (const size of [
       path: path.resolve(`screenshots/m1-slot-${size.width}x${size.height}.png`),
     });
     const height = first.card.height;
-    await page.getByRole('tab', { name: 'Courses', exact: true }).click();
+    await clickListControl(page.getByRole('tab', { name: 'Courses', exact: true }));
     await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'stack');
-    await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
+    await clickListControl(page.getByRole('tab', { name: 'Dashboard', exact: true }));
     await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'slot');
     // A fresh section inside the wrapper: the wrapper stays claimed, and the card covers the new
     // section.
@@ -143,12 +144,10 @@ for (const size of [
     }).toPass();
     const next = page.locator('[data-testid="widget-container-course-grades-widget"]');
     const before = (await next.boundingBox())!.y;
-    await inpageList(page).getByRole('button', { name: 'Minimize list' }).click();
+    await clickListControl(inpageList(page).getByRole('button', { name: 'Minimize list' }));
     await expect.poll(async () => (await card.boundingBox())!.height).toBeLessThan(80);
     await expect.poll(async () => (await next.boundingBox())!.y).toBeLessThan(before - 100);
-    await inpageList(page)
-      .getByRole('button', { name: /^Weekly list/ })
-      .click();
+    await clickListControl(inpageList(page).getByRole('button', { name: /^Weekly list/ }));
     await expect
       .poll(async () => (await card.boundingBox())!.height)
       .toBeCloseTo((await slotBoxes(page)).limit, 0);
@@ -341,10 +340,10 @@ test('covers a slot that shows up after the wait, when the student opens the Das
   await page.goto(`${canvas.origin}/?fixture_delay_ms=0&fixture_course_work=loading`);
   await page.bringToFront();
   const tab = (name: string) => page.getByRole('tab', { name, exact: true });
-  await tab('Courses').click();
+  await clickListControl(tab('Courses'));
   // The wait for the grid runs out on a tab without a grid.
   await expect(page.locator(HOST)).toHaveAttribute('data-panel', 'stack', { timeout: 15_000 });
-  await tab('Dashboard').click();
+  await clickListControl(tab('Dashboard'));
   await expect(page.locator(WRAPPER)).toHaveAttribute('data-weekrow-replaced', '');
   // The slot is still loading, so the card waits and does not show.
   await frames(page, 5);
@@ -621,7 +620,7 @@ test('keeps its box when its content changes', async ({ background, context, pag
   await expect.poll(() => rows.count()).toBeGreaterThan(first);
   await settledList(page);
   const undated = inpageList(page).locator('.wr-pinned [data-group="no_due_date"] input');
-  await undated.click();
+  await clickListControl(undated);
   await expect(undated).toBeChecked();
   await frames(page, 5);
   const after = await slotBoxes(page);
@@ -722,7 +721,7 @@ test('closes the column up when minimized, and restores the same box', async ({
 }) => {
   await openFixture(context, page, 'default');
   const before = await slotBoxes(page);
-  await inpageList(page).getByRole('button', { name: 'Minimize list' }).click();
+  await clickListControl(inpageList(page).getByRole('button', { name: 'Minimize list' }));
   await expect.poll(async () => (await slotBoxes(page)).card.height).toBeLessThan(80);
   const small = await slotBoxes(page);
   expect(small.card.top).toBeCloseTo(before.card.top, 0);
@@ -732,9 +731,7 @@ test('closes the column up when minimized, and restores the same box', async ({
     before.next.top - before.wrapper.bottom + 8,
     0,
   );
-  await inpageList(page)
-    .getByRole('button', { name: /^Weekly list/ })
-    .click();
+  await clickListControl(inpageList(page).getByRole('button', { name: /^Weekly list/ }));
   await expect
     .poll(async () => (await slotBoxes(page)).card.height)
     .toBeCloseTo(before.card.height, 0);
@@ -812,9 +809,9 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const)
     await frames(page);
     const minimize = inpageList(page).getByRole('button', { name: 'Minimize list' });
     await expect(minimize).toBeInViewport();
-    await minimize.click();
+    await clickListControl(minimize);
     const bar = inpageList(page).getByRole('button', { name: /^Weekly list/ });
     await expect(bar).toBeInViewport();
-    await bar.click();
+    await clickListControl(bar);
     await expect(minimize).toBeInViewport();
   });

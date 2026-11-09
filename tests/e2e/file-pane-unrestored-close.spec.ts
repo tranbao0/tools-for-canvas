@@ -147,6 +147,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     page,
     background,
   }) => {
+    await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
     await openCoursePage(context, page, background);
     const cdp = await openThenReloadBlocked(page, () => context.newCDPSession(page));
     await failurePanelShown(cdp);
@@ -154,6 +155,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
   });
 
   test('Close on the failure panel keeps the stored tab', async ({ context, page, background }) => {
+    await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
     await openCoursePage(context, page, background);
     const cdp = await openThenReloadBlocked(page, () => context.newCDPSession(page));
     await failurePanelShown(cdp);
@@ -178,6 +180,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     page,
     background,
   }) => {
+    await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
     await openCoursePage(context, page, background);
     const cdp = await openThenReloadBlocked(page, () => context.newCDPSession(page));
     await failurePanelShown(cdp);

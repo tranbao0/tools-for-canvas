@@ -14,6 +14,7 @@
     "dev:firefox": "wxt -b firefox",
     "build": "npm run build:chrome && npm run build:edge && npm run build:firefox",
     "build:chrome": "wxt build -b chrome",
+    "build:e2e": "WXT_E2E=1 wxt build -b chrome",
     "build:edge": "wxt build -b edge",
     "build:firefox": "wxt build -b firefox",
     "build-for-amo": "wxt build -b firefox",
@@ -41,9 +42,9 @@
     "check:manifest": "node scripts/check-manifest.mjs",
     "check:fetch": "node scripts/check-fetch.mjs",
     "check:storage": "node scripts/check-storage.mjs",
-    "check:pane-identity-setting": "node scripts/check-pane-identity-setting.mjs",
+    "check:test-only-code": "node scripts/check-test-only-code.mjs",
     "check:file-check": "node scripts/check-file-check.mjs",
-    "check": "npm run build && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage && npm run check:file-check && npm run check:pane-identity-setting",
+    "check": "npm run build && npm run build:e2e && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage && npm run check:file-check && npm run check:test-only-code",
     "test:firefox:private-tabs": "node tests/firefox/private-tabs.mjs"
   },
   "devDependencies": {

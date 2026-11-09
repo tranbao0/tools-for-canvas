@@ -62,7 +62,10 @@ export function listenViewerHello(
 type OpenResult = 'opened' | 'closed' | 'ended' | 'failed' | 'timeout';
 
 /** How long the pane page has to answer with the secret before the pane closes. */
-const HANDSHAKE_MS = 15_000;
+const HANDSHAKE_MS =
+  import.meta.env.WXT_E2E === '1'
+    ? Number(sessionStorage.getItem('e2ePaneHandshakeMs')) || 15_000
+    : 15_000;
 
 export async function startViewer(): Promise<void> {
   // An earlier copy of this script, such as one that an update left behind or one that starts at
