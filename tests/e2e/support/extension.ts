@@ -27,12 +27,16 @@ export const LAUNCH_TIMEOUT_MS = 30_000;
 /** How long the extension service worker may take to start after a launch or an install. */
 export const WORKER_TIMEOUT_MS = 30_000;
 
+/** How long the welcome page of the install may take to open after the service worker starts. */
+const WELCOME_TIMEOUT_MS = 30_000;
+
 /**
  * The timeout of a fixture that starts the browser or the extension. A fixture with its own
  * timeout does not use the time of the test, so a slow start-up never shortens the test body.
  * It covers two attempts of a launch and a start-up, and a slow close.
  */
-export const START_UP_FIXTURE_TIMEOUT_MS = 2 * (LAUNCH_TIMEOUT_MS + WORKER_TIMEOUT_MS) + 30_000;
+export const START_UP_FIXTURE_TIMEOUT_MS =
+  2 * (LAUNCH_TIMEOUT_MS + WORKER_TIMEOUT_MS + WELCOME_TIMEOUT_MS) + 30_000;
 
 /** How long to wait for the close of a browser from a failed attempt. */
 const CLOSE_TIMEOUT_MS = 15_000;
@@ -112,8 +116,8 @@ function isWelcomeTab(tab: Page): boolean {
 export async function waitForInstallWelcome(context: BrowserContext): Promise<Page> {
   await expect
     .poll(() => context.pages().some(isWelcomeTab), {
-      message: 'The install opened no welcome page.',
-      timeout: WORKER_TIMEOUT_MS,
+      message: 'The install opened no welcome page',
+      timeout: WELCOME_TIMEOUT_MS,
     })
     .toBe(true);
   return context.pages().find(isWelcomeTab)!;
@@ -136,8 +140,9 @@ async function closeFailedAttempt(context: BrowserContext | undefined): Promise<
 }
 
 /**
- * Launches a persistent headless Chromium. When `workerHint` is set, it also waits for the
- * extension service worker, and the hint helps to read a failure of that wait.
+ * Launches a persistent headless Chromium. When `workerHint` is set, the extension loads at the
+ * launch: the function also waits for the extension service worker and then for the welcome page
+ * of the install. The hint helps to read a failure of the worker wait.
  *
  * A launch or a start-up that fails gets one more attempt with a new browser, because a host
  * under heavy load can miss a start-up budget once and then pass. Each failed attempt is logged
@@ -163,13 +168,16 @@ export async function launchBrowser(
         await timedStep(testInfo, 'extension service worker start', () =>
           waitForExtensionWorker(launched),
         );
+        phase = 'install welcome page';
+        await timedStep(testInfo, 'install welcome page', () => waitForInstallWelcome(launched));
       }
       return context;
     } catch (error) {
       await closeFailedAttempt(context);
       const reason = `${phase} failed on attempt ${attempt} of ${attempts}: ${describeError(error)}`;
       if (attempt >= attempts) {
-        const hint = phase === 'browser launch' || workerHint === null ? '' : ` ${workerHint}`;
+        const hint =
+          phase === 'extension service worker start' && workerHint !== null ? ` ${workerHint}` : '';
         throw new Error(`The browser did not start. ${reason}.${hint}`, { cause: error });
       }
       console.warn(`[e2e start-up retry] ${reason} (${testInfo.titlePath.join(' > ')})`);
@@ -208,7 +216,6 @@ export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
         },
         `Chromium may have rejected ${extensionDir}; run "npm run check:manifest" to look for manifest problems.`,
       );
-      await timedStep(testInfo, 'install welcome page', () => waitForInstallWelcome(context));
       await use(context);
       await context.close();
     },
