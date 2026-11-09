@@ -40,7 +40,10 @@ export async function clickClosingFrame(click) {
   } catch (error) {
     if (
       error.name !== 'NoSuchWindowError' &&
-      !/BrowsingContext does no longer exist/.test(error.message)
+      !/BrowsingContext does no longer exist/.test(error.message) &&
+      !/can't access property "getActor", browsingContext\.currentWindowGlobal is null/.test(
+        error.message,
+      )
     )
       throw error;
   }
@@ -441,6 +444,18 @@ async function checkAnimatedGif(driver) {
   console.log('Firefox animated GIF: plays in an element after its blob URL is freed.');
 }
 
+/** Closes the only file tab, which removes the pane and its frame. */
+async function closeOnlyFileTab(driver) {
+  const close = await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]'));
+  await clickClosingFrame(() => close.click());
+  await driver.switchTo().defaultContent();
+  await driver.wait(
+    async () => (await driver.findElements(By.css('#tools-file-viewer'))).length === 0,
+    10_000,
+    'The file pane did not close',
+  );
+}
+
 /** The submission route of the comment attachment of the smoke test. */
 const COMMENT_ROUTE = '/courses/101/assignments/7/submissions/5502';
 
@@ -456,8 +471,7 @@ async function checkCommentAttachment(driver, server, prefs) {
   const behavior = prefs['network.cookie.cookieBehavior'] ?? 5;
   const logins = () => server.requests.filter((url) => url === '/login').length;
   const before = logins();
-  await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]')).click();
-  await driver.switchTo().defaultContent();
+  await closeOnlyFileTab(driver);
   const frame = await driver.wait(async () => {
     await driver
       .actions()
@@ -916,8 +930,7 @@ async function main(prefs = {}, mode = 'release') {
         throw new Error('The positions have a copy in storage.local');
       return Object.values(stored).some((value) => value.page === 3);
     }, 10_000);
-    await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]')).click();
-    await driver.switchTo().defaultContent();
+    await closeOnlyFileTab(driver);
     await driver
       .actions()
       .move({ origin: await driver.findElement(By.css('a')) })
