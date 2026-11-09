@@ -434,10 +434,40 @@ export function routeViewerMessage(
           const action = String(request['type']).slice(
             'viewer:tabs-'.length,
           ) as TabIntent['action'];
+          const paneAction = action === 'close' || action === 'activate';
+          if (
+            (paneAction && !fromPane) ||
+            (fromPane && (action === 'undo' || action === 'clear')) ||
+            Object.keys(request).some(
+              (key) =>
+                ![
+                  'type',
+                  'token',
+                  ...(action === 'undo'
+                    ? ['added', 'evicted']
+                    : action === 'clear'
+                      ? []
+                      : ['fileId']),
+                ].includes(key),
+            )
+          )
+            throw new Error('Invalid tab intent');
           if (action === 'undo') {
             if (
-              ![request['added'], request['evicted']].every(
-                (ids) => Array.isArray(ids) && ids.length <= 8 && ids.every(isTabId),
+              !Array.isArray(request['added']) ||
+              request['added'].length > 8 ||
+              !request['added'].every(isTabId) ||
+              !Array.isArray(request['evicted']) ||
+              request['evicted'].length > 8 ||
+              !request['evicted'].every(
+                (entry) =>
+                  entry &&
+                  typeof entry === 'object' &&
+                  Object.keys(entry).every((key) => key === 'id' || key === 'index') &&
+                  isTabId(entry.id) &&
+                  Number.isInteger(entry.index) &&
+                  entry.index >= 0 &&
+                  entry.index < 8,
               )
             )
               throw new Error('Invalid tab intent');
@@ -448,7 +478,13 @@ export function routeViewerMessage(
           const evicted =
             action === 'open' ? (current.ids.find((id) => !next.ids.includes(id)) ?? null) : null;
           await host.set(key, { ...next, userId });
-          return { ...next, token, added, evicted };
+          return {
+            ...next,
+            token,
+            added,
+            evicted,
+            evictedIndex: current.ids.indexOf(evicted ?? ''),
+          };
         });
       }
     }

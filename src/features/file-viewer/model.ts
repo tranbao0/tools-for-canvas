@@ -348,7 +348,7 @@ export type TabIntent =
   | { action: 'open'; fileId: string }
   | { action: 'close'; fileId: string }
   | { action: 'activate'; fileId: string }
-  | { action: 'undo'; added: string[]; evicted: string[] }
+  | { action: 'undo'; added: string[]; evicted: { id: string; index: number }[] }
   | { action: 'clear' };
 
 /** Applies one document's action to the current tabs. */
@@ -361,6 +361,7 @@ export function applyTabIntent(current: Tabs, intent: TabIntent): Tabs {
       : current;
   if (intent.action === 'clear') return { ids: [], active: null };
   const ids = current.ids.filter((id) => !intent.added.includes(id));
-  const restore = [...new Set(intent.evicted)].filter((id) => !ids.includes(id));
-  return { ids: [...restore.slice(0, 8 - ids.length), ...ids], active: null };
+  for (const { id, index } of [...intent.evicted].reverse())
+    if (ids.length < 8 && !ids.includes(id)) ids.splice(Math.min(index, ids.length), 0, id);
+  return { ids, active: null };
 }

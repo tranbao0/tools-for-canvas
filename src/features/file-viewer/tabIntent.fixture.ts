@@ -8,6 +8,7 @@ export function tabIntentReply(message: { type: string; [key: string]: unknown }
     ...tabs,
     token: message.token,
     added: action === 'open' && !current.ids.includes(String(message.fileId)),
+    evictedIndex: action === 'open' ? current.ids.findIndex((id) => !tabs.ids.includes(id)) : -1,
     evicted: action === 'open' ? (current.ids.find((id) => !tabs.ids.includes(id)) ?? null) : null,
   };
 }

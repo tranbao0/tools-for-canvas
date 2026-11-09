@@ -84,7 +84,7 @@ const tabsSet = async (
   else
     await routeViewerMessage(
       { type: 'viewer:tabs-activate', fileId: tabs.active, token },
-      sender,
+      { ...sender, url: 'extension://x/viewer.html' },
       host,
     );
 };
@@ -346,7 +346,6 @@ describe('viewer router', () => {
     await routeViewerMessage(
       {
         type: 'viewer:tabs-open',
-        tabId: 99,
         token,
         fileId: '1',
       },
@@ -1402,7 +1401,7 @@ describe('atomic page tab intents', () => {
     const { sender, host } = setup();
     const { token } = await tabsGet(sender, host);
     await tabsSet(sender, host, { ids: ['12', '5', '7'], active: '7' }, token);
-    await intent(sender, host, token, 'undo', { added: ['5'], evicted: ['11'] });
+    await intent(sender, host, token, 'undo', { added: ['5'], evicted: [{ id: '11', index: 0 }] });
     expect(await tabsGet(sender, host)).toMatchObject({ ids: ['11', '12', '7'], active: null });
   });
 
@@ -1423,13 +1422,13 @@ describe('atomic page tab intents', () => {
   });
 
   it('activates an existing tab and never recreates a removed tab', async () => {
-    const { sender, host } = setup();
+    const { sender, host, pane } = setup();
     const { token } = await tabsGet(sender, host);
     await tabsSet(sender, host, { ids: ['4', '5'], active: '5' }, token);
-    await intent(sender, host, token, 'activate', { fileId: '4' });
+    await intent(pane as Sender, host, token, 'activate', { fileId: '4' });
     expect(await tabsGet(sender, host)).toMatchObject({ ids: ['4', '5'], active: '4' });
-    await intent(sender, host, token, 'close', { fileId: '4' });
-    await intent(sender, host, token, 'activate', { fileId: '4' });
+    await intent(pane as Sender, host, token, 'close', { fileId: '4' });
+    await intent(pane as Sender, host, token, 'activate', { fileId: '4' });
     expect(await tabsGet(sender, host)).toMatchObject({ ids: ['5'], active: '5' });
   });
 
@@ -1466,4 +1465,41 @@ it('does not accept tab snapshots from any document', async () => {
     ).toBeNull();
   }
   expect(await tabsGet(sender, host)).toMatchObject({ ids: [], active: null });
+});
+
+describe('tab intent permissions and fields', () => {
+  it.each(['close', 'activate'])('rejects page %s intents', async (action) => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await expect(
+      routeViewerMessage({ type: 'viewer:tabs-' + action, fileId: '5', token }, sender, host),
+    ).rejects.toThrow();
+  });
+  it.each(['undo', 'clear'])('rejects pane %s intents', async (action) => {
+    const { pane, host } = setup();
+    const { token } = await tabsGet(pane as Sender, host);
+    await expect(
+      routeViewerMessage(
+        { type: 'viewer:tabs-' + action, added: [], evicted: [], token },
+        pane,
+        host,
+      ),
+    ).rejects.toThrow();
+  });
+  it.each(['open', 'undo', 'clear', 'close', 'activate'])(
+    'rejects unknown fields for %s',
+    async (action) => {
+      const { sender, pane, host } = setup();
+      const { token } = await tabsGet(sender, host);
+      const data =
+        action === 'undo' ? { added: [], evicted: [] } : action === 'clear' ? {} : { fileId: '5' };
+      await expect(
+        routeViewerMessage(
+          { type: 'viewer:tabs-' + action, ...data, token, surprise: true },
+          ['close', 'activate'].includes(action) ? pane : sender,
+          host,
+        ),
+      ).rejects.toThrow();
+    },
+  );
 });

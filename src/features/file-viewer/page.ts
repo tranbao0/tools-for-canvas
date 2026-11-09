@@ -108,7 +108,7 @@ export async function startViewer(): Promise<void> {
   };
   let unseen = {
     added: new Set<string>(),
-    evicted: new Set<string>(),
+    evicted: new Map<string, number>(),
     token: undefined as string | undefined,
   };
   const flushOpens = () => {
@@ -135,7 +135,7 @@ export async function startViewer(): Promise<void> {
           !effects.added.delete(reply.evicted) &&
           effects.evicted.size < 8
         )
-          effects.evicted.add(reply.evicted);
+          effects.evicted.set(reply.evicted, reply.evictedIndex);
         const kept = normalizeTabs(reply);
         for (const id of effects.added) if (!kept.ids.includes(id)) effects.added.delete(id);
         if (active() && !current.result && started === generation) {
@@ -153,7 +153,12 @@ export async function startViewer(): Promise<void> {
       if (credential === undefined) return;
       const reply = await browser.runtime.sendMessage({
         type: clear ? 'viewer:tabs-clear' : 'viewer:tabs-undo',
-        ...(!clear ? { added: [...effects.added], evicted: [...effects.evicted] } : {}),
+        ...(!clear
+          ? {
+              added: [...effects.added],
+              evicted: [...effects.evicted].map(([id, index]) => ({ id, index })),
+            }
+          : {}),
         token: credential,
       });
       effects.added.clear();
@@ -243,7 +248,7 @@ export async function startViewer(): Promise<void> {
       waitingFile = null;
       synced = false;
       sawTabs = false;
-      unseen = { added: new Set(), evicted: new Set(), token: stored.token };
+      unseen = { added: new Set(), evicted: new Map(), token: stored.token };
       courses.clear();
       names.clear();
       addresses.clear();
@@ -397,7 +402,7 @@ export async function startViewer(): Promise<void> {
     tabsToken = undefined;
     synced = false;
     sawTabs = false;
-    unseen = { added: new Set(), evicted: new Set(), token: undefined };
+    unseen = { added: new Set(), evicted: new Map(), token: undefined };
     courses.clear();
     names.clear();
     addresses.clear();

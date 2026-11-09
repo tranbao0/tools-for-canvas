@@ -11,6 +11,7 @@ import {
   isTabId,
   linkName,
   normalizeTabs,
+  applyTabIntent,
   openFile,
   isFileId,
   plainClick,
@@ -346,4 +347,14 @@ describe('stored inactive tabs', () => {
   it('uses the first tab when active is unknown', () => {
     expect(normalizeTabs({ ids: ['42'], active: '99' })).toEqual({ ids: ['42'], active: '42' });
   });
+});
+
+it('restores an evicted tab at its old index', () => {
+  expect(
+    applyTabIntent({ ids: ['1', '3'], active: '3' }, {
+      action: 'undo',
+      added: ['3'],
+      evicted: [{ id: '2', index: 1 }],
+    } as never),
+  ).toEqual({ ids: ['1', '2'], active: null });
 });
