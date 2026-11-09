@@ -249,6 +249,29 @@ describe('file pane lifetime and unseen changes', () => {
     },
   );
 
+  it.each([false, true])(
+    'never persists a tokenless click under a later student token, with kept tabs: %s',
+    async (hasTabs) => {
+      capture();
+      setup({ ids: ['4'], active: '4' });
+      answerTabs = false;
+      await startViewer();
+      click('file');
+      await settle();
+      token = '2:2';
+      stored = hasTabs ? { ids: ['8', '9'], active: '9' } : { ids: [], active: null };
+      const before = { ...stored };
+      answerTabs = true;
+      await connect();
+      await settle();
+      expect(stored).toEqual(before);
+      expect(writes).toEqual([]);
+      expect(ports.at(-1)!.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'open-file', fileId: '5' }),
+      );
+    },
+  );
+
   it('restores a seen pane with a new port for the same student', async () => {
     capture();
     setup({ ids: ['4'], active: '4' });

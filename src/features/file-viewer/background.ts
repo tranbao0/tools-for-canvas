@@ -422,9 +422,10 @@ export function routeViewerMessage(
         // clearing between the two reads leaves this token with the old round.
         if (request['type'] === 'viewer:tabs-get') {
           await recordStudent(host, userId);
+          const token = `${await readEpoch(host)}:${userId}`;
           const stored = await host.get(key);
           const tabs = storedUser(stored) === userId ? normalizeTabs(stored) : normalizeTabs(null);
-          return { ...tabs, token: `${await readEpoch(host)}:${userId}` };
+          return { ...tabs, token };
         }
         return withPositions(async () => {
           const token = `${await readEpoch(host)}:${userId}`;

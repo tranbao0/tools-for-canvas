@@ -112,15 +112,13 @@ export async function startViewer(): Promise<void> {
     token: undefined as string | undefined,
   };
   const flushOpens = () => {
-    const ids = [...addedTabs];
+    const ids = [...addedTabs].map((id) => [id, actionTokens.get(id)] as const);
     const effects = unseen;
     const current = attempt;
     const started = generation;
-    const token = tabsToken;
     return enqueue(async () => {
-      const credential = token;
-      if (credential === undefined) return;
-      for (const fileId of ids) {
+      for (const [fileId, credential] of ids) {
+        if (credential === undefined) continue;
         if (!active() || current.result || started !== generation) return;
         const reply = await browser.runtime.sendMessage({
           type: 'viewer:tabs-open',
@@ -140,6 +138,8 @@ export async function startViewer(): Promise<void> {
         for (const id of effects.added) if (!kept.ids.includes(id)) effects.added.delete(id);
         if (active() && !current.result && started === generation) {
           tabs = normalizeTabs(reply);
+          for (const [id, token] of ids) if (token === undefined) tabs = openFile(tabs, id);
+          if (waitingFile) tabs = openFile(tabs, waitingFile);
           tabsToken = credential;
         }
       }
@@ -168,6 +168,7 @@ export async function startViewer(): Promise<void> {
   let attempt: Attempt = {};
   let tabs: Tabs = { ids: [], active: null };
   let tabsToken: string | undefined;
+  const actionTokens = new Map<string, string | undefined>();
   // The pane follows the Theme setting, and with Automatic it follows this Canvas page (decision 19).
   let themeChoice: ThemeChoice = 'auto';
   const resolveTheme = () => inpageTheme(themeChoice, () => detectPageTheme(document));
@@ -223,6 +224,7 @@ export async function startViewer(): Promise<void> {
     return {
       type: 'open-file' as const,
       fileId,
+      token: actionTokens.get(fileId),
       ...(courseId ? { courseId } : {}),
       ...(name ? { name } : {}),
       ...(address ? { address } : {}),
@@ -318,7 +320,6 @@ export async function startViewer(): Promise<void> {
         port !== sendingPort
       )
         return;
-      addedTabs.clear();
     }
     applyTheme();
     sendFullView();
@@ -327,7 +328,11 @@ export async function startViewer(): Promise<void> {
       synced = true;
       markSeen();
       waitingFile = null;
+      for (const id of addedTabs)
+        if (id !== tabs.active && actionTokens.get(id) === undefined)
+          port.postMessage(openMessage(id));
       port.postMessage(openMessage(tabs.active));
+      addedTabs.clear();
     }
   };
   let removeHello: (() => void) | undefined;
@@ -401,6 +406,7 @@ export async function startViewer(): Promise<void> {
     courses.clear();
     names.clear();
     addresses.clear();
+    actionTokens.clear();
   };
   const stopReset = watchPaneReset(() => reset());
   lifetime.signal.addEventListener('abort', stopReset, { once: true });
@@ -575,10 +581,11 @@ export async function startViewer(): Promise<void> {
     href: string,
     taken: number,
     current: Attempt,
+    actionToken: string | undefined,
   ): Promise<OpenResult> => {
     waitingOpens += 1;
     const run = opens
-      .then(() => openNow(target, href, taken, current))
+      .then(() => openNow(target, href, taken, current, actionToken))
       .finally(() => {
         waitingOpens -= 1;
       });
@@ -596,6 +603,7 @@ export async function startViewer(): Promise<void> {
     href: string,
     started: number,
     current: Attempt,
+    actionToken: string | undefined,
   ): Promise<OpenResult | { connected: Promise<OpenResult> }> => {
     const ended = () =>
       current.result ?? (!active() || generation !== started ? 'ended' : undefined);
@@ -630,6 +638,7 @@ export async function startViewer(): Promise<void> {
       return 'failed';
     }
     emptyPane = false;
+    actionTokens.set(file.fileId, actionToken);
     const courseId = 'courseId' in target ? target.courseId : courseOfLink(href, location.origin);
     if (courseId) courses.set(file.fileId, courseId);
     failureAddress =
@@ -653,8 +662,11 @@ export async function startViewer(): Promise<void> {
       synced = true;
       markSeen();
       waitingFile = null;
-      addedTabs.clear();
+      for (const id of addedTabs)
+        if (id !== file.fileId && actionTokens.get(id) === undefined)
+          port?.postMessage(openMessage(id));
       port?.postMessage(openMessage(file.fileId));
+      addedTabs.clear();
       return 'opened' as const;
     };
     // A pane that has been told owns the tabs. A pane that has not been told gets this file with
@@ -729,6 +741,7 @@ export async function startViewer(): Promise<void> {
       // A reset that comes while the click waits ends it: the click belongs to this moment.
       const taken = generation;
       const current = attempt;
+      const actionToken = tabsToken;
       clicks += 1;
       const click = clicks;
       void (async () => {
@@ -739,7 +752,7 @@ export async function startViewer(): Promise<void> {
           followLink();
           return;
         }
-        const result = await openTarget(target, href, taken, current).catch(
+        const result = await openTarget(target, href, taken, current, actionToken).catch(
           () => 'failed' as const,
         );
         // The pane could not take the file, so the student gets the link, and never a dead click.
@@ -846,6 +859,7 @@ export async function startViewer(): Promise<void> {
     const fileId = request.fileId;
     const taken = generation;
     const current = attempt;
+    const actionToken = tabsToken;
     const address = keptAddress(String(request.address ?? ''), location.origin);
     if (address === undefined) addresses.delete(fileId);
     else addresses.set(fileId, address);
@@ -856,7 +870,7 @@ export async function startViewer(): Promise<void> {
       // Both channels give the student the link when the pane did not handle the open.
       const result =
         active() && enabled
-          ? await openTarget({ fileId }, `/files/${fileId}`, taken, current)
+          ? await openTarget({ fileId }, `/files/${fileId}`, taken, current, actionToken)
           : null;
       respond({ opened: !wantsLink(result) });
     })().catch(() => respond({ opened: false }));

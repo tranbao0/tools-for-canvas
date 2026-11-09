@@ -120,12 +120,13 @@ export default defineUnlistedScript(() => {
       tabsToken = typeof token === 'string' ? token : undefined;
       return normalizeTabs(reply);
     },
-    async changeTabs(intent) {
+    tabToken: () => tabsToken,
+    async changeTabs(intent, token) {
       const { action, ...data } = intent;
       const reply = await browser.runtime.sendMessage({
         type: 'viewer:tabs-' + action,
         ...data,
-        token: tabsToken,
+        token,
       });
       if (!reply || typeof reply !== 'object') throw new Error('The tabs did not save');
       return normalizeTabs(reply);
@@ -165,6 +166,7 @@ export default defineUnlistedScript(() => {
         }
         opens.emit({
           fileId: message.fileId,
+          token: message.token,
           ...(message.courseId ? { courseId: message.courseId } : {}),
           ...(message.name ? { name: message.name } : {}),
           ...(message.address ? { address: message.address } : {}),

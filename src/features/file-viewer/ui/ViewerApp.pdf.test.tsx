@@ -54,6 +54,7 @@ function setup(overrides: Partial<PaneHost> = {}) {
     hasAccess: vi.fn(async () => true),
     requestAccess: vi.fn(async () => true),
     getTabs: vi.fn(async () => saved),
+    tabToken: () => '1:1',
     changeTabs: vi.fn(async (intent: TabIntent) => {
       saved = applyTabIntent(saved, intent);
       return saved;
@@ -68,9 +69,10 @@ function setup(overrides: Partial<PaneHost> = {}) {
   const opens = createOpenSource();
   render(<ViewerApp host={host} opens={opens} />);
   const open = async (fileId: string) => {
-    saved = applyTabIntent(saved, { action: 'open', fileId });
+    const token = host.tabToken();
+    if (token !== undefined) saved = applyTabIntent(saved, { action: 'open', fileId });
     await act(async () => {
-      opens.emit({ fileId });
+      opens.emit({ fileId, token });
     });
   };
   return { host, open };
