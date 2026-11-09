@@ -33,6 +33,8 @@ import {
   isPaneFramePage,
   isSubmissionPage,
   isTabId,
+  applyTabIntent,
+  type TabIntent,
   keptAddress,
   normalizeTabs,
 } from './model';
@@ -112,14 +114,12 @@ export function createViewerOwner(host: ViewerHost, tabId: number | undefined) {
       const item = await host.read(origin, tabId, (api) =>
         api.getViewerModuleItem(courseId, moduleId, itemId),
       );
-      if (item.type !== 'File' || !id(item.content_id))
+      if (item.type !== 'File' || !isFileId(item.content_id))
         throw new Error('The module item is not a file');
       return { fileId: item.content_id };
     },
   };
 }
-const id = (value: unknown): value is string =>
-  typeof value === 'string' && /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/.test(value);
 
 /** Whether a sender is the pane: the frame of `viewer.html` inside a tab, never a tab of its own. */
 function isPaneFrame(sender: ViewerSender): boolean {
@@ -260,7 +260,11 @@ export function routeViewerMessage(
       'viewer:position-set',
       'viewer:module-item',
       'viewer:tabs-get',
-      'viewer:tabs-set',
+      'viewer:tabs-open',
+      'viewer:tabs-undo',
+      'viewer:tabs-clear',
+      'viewer:tabs-close',
+      'viewer:tabs-activate',
       'viewer:permission',
       'viewer:session',
       'viewer:fetch-allowed',
@@ -329,10 +333,14 @@ export function routeViewerMessage(
         });
       }
       case 'viewer:file':
-        if (!id(request['fileId'])) throw new Error('Invalid file id');
+        if (!isFileId(request['fileId'])) throw new Error('Invalid file id');
         return owner.file(origin, request['fileId']);
       case 'viewer:module-item':
-        if (!id(request['courseId']) || !id(request['moduleId']) || !id(request['itemId']))
+        if (
+          !isFileId(request['courseId']) ||
+          !isFileId(request['moduleId']) ||
+          !isFileId(request['itemId'])
+        )
           throw new Error('Invalid module identity');
         return owner.moduleItem(
           origin,
@@ -414,16 +422,37 @@ export function routeViewerMessage(
         // token that the last read gave, so a pane that stayed open cannot write the tabs of one
         // student back as the tabs of another, or after a clearing. The round comes first: a
         // clearing between the two reads leaves this token with the old round.
-        const token = `${await readEpoch(host)}:${userId}`;
         if (request['type'] === 'viewer:tabs-get') {
           await recordStudent(host, userId);
+          const token = `${await readEpoch(host)}:${userId}`;
           const stored = await host.get(key);
           const tabs = storedUser(stored) === userId ? normalizeTabs(stored) : normalizeTabs(null);
           return { ...tabs, token };
         }
-        if (request['token'] !== token) throw new Error('The tabs changed since they were read');
-        await host.set(key, { ...normalizeTabs(request['tabs']), userId });
-        return { ok: true };
+        return withPositions(async () => {
+          const token = `${await readEpoch(host)}:${userId}`;
+          if (request['token'] !== token) throw new Error('The tabs changed since they were read');
+          const stored = await host.get(key);
+          const current = normalizeTabs(storedUser(stored) === userId ? stored : null);
+          const action = String(request['type']).slice(
+            'viewer:tabs-'.length,
+          ) as TabIntent['action'];
+          if (action === 'undo') {
+            if (
+              ![request['added'], request['evicted']].every(
+                (ids) => Array.isArray(ids) && ids.length <= 8 && ids.every(isTabId),
+              )
+            )
+              throw new Error('Invalid tab intent');
+          } else if (action !== 'clear' && !isTabId(request['fileId']))
+            throw new Error('Invalid tab intent');
+          const next = applyTabIntent(current, { ...request, action } as TabIntent);
+          const added = action === 'open' && !current.ids.includes(String(request['fileId']));
+          const evicted =
+            action === 'open' ? (current.ids.find((id) => !next.ids.includes(id)) ?? null) : null;
+          await host.set(key, { ...next, userId });
+          return { ...next, token, added, evicted };
+        });
       }
     }
   };
@@ -444,7 +473,9 @@ export function routeViewerMessage(
   // The reads and writes of the tabs of one browser tab run in the order they arrive, so the last
   // write that arrives is the last one stored.
   return tabId !== undefined &&
-    /^viewer:(?:tabs|position)-(?:get|set)$/.test(String(request['type']))
+    /^viewer:(?:tabs-(?:get|open|undo|clear|close|activate)|position-(?:get|set))$/.test(
+      String(request['type']),
+    )
     ? enqueue(tabId, attempt)
     : attempt();
 }
@@ -502,8 +533,6 @@ export function serveBytesPort(
   },
   host: Pick<ViewerHost, 'savedOrigin' | 'isExtensionPage' | 'read' | 'tabUrl'>,
   fetchBytes: typeof fetchFileBytes = fetchFileBytes,
-  /** The port clones typed arrays (Firefox). Other ports send JSON, so the bytes go as base64. */
-  binary: boolean = BROWSER_KIND === 'firefox',
 ): void {
   if (port.name !== BYTES_PORT) return;
   const sender = port.sender;
@@ -537,7 +566,7 @@ export function serveBytesPort(
           Object.keys(message).some((key) => !['fileId', 'commentTab', 'truncateAt'].includes(key))
         )
           throw new Error('Invalid file read');
-        const fileRead = id(fileId) && commentTab === undefined;
+        const fileRead = isFileId(fileId) && commentTab === undefined;
         const commentRead =
           typeof commentTab === 'string' && isCommentTab(commentTab) && fileId === undefined;
         if (!origin || (!fileRead && !commentRead)) throw new Error('Invalid file read');
@@ -590,7 +619,7 @@ export function serveBytesPort(
           if (controller.signal.aborted) return;
           // `slice` copies, because a clone of a view holds its whole buffer.
           const part = bytes.slice(offset, offset + BYTES_CHUNK);
-          port.postMessage({ chunk: binary ? part : toBase64(part) });
+          port.postMessage({ chunk: BROWSER_KIND === 'firefox' ? part : toBase64(part) });
           sent += 1;
         }
         port.postMessage({ done: true, mime, facts: fileReadFacts.get(bytes) });
@@ -633,11 +662,11 @@ export function wireViewerRouter(
     savedOrigin: () => canvasOriginItem.getValue(),
     isExtensionPage: (sender) =>
       sender.url?.startsWith(browser.runtime.getURL('/')) === true && isPaneFrame(sender),
-    read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
-    paneCheck: (origin, tabId, retry) => owner.viewerPaneCheck(origin, tabId, retry),
-    mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),
-    userId: (origin, tabId) => owner.viewerUserId(origin, tabId),
-    confirm: (origin, tabId) => owner.viewerConfirm(origin, tabId),
+    read: owner.viewerRead,
+    paneCheck: owner.viewerPaneCheck,
+    mayFetch: owner.viewerMayFetch,
+    userId: owner.viewerUserId,
+    confirm: owner.viewerConfirm,
     get: async (key) => (await browser.storage.session.get(key))[key],
     set: (key, value) => browser.storage.session.set({ [key]: value }),
     // File redirects can use hosts selected by Canvas, so check the full file host grant.

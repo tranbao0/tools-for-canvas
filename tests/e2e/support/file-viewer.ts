@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { BrowserContext, Frame, Locator, Page, Worker } from '@playwright/test';
 import type { FakeCanvasRoute } from './fake-canvas';
+import { expectStartupDecision } from './file-pane';
 import { expect, serveScenario } from './weekrow';
 import { saveAddress, type StorageArea } from './scenario-api';
 
@@ -101,9 +102,12 @@ export const SYLLABUS = {
  * Waits until the first load of the list has finished, so the cache has its student. The viewer
  * reads Canvas only for a confirmed student, and a read that comes sooner is refused.
  */
-export async function waitForListLoaded(canvas: {
-  readonly requests: readonly { path: string; answeredAt: number | null }[];
-}): Promise<void> {
+export async function waitForListLoaded(
+  canvas: {
+    readonly requests: readonly { path: string; answeredAt: number | null }[];
+  },
+  background: Worker,
+): Promise<void> {
   await expect
     .poll(
       () =>
@@ -115,7 +119,27 @@ export async function waitForListLoaded(canvas: {
     )
     .toBe(true);
   // The owner commits the answer a moment later.
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await expect
+    .poll(
+      () =>
+        background.evaluate(async () => {
+          const api = (
+            globalThis as unknown as {
+              chrome: {
+                storage: {
+                  session: {
+                    get(key: string): Promise<Record<string, { userCheck?: { userId: string } }>>;
+                  };
+                };
+              };
+            }
+          ).chrome;
+          const stored = await api.storage.session.get('weekrowCache');
+          return Boolean(stored['weekrowCache']?.userCheck?.userId);
+        }),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 }
 
 /** The name and the type line of the visible file: the card, or the slim line of a PDF. */
@@ -167,7 +191,11 @@ async function paneBox(page: Page) {
  * the frame has its hit test data goes to the page, not to the frame, and then the click does
  * nothing. A press that arrived is counted, so a click is not repeated after it landed.
  */
-export async function clickInFrame(frame: Frame, target: Locator): Promise<void> {
+export async function clickInFrame(
+  frame: Frame,
+  target: Locator,
+  options: { button?: 'left' | 'middle' | 'right' } = {},
+): Promise<void> {
   const presses = () =>
     frame.evaluate(() => {
       const counter = window as unknown as { pointerPresses?: number };
@@ -179,7 +207,7 @@ export async function clickInFrame(frame: Frame, target: Locator): Promise<void>
     });
   const before = await presses();
   await expect(async () => {
-    if ((await presses()) === before) await target.click({ timeout: 2000 });
+    if ((await presses()) === before) await target.click({ ...options, timeout: 2000 });
     await expect.poll(presses, { timeout: 1500 }).toBeGreaterThan(before);
   }).toPass({ timeout: 20_000 });
 }
@@ -250,6 +278,7 @@ export async function openCoursePage(
   ]);
   await saveAddress(background, canvas.origin);
   await page.goto(`${canvas.origin}/courses/101/pages/notes`);
+  await expectStartupDecision(background, page);
   return canvas;
 }
 

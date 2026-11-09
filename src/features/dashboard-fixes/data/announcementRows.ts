@@ -10,10 +10,10 @@ import type { AnnouncementListRow } from '../protocol';
 /** The longest message that a row carries. The row shows a snippet, and the search reads it. */
 export const MAX_LIST_MESSAGE_CHARS = 4_000;
 const MAX_TITLE_CHARS = 1_000;
-const MAX_NAME_CHARS = 300;
+export const MAX_NAME_CHARS = 300;
 const MAX_URL_CHARS = 2_000;
 
-function limited(value: unknown, max: number): string {
+export function limited(value: unknown, max: number): string {
   return typeof value === 'string' ? value.slice(0, max) : '';
 }
 

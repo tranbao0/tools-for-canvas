@@ -335,6 +335,9 @@ export function App(props: AppProps) {
       data-surface={surface}
       data-rows={rowSize}
       data-minimized={minimized ? '' : undefined}
+      data-minimize-follow-until={
+        pendingFocus.current?.value === minimized ? pendingFocus.current.until : undefined
+      }
       aria-busy={settingsFrom === null && state.kind === 'loading' ? true : undefined}
       ref={rootRef}
     >

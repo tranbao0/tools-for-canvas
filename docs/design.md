@@ -497,6 +497,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     If Canvas replaces the wrapper or the section, the card moves into the new wrapper and keeps its scroll positions.
     Minimize to the header in the same flow, with no reserved space: the card leaves the overlay and stays in the flow of the wrapper, and the section is not displayed, so the column closes up.
     Restoring the card goes back to the overlay.
+    Only a slot card scrolls into view after a minimize or expand, only within the focus follow window for the student’s own toggle on this page, and only on the next layout pass.
     Release restores the inline styles of the wrapper and the section and removes the marker.
     The scroll regions of the card turn the browser's scroll anchoring off, and the layout code ignores the scroll event of a card that is not rendered, so a move of the card keeps the scroll positions.
   - **The rows of the slot card** have the look of the items of the Course work widget: the check box, a block in the course color with the type icon, the text column, and a right column with the due pill and the row actions (Preview, Move to today) under it.
@@ -1443,7 +1444,7 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   An Undo of a done mark or an announcement read mark first passes the same cookie check, and it does nothing when the check fails.
   The reply of a refused Undo says `refused`, and the surface shows the Undo notice again, also beside the `cant_load` state.
   A refused Undo is `refused` only while the cache still belongs to the student of the Undo.
-  After a sign-out or a change of student nothing can be restored, so the reply is the plain one and the notice ends.
+  After a sign-out or a change of student nothing can be restored, so the reply is the plain one: the notice ends, and the "Couldn't undo that" line shows (decision 6).
   A done mark, an announcement read mark, a task create, a task update, a move to today, a task delete and the "send now" of a delayed task delete pass the same check at the tap.
   A refused tap does nothing, and the reply of a task create says that Canvas saved nothing.
   A "send now" that the check refuses leaves the delete to its timer, which sends it after a check.
@@ -1536,6 +1537,13 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 
 **Refresh triggers:**
 
+- A full round reloads the session data at most once an hour, and Retry requests a reload.
+  With no courses, a round after a failed course load or a pending Retry also reloads the session, light or full, until it loads.
+  A new profile id drops all cached data.
+  The cached work of a course that left is dropped, but assignment details and planner items stay.
+  A failed reload keeps the old session data unless Canvas refuses access or the user changes.
+  With no course in the old data, the reload is all that the round does, so its failure fails the round, and the surface shows "Couldn't load your list" with Retry.
+
 - A "Canvas page loaded" message from the content script, or a window that gains focus, refreshes the planner items of the current-week range only.
   This covers sign-in, submissions and done marks made in Canvas itself.
 - A 5-minute timer refreshes the current-week range and everything else: the assignment details of its items, the undated work and the override list.
@@ -1614,16 +1622,16 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Data | Request | When |
 |---|---|---|
 | Sign-in check | `GET /api/v1/users/self` | Setup, every light and full round, after any 401, and before cached data goes out when the session cookie is not a confirmed one |
-| Time zone and language | `GET /api/v1/users/self/profile` | Once per session |
-| Courses | `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term&include[]=total_scores&per_page=100` | Once per session |
-| Groups | `GET /api/v1/users/self/groups?per_page=100` | Once per session |
-| Course colors | `GET /api/v1/users/self/colors` | Once per session |
-| Course order | `GET /api/v1/users/self/dashboard_positions` | Once per session |
+| Time zone and language | `GET /api/v1/users/self/profile` | At most once an hour, in a full round, and on Retry |
+| Courses | `GET /api/v1/courses?enrollment_state=active&enrollment_type=student&include[]=term&include[]=total_scores&per_page=100` | At most once an hour, in a full round, and on Retry |
+| Groups | `GET /api/v1/users/self/groups?per_page=100` | At most once an hour, in a full round, and on Retry |
+| Course colors | `GET /api/v1/users/self/colors` | At most once an hour, in a full round, and on Retry |
+| Course order | `GET /api/v1/users/self/dashboard_positions` | At most once an hour, in a full round, and on Retry |
 | Week items | `GET /api/v1/planner/items?start_date=...&end_date=...&per_page=100` | The parts of a view's range that the cache lacks, the days of the span first; the weeks before and after a shown view, ahead of time; the cached parts of the current-week range in each light and full round, in up to 3 chunks |
 | Assignment details | `GET /api/v1/courses/:id/assignments?assignment_ids[]=...&include[]=submission&per_page=100` | New planner items, after they show, per course with assignment items; the current-week items in each full round; a shown week's items after a full round |
 | Assignment (decision 26) | `GET /api/v1/courses/:id/assignments/:id` | The assignment pane shows an assignment, on each later read of the pane (each trusted load of a frame after the first, the assignment that the pane just left when it shows another, each assignment of its frames when it closes, every 20 seconds while it is open and the page is in view), and the Submission Details page loads |
 | Own submission (decision 26) | `GET /api/v1/courses/:id/assignments/:id/submissions/self` | With each assignment read above; alone, to learn the user of the submission and to get the report data for the scores beside the files, when an assignment page loads |
-| Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears |
+| Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears, and again with each reload of the session data |
 | All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
 | Undated work | `GET /api/v1/courses/:id/assignments?bucket=undated&...` | 5-minute timer, per course |
 | Overrides | `GET /api/v1/planner/overrides?per_page=100` | 5-minute timer, when No due date has items |
@@ -1673,7 +1681,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | No access | `permissions.contains` is false | An "Allow access" button |
 | Signed out | Any 401, then `GET /api/v1/users/self` returns 401 | An "Open Canvas to sign in" button and the saved address |
 | Planner turned off | `users/self` returns 200, and the planner returns 403 with JSON `status` `unauthorized` | The same list and chips, built from the "All assignments" request and the override list. One line says: "Your school limits the Canvas planner. Pages, ungraded discussions, ungraded quizzes, peer reviews, discussions with reply due dates and your own tasks can't show." The add-task button is disabled, with that reason. |
-| No active courses | The courses list is empty | "No active courses" |
+| No active courses | The courses list is empty | "No active courses" and a Retry button. After a failed refresh: "Couldn't load your list" and a Retry button |
 | Nothing due | The span has no items | "Nothing due in these 7 days" |
 | Can't refresh | HTTP 429, 403 with "Rate Limit Exceeded", HTTP 5xx, or a network error | The last data, with one line: "Couldn't refresh. Showing your list from 3:05 pm." and a Retry button. On a network error while the browser reports no connection, the line also says "You're offline." |
 
@@ -3262,6 +3270,8 @@ With the pane read alone, the default run of the test failed before the fix.
      The order of the tabs is also the order of the clicks.
    - The page script tells a pane what to open once for each port (`synced`).
      The first `open-file` request makes the pane restore the stored tabs, and from then on the pane owns them.
+     A student close hides the pane and always writes after earlier tab writes: it clears the stored tabs if this page view synced them while visible without the identity cover; otherwise it removes this page view's added tabs, keeps the stored list and token, and sets active to none so the pane stays closed on the next page.
+     A close or reset cancels pending opens after every await; both channels give the link for a null, failed or ended open, and handle an opened, timeout or student-closed open.
      A copy that the page script read from the store is older than the pane, so it is never sent again.
      Otherwise it would undo what the student did in the pane since.
      A click that finishes writing the tabs after the pane has connected sends its file as a request.

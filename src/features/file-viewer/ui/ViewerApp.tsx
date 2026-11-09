@@ -9,7 +9,7 @@ import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { t } from '../../../shared/ui/i18n';
-import { closeFile, openFile, type Tabs } from '../model';
+import { closeFile, openFile, type Tabs, type TabIntent } from '../model';
 import { FileCard, type FileState, type PaneFile } from './FileCard';
 import type { CoveredHost } from './covered';
 import type { FullViewHost } from './fullView';
@@ -34,7 +34,9 @@ export interface PaneHost extends PdfHost {
   /** Asks the browser for that access. Call it directly inside a click handler. */
   requestAccess(): Promise<boolean>;
   getTabs(): Promise<Tabs>;
-  setTabs(tabs: Tabs): Promise<void>;
+  /** Capture this token inside the student action, before any await. */
+  tabToken(): string | undefined;
+  changeTabs(intent: TabIntent, token: string): Promise<Tabs>;
   /** Asks the Canvas page to close the pane. */
   closePane(): void;
   /** The full view state of the pane, which the Canvas page keeps. */
@@ -46,6 +48,8 @@ export interface PaneHost extends PdfHost {
 /** The Canvas page asks the pane to open a file. */
 export interface OpenRequest {
   fileId: string;
+  /** The token at the page click; an absent token never permits a store write. */
+  token?: string;
   courseId?: string;
   name?: string;
   /**
@@ -106,19 +110,61 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const loaded = useRef(false);
   const pending = useRef<Promise<unknown>>(Promise.resolve());
   const writes = useRef<Promise<unknown>>(Promise.resolve());
+  const memory = useRef(new Set<string>());
+  const changes = useRef(0);
+  const reading = useRef<Promise<{ tabs: Tabs; token: string | undefined }> | undefined>(undefined);
+  const readTabs = useCallback(() => {
+    if (reading.current) return reading.current;
+    const result = host.getTabs().then((tabs) => ({ tabs, token: host.tabToken() }));
+    reading.current = result;
+    void result
+      .finally(() => {
+        if (reading.current === result) reading.current = undefined;
+      })
+      .catch(() => undefined);
+    return result;
+  }, [host]);
   const save = useCallback(
-    (next: Tabs) => {
-      writes.current = writes.current.then(() => host.setTabs(next)).catch(() => undefined);
+    (intent: TabIntent, credential: string | undefined | Promise<string | undefined>) => {
+      const change = ++changes.current;
+      if (credential === undefined) return;
+      writes.current = writes.current
+        .then(async () => {
+          const token = await credential;
+          if (token === undefined) return;
+          let latest = await host.changeTabs(intent, token);
+          if (change !== changes.current) return;
+          const local = tabsRef.current;
+          const selected =
+            local.active && memory.current.has(local.active) ? local.active : latest.active;
+          for (const [index, id] of local.ids.entries()) {
+            if (!memory.current.has(id)) continue;
+            latest = openFile({ ids: latest.ids, active: selected }, id);
+            const ids = latest.ids.filter((entry) => entry !== id);
+            ids.splice(Math.min(index, ids.length), 0, id);
+            latest = { ids, active: selected };
+          }
+          tabsRef.current = latest;
+          setTabs(latest);
+        })
+        .catch(() => undefined);
     },
     [host],
   );
   const commit = useCallback(
-    (next: Tabs) => {
+    (next: Tabs, intent: TabIntent) => {
       tabsRef.current = next;
       setTabs(next);
-      save(next);
+      if (intent.action === 'close') memory.current.delete(intent.fileId);
+      const token =
+        host.tabToken() ??
+        readTabs().then(
+          (reply) => reply.token,
+          () => undefined,
+        );
+      save(intent, token);
     },
-    [save],
+    [host, readTabs, save],
   );
 
   const load = useCallback(
@@ -131,7 +177,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       // fails again changes nothing, and the file loads as before.
       (loaded.current
         ? Promise.resolve()
-        : host.getTabs().then(
+        : readTabs().then(
             () => undefined,
             () => undefined,
           )
@@ -146,17 +192,16 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           setFiles((all) => ({ ...all, [fileId]: state }));
           refreshAccess();
           if (state.kind === 'ready' && !loaded.current) {
-            void host.getTabs().then(
+            void readTabs().then(
               () => {
                 loaded.current = true;
-                save(tabsRef.current);
               },
               () => undefined,
             );
           }
         });
     },
-    [host, refreshAccess, save],
+    [host, readTabs, refreshAccess],
   );
 
   useEffect(refreshAccess, [refreshAccess]);
@@ -169,6 +214,8 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
         // The page decides: a click on a link without the parameters drops an older address.
         if (request.address) addresses.current.set(request.fileId, request.address);
         else addresses.current.delete(request.fileId);
+        // A page request keeps its own read result, even when this pane reads again.
+        const token = request.token;
         // The requests run one after another, so the first read of the stored tabs finishes
         // before the next request adds to the tabs.
         pending.current = pending.current
@@ -177,27 +224,26 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             // tabs in memory, which already hold every change of the student. A read that fails
             // is not "no tabs": the next request reads again, and tabs that opened meanwhile stay.
             let known = tabsRef.current;
-            let recovered = false;
             if (!loaded.current) {
               try {
-                const stored = await host.getTabs();
+                const { tabs: stored } = await readTabs();
                 loaded.current = true;
-                recovered = known.ids.length > 0;
-                if (!recovered) known = stored;
+                if (known.ids.length === 0) known = stored;
               } catch {
                 // The tabs in memory stay, and they are not written.
               }
             }
+            if (token === undefined && !known.ids.includes(request.fileId))
+              memory.current.add(request.fileId);
+            else if (token !== undefined) memory.current.delete(request.fileId);
             const next = openFile(known, request.fileId);
             tabsRef.current = next;
             setTabs(next);
-            if (loaded.current && (recovered || JSON.stringify(next) !== JSON.stringify(known))) {
-              save(next);
-            }
+            save({ action: 'open', fileId: request.fileId }, token);
           })
           .catch(() => undefined);
       }),
-    [host, props.opens, save],
+    [host, props.opens, readTabs, save],
   );
 
   useEffect(() => {
@@ -226,12 +272,13 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   }, [tabs]);
 
   const activate = (fileId: string) => {
-    if (tabsRef.current.active !== fileId) commit({ ids: tabsRef.current.ids, active: fileId });
+    if (tabsRef.current.active !== fileId)
+      commit({ ids: tabsRef.current.ids, active: fileId }, { action: 'activate', fileId });
   };
   const close = (fileId: string) => {
     const wasActive = tabsRef.current.active === fileId;
     const next = closeFile(tabsRef.current, fileId);
-    commit(next);
+    commit(next, { action: 'close', fileId });
     if (next.ids.length === 0) {
       host.closePane();
       return;

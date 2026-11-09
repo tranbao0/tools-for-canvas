@@ -2,6 +2,7 @@
 import { chromium, type Page } from '@playwright/test';
 import { DEFAULT_TOOLS_SETTINGS, type ToolsSettings } from '../../src/shared/settings/tools';
 import {
+  clickListControl,
   saveTools,
   doneBox,
   expect,
@@ -152,7 +153,7 @@ test.describe('the widget dashboard without Course work', () => {
       );
       await browser.close();
       for (const tab of ['Dashboard', 'Courses', 'Dashboard']) {
-        await page.getByRole('tab', { name: tab, exact: true }).click();
+        await clickListControl(page.getByRole('tab', { name: tab, exact: true }));
         if (tab === 'Courses') {
           // The Courses tab shows no card and no floating panel. The list stays on the page.
           await expect(inpageList(page)).toBeHidden();
@@ -316,7 +317,7 @@ for (const width of [2088, 1760, 1280]) {
     else expect(card.y + card.height).toBeLessThanOrEqual(grid.y + 1);
     expect(await coveredCanvasElements(page)).toEqual([]);
     for (const tab of ['Dashboard', 'Courses']) {
-      await page.getByRole('tab', { name: tab, exact: true }).click();
+      await clickListControl(page.getByRole('tab', { name: tab, exact: true }));
       await settledList(page);
       await page.screenshot({ path: `screenshots/j3-delay-${width}-${tab}.png`, fullPage: true });
     }

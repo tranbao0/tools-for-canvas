@@ -9,7 +9,7 @@ import type { WidgetGradePreferences } from '../../../shared/canvas/types';
  * Everything it touches comes in through `DataOwnerDeps`, so it does not depend on where it
  * runs. The background uses it today; a panel page or a content script could host it instead.
  */
-import type { RequestPriority } from '../../../shared/canvas/limiter';
+import { rankOf, type RequestPriority } from '../../../shared/canvas/limiter';
 import { isCanvasId, isGradeWidgetId } from '../../../shared/canvas/ids';
 import type {
   CanvasApi,
@@ -56,8 +56,8 @@ import {
   type AnnouncementMark,
 } from './announcements';
 import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
-import type { Item, Offer, Settings } from '../model/types';
-import { canAutoSaveOrigin, isUsableOrigin } from '../../../shared/platform/address';
+import type { AssignmentData, Item, Offer, Settings } from '../model/types';
+import { canAutoSaveOrigin, isUsableOrigin, usableOrigin } from '../../../shared/platform/address';
 import type { SeenNotes } from './storage';
 import type { TaskInput } from '../ui/contract';
 import {
@@ -429,6 +429,9 @@ export interface DataOwner {
   dispose(): void;
 }
 
+/** No cached details, so that every id of a lookup counts as missing. */
+const NO_DETAILS: Readonly<Record<string, AssignmentData>> = Object.create(null);
+
 const NO_UNDO: ActionReply = { undo: null };
 /** The reply to an Undo that the cookie check refused. The surface shows the notice again. */
 const UNDO_REFUSED: ActionReply = { undo: null, refused: true };
@@ -478,8 +481,6 @@ interface PlannerJob {
   /** Epoch milliseconds when the job started. */
   startedAt: number;
 }
-
-const PRIORITY_RANK: Readonly<Record<RequestPriority, number>> = { high: 2, normal: 1, low: 0 };
 
 function hull(intervals: readonly Interval[]): Interval {
   return {
@@ -1114,14 +1115,15 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * a chip, never where an item goes. It never starts itself again: a course whose names fail
    * waits for the next round.
    */
-  function loadStatusNames(settings: Settings, afterRound: boolean): void {
+  function loadStatusNames(settings: Settings, afterRound: boolean, reload = false): void {
     const origin = knownOrigin;
     const session = cache?.session;
     if (origin === null || cache === null || session == null) return;
     if (afterRound) statusesFailed.clear();
-    const ids = statusCoursesNeeded(cache, visibleCourseIds(session, settings)).filter(
-      (id) => !statusesInFlight.has(id) && !statusesFailed.has(id),
-    );
+    const ids = statusCoursesNeeded(
+      reload ? { ...cache, gradeStatuses: {} } : cache,
+      visibleCourseIds(session, settings),
+    ).filter((id) => !statusesInFlight.has(id) && !statusesFailed.has(id));
     if (ids.length === 0) return;
     ids.forEach((id) => statusesInFlight.add(id));
     const gen = generation;
@@ -1155,6 +1157,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     }
   }
 
+  let sessionReload: object | null = null;
+
   async function runExecutedRound(job: RoundScope): Promise<void> {
     const origin = knownOrigin;
     if (origin === null || cache === null) return;
@@ -1172,6 +1176,8 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     const startedAt = context.now;
     const api = apiFor(origin);
+    const reloadSession = sessionReload;
+    const oldSession = cache.session;
     let update: RoundUpdate | null = null;
     // The first request of the round starts right after this read, so the round's own user
     // check binds to this fingerprint and to no later one. Without a readable cookie no request
@@ -1199,6 +1205,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       update = await runRound({
         api,
         kind,
+        reloadSession: reloadSession !== null,
         cache,
         hiddenCourseIds: context.settings.hiddenCourseIds,
         currentRange: (session) => plannerRangeForView(session, 0, context),
@@ -1248,7 +1255,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       cache = prune(settlePatches(commitUpdate(cache, update, clock.now()), startedAt), context);
       if (firstSession && cache.session !== null) startViewerClaim(cache.session.profile.id);
       recordUserCheck(binding.fingerprint);
-      loadStatusNames(context.settings, true);
+      const reloaded = update.session !== oldSession;
+      if (reloaded && sessionReload === reloadSession) sessionReload = null;
+      loadStatusNames(context.settings, true, reloaded);
     } else if (failure?.kind === 'signed_out') {
       signOut(failure);
     } else {
@@ -1347,6 +1356,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     priority: RequestPriority,
     shown: boolean,
     context: ViewContext,
+    reloadDetails = false,
   ): void {
     if (chunks.length === 0) return;
     startJob(
@@ -1360,7 +1370,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         startedAt: clock.now(),
       },
       context,
-      false,
+      reloadDetails,
     );
   }
 
@@ -1371,7 +1381,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   function raiseJobs(interval: Interval, priority: RequestPriority): void {
     for (const job of jobs) {
       if (!job.all.some((chunk) => overlaps(chunk, interval))) continue;
-      if (PRIORITY_RANK[job.priority] < PRIORITY_RANK[priority]) job.priority = priority;
+      if (rankOf(job.priority) < rankOf(priority)) job.priority = priority;
       job.shown = true;
     }
   }
@@ -1451,19 +1461,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       lastFullAt !== null && own.some((part) => staleParts(coverage, part, lastFullAt).length > 0);
     const times = itemTimes(coverage);
     const chunks = stale.flatMap((part) => chunkInterval(part, times));
-    startJob(
-      {
-        all: [...chunks],
-        waiting: [...chunks],
-        undetailed: [],
-        priority: 'normal',
-        shown: true,
-        phase: 'planner',
-        startedAt: clock.now(),
-      },
-      context,
-      reloadDetails,
-    );
+    startLoad(chunks, 'normal', true, context, reloadDetails);
   }
 
   /** After a view shows: its week catches up after a round, and its neighbor weeks load ahead. */
@@ -1491,16 +1489,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           jobs.delete(job);
         }),
     );
-  }
-
-  /** Ids of the lookup that no other job is fetching. */
-  function notInFlight(lookup: Readonly<Record<string, string[]>>): Record<string, string[]> {
-    const result: Record<string, string[]> = {};
-    for (const [courseId, ids] of Object.entries(lookup)) {
-      const free = ids.filter((id) => !detailsInFlight.has(id));
-      if (free.length > 0) result[courseId] = free;
-    }
-    return result;
   }
 
   /**
@@ -1543,9 +1531,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         return;
       }
       const lookup = assignmentIdsToLookup(items, context.settings.hiddenCourseIds);
-      const detailIds = reloadDetails
-        ? notInFlight(lookup)
-        : missingDetailIds(lookup, cache.details, detailsInFlight);
+      // A reload asks for the details that the cache already holds too, but not for those that
+      // another job is fetching.
+      const detailIds = missingDetailIds(
+        lookup,
+        reloadDetails ? NO_DETAILS : cache.details,
+        detailsInFlight,
+      );
       const ids = Object.values(detailIds).flat();
       if (ids.length === 0) return;
       ids.forEach((id) => detailsInFlight.add(id));
@@ -1723,12 +1715,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * origin. Whatever the store holds, the owner never requests data from anything else.
    */
   async function savedOrigin(): Promise<string | null> {
-    const stored = await store.origin.getValue();
-    return stored !== null && isUsableOrigin(stored) ? stored : null;
+    return usableOrigin(await store.origin.getValue());
   }
 
   async function handleOrigin(candidate: string | null): Promise<void> {
-    const origin = candidate !== null && isUsableOrigin(candidate) ? candidate : null;
+    const origin = usableOrigin(candidate);
     if (origin === knownOrigin) return;
     if (knownOrigin !== null && cache !== null) {
       sendWaitingDeletes(knownOrigin, cache, new Set(startedDeletes));
@@ -4099,7 +4090,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         retryAt: cache.limits.lastRoundAt + REFRESH_LIMIT_MS,
       };
     }
-    if (session.courses.length === 0) return { kind: 'no_courses', origin, offer, allCourses: [] };
+    if (session.courses.length === 0)
+      return blocksLoads(failure)
+        ? { kind: 'cant_load', origin, offline, offer }
+        : { kind: 'no_courses', origin, offer, allCourses: [] };
 
     stamp = writeStamp();
     const context = await viewContext(origin);
@@ -4209,6 +4203,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           await bump();
           return NO_RETRY;
         case 'retry':
+          sessionReload = {};
           plannerBackoff = [];
           retryAt = -Infinity;
           if (cache?.session != null && !(await signedInStudentOwnsCache(true))) return NO_RETRY;

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDock, filePaneOpen, hideFilePane } from './dock';
+import { tabIntentReply } from './tabIntent.fixture';
 import { listenViewerHello, startViewer } from './page';
 
 // The weekly dock needs 768 px beside it; panes reserve 420 px besides global navigation. These tests use a wide window.
@@ -77,7 +78,7 @@ describe('the page script', () => {
       case 'weekrow:page-context':
         return { tools: { fileViewer: true, fileViewerWidth: 480 }, settings: {} };
       case 'viewer:tabs-get':
-        return { ids: [], active: null };
+        return { ids: [], active: null, token: '1:1' };
       case 'viewer:session':
         return { secret: SECRET };
       default:
@@ -116,6 +117,126 @@ describe('the page script', () => {
     delete scope.__weekrowViewer;
     document.body.innerHTML = '';
   });
+
+  it.each([
+    { synced: false, covered: false, reconnect: false },
+    { synced: true, covered: false, reconnect: false },
+    { synced: false, covered: true, reconnect: false },
+    { synced: true, covered: true, reconnect: false },
+    { synced: true, covered: false, reconnect: true },
+    { synced: true, covered: false, reconnect: false, writing: true },
+  ])(
+    'closes with the tabs the student saw: %j',
+    async ({ synced, covered, reconnect, writing }) => {
+      prepare();
+      sendMessage.mockImplementation(async (message: { type: string }) =>
+        message.type === 'viewer:tabs-get'
+          ? { ids: ['42'], active: '42', token: '1:1' }
+          : reply(message),
+      );
+      let releaseWrite: (() => void) | undefined;
+      let storedTabs: { ids: string[]; active: string | null } = { ids: ['42'], active: '42' };
+      if (writing) {
+        sendMessage.mockImplementation(
+          async (message: { type: string; tabs: typeof storedTabs }) => {
+            if (message.type === 'viewer:tabs-get') return { ...storedTabs, token: '1:1' };
+            if (/^viewer:tabs-(open|undo|clear)$/.test(message.type)) {
+              if (message.type === 'viewer:tabs-open' && !releaseWrite)
+                await new Promise<void>((resolve) => {
+                  releaseWrite = resolve;
+                });
+              const result = tabIntentReply(message, storedTabs);
+              storedTabs = { ids: result.ids, active: result.active };
+              return result;
+            }
+            return reply(message);
+          },
+        );
+      }
+      let root: ShadowRoot;
+      const attach = Element.prototype.attachShadow;
+      vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (
+        this: Element,
+        init,
+      ) {
+        const made = attach.call(this, init);
+        if (this.id === 'tools-file-viewer') root = made;
+        return made;
+      });
+      const postMessage = vi.fn();
+      const port = {
+        postMessage,
+        close: vi.fn(),
+        onmessage: null as ((event: { data: unknown }) => void) | null,
+      };
+      vi.stubGlobal(
+        'MessageChannel',
+        class {
+          port1 = port;
+          port2 = {};
+        },
+      );
+      try {
+        await startViewer();
+        await vi.waitFor(() => expect(document.getElementById('tools-file-viewer')).not.toBeNull());
+        document
+          .getElementById('tools-file-viewer')!
+          .setAttribute('data-identity', covered ? 'unknown' : 'yes');
+        if (writing) {
+          click(true);
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        if (synced) {
+          const frame = root!.querySelector('iframe')!;
+          Object.defineProperty(frame, 'contentWindow', { value: { postMessage: vi.fn() } });
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              source: frame.contentWindow,
+              origin: 'chrome-extension://dynamic',
+              data: { type: 'viewer-hello', extensionId: 'my-extension' },
+            }),
+          );
+          port.onmessage!({ data: { type: 'ready', secret: SECRET } });
+          if (writing) await vi.waitFor(() => expect(releaseWrite).toBeDefined());
+          else
+            await vi.waitFor(() =>
+              expect(postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({ type: 'open-file' }),
+              ),
+            );
+        }
+        if (reconnect) {
+          const frame = root!.querySelector('iframe')!;
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              source: frame.contentWindow,
+              origin: 'chrome-extension://dynamic',
+              data: { type: 'viewer-hello', extensionId: 'my-extension' },
+            }),
+          );
+        }
+        sendMessage.mockClear();
+        if (synced && !reconnect) port.onmessage!({ data: { type: 'close' } });
+        else root!.querySelector<HTMLButtonElement>('button[aria-label]')!.click();
+        if (writing) {
+          releaseWrite!();
+          await vi.waitFor(() => expect(storedTabs).toEqual({ ids: ['42'], active: null }));
+          expect(postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'open-file' }),
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        const writes = sendMessage.mock.calls.filter(([m]) =>
+          /^viewer:tabs-(undo|clear)$/.test(m.type),
+        );
+        expect(writes.map(([m]) => m.type)).toEqual([
+          synced && !covered && !writing ? 'viewer:tabs-clear' : 'viewer:tabs-undo',
+        ]);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it('opens nothing for a click that a script made', async () => {
     prepare();
@@ -196,7 +317,9 @@ describe('the page script', () => {
     };
     const paneHost = () => document.getElementById('tools-file-viewer');
     const writes = () =>
-      sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set').map(([m]) => m);
+      sendMessage.mock.calls
+        .filter(([m]) => /^viewer:tabs-(open|undo|clear)$/.test(m.type))
+        .map(([m]) => m);
     async function openPane() {
       prepare();
       document.body.insertAdjacentHTML(
@@ -248,7 +371,9 @@ describe('the page script', () => {
     const html = document.documentElement;
     const paneHost = () => document.getElementById('tools-file-viewer');
     const writes = () =>
-      sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set').map(([m]) => m);
+      sendMessage.mock.calls
+        .filter(([m]) => /^viewer:tabs-(open|undo|clear)$/.test(m.type))
+        .map(([m]) => m);
     const listener = () => broadcast;
     /** Holds the answers of the session reads until the test releases them, in order. */
     function holdSessions() {
@@ -629,10 +754,14 @@ describe('the page script', () => {
         await vi.advanceTimersByTimeAsync(100);
         expect(document.getElementById('tools-file-viewer')).not.toBeNull();
         expect(respond).not.toHaveBeenCalled();
-        await vi.advanceTimersByTimeAsync(15_000);
+        await vi.advanceTimersByTimeAsync(14_000);
+        expect(respond).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1000);
         expect(respond).toHaveBeenCalledWith({ opened: true });
         expect(document.getElementById('tools-file-viewer')).not.toBeNull();
-        expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:tabs-set')).toBe(false);
+        expect(
+          sendMessage.mock.calls.some(([m]) => /^viewer:tabs-(open|undo|clear)$/.test(m.type)),
+        ).toBe(false);
       } finally {
         vi.useRealTimers();
       }
@@ -781,7 +910,9 @@ describe('the page script', () => {
       click(true);
       await vi.waitFor(() => expect(seen).toEqual([{ trusted: false, prevented: false }]));
       expect(paneHost()).toBeNull();
-      expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:tabs-set')).toBe(false);
+      expect(
+        sendMessage.mock.calls.some(([m]) => /^viewer:tabs-(open|undo|clear)$/.test(m.type)),
+      ).toBe(false);
     });
 
     it('clicks the link again when the module item has no file', async () => {
@@ -845,7 +976,7 @@ describe('the page script', () => {
       expect(paneHost()).not.toBeNull();
     });
 
-    it('gives the link no click when the student closed the pane during the read', async () => {
+    it('follows the link when the page removes the pane during the read', async () => {
       prepare();
       document.body.innerHTML = MODULE_HTML;
       let answer = (_file: { fileId: string }): void => undefined;
@@ -861,8 +992,7 @@ describe('the page script', () => {
       await vi.waitFor(() => expect(paneHost()).not.toBeNull());
       paneHost()!.remove();
       answer({ fileId: '4' });
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(seen).toHaveLength(0);
+      await vi.waitFor(() => expect(seen).toHaveLength(1));
     });
 
     it('follows the link after a reset ends the open', async () => {

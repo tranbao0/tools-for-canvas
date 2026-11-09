@@ -23,7 +23,9 @@ import {
 import type { FakeCanvasRoute, FakeReply } from './support/fake-canvas';
 import { HAS_REAL_CANVAS_CSS, useRealCanvasCss } from './support/canvas-css';
 import { EIGHT_COURSES } from './support/eight-courses';
-import { requestsQuiet, stableValue } from './support/settle';
+import { pageQuiet, requestsQuiet, stableValue } from './support/settle';
+
+test.use({ longPaneIdentityTimeout: true });
 
 const PAGE = [{ path: '/', page: 'dashboard-widgets' }] as const;
 const OFF: DashboardFixesSettings = {
@@ -143,6 +145,38 @@ async function setReadFilter(page: Page, label: string): Promise<void> {
       (input as HTMLInputElement).value = value;
       input.setAttribute('value', value);
     }, label);
+}
+
+/** Samples each rendered height during an action, including a jump that comes back. */
+async function sampleHeights(locator: Locator): Promise<() => Promise<number[]>> {
+  const key = `height-${Math.random()}`;
+  await locator.evaluate((node, key) => {
+    const scope = window as unknown as { samples: Record<string, { stop: () => number[] }> };
+    scope.samples ??= {};
+    const values = new Set<number>();
+    let frameId = 0;
+    const sample = () => {
+      values.add(node.getBoundingClientRect().height);
+      frameId = requestAnimationFrame(sample);
+    };
+    sample();
+    scope.samples[key] = {
+      stop: () => {
+        cancelAnimationFrame(frameId);
+        values.add(node.getBoundingClientRect().height);
+        return [...values];
+      },
+    };
+  }, key);
+  return async () => {
+    await pageQuiet(locator.page());
+    return locator.evaluate((_node, key) => {
+      const scope = window as unknown as { samples: Record<string, { stop: () => number[] }> };
+      const values = scope.samples[key]!.stop();
+      delete scope.samples[key];
+      return values;
+    }, key);
+  };
 }
 
 async function heightOf(locator: Locator): Promise<number> {
@@ -345,31 +379,38 @@ test.describe('announcements: one steady list', () => {
     await open(context, page);
     await expect(articles(page)).toHaveCount(10);
     const card = page.locator(WIDGET);
-    const before = {
+    const before = await stableValue(page, async () => ({
       card: await heightOf(card),
       feed: await heightOf(feed(page)),
       filters: await heightOf(page.locator(`${WIDGET} [data-wr-filter]`)),
-    };
+    }));
     // 36rem, or the window height less 14rem when that is less: 576 px in a window of 1000 px.
     expect(before.feed).toBe(576);
     const scrollHeight = await feed(page).evaluate((el) => el.scrollHeight);
 
+    const cardHeights = await sampleHeights(card);
+    const feedHeights = await sampleHeights(feed(page));
+    const filterHeights = await sampleHeights(page.locator(`${WIDGET} [data-wr-filter]`));
     await articles(page).first().getByRole('button', { name: 'Read more' }).click();
     await expect(articles(page).first().locator('.wr-body')).toContainText('Science Hall 214');
-    expect(await heightOf(card)).toBe(before.card);
-    expect(await heightOf(feed(page))).toBe(before.feed);
+    expect(await cardHeights()).toEqual([before.card]);
+    expect(await feedHeights()).toEqual([before.feed]);
     // The message grows inside the scroll area only.
-    expect(await feed(page).evaluate((el) => el.scrollHeight)).toBeGreaterThan(scrollHeight);
+    await expect
+      .poll(() => feed(page).evaluate((el) => el.scrollHeight))
+      .toBeGreaterThan(scrollHeight);
     // The pager of the page and the filters did not move.
-    expect(await heightOf(page.locator(`${WIDGET} [data-wr-filter]`))).toBe(before.filters);
+    expect(await filterHeights()).toEqual([before.filters]);
 
+    const loadingHeights = await sampleHeights(card);
     await feed(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
     await expect(articles(page)).toHaveCount(20);
-    expect(await heightOf(card)).toBe(before.card);
+    expect(await loadingHeights()).toEqual([before.card]);
 
+    const closingHeights = await sampleHeights(card);
     await articles(page).first().getByRole('button', { name: 'Show less' }).click();
     await expect(articles(page).first().locator('.wr-body')).toHaveCount(0);
-    expect(await heightOf(card)).toBe(before.card);
+    expect(await closingHeights()).toEqual([before.card]);
   });
 
   test('keep the height of the card in the four states: list, open message, search and dates', async ({
@@ -405,13 +446,13 @@ test.describe('announcements: one steady list', () => {
 
     expect(sizes).toEqual({ list, open: list, search: list, dates: list, note: list });
     // The scroll area gives its room back to the rows that appear above it.
-    expect(await heightOf(feed(page))).toBeLessThan(576);
+    await expect.poll(() => heightOf(feed(page))).toBeLessThan(576);
   });
 
   test('keep a shorter window at the minimum height of 20rem', async ({ context, page }) => {
     await open(context, page, { height: 500 });
     await expect(articles(page)).toHaveCount(10);
-    expect(await heightOf(feed(page))).toBe(320);
+    await expect.poll(() => heightOf(feed(page))).toBe(320);
   });
 
   test('open the whole message in place, with the sanitizer, and never leave the page', async ({
@@ -589,7 +630,8 @@ test.describe('announcements: one steady list', () => {
       row.getByRole('button', { name: 'Mark Lab room change for Thursday as unread' }),
     ).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => canvas.requests.filter((r) => r.method === 'PUT').length).toBe(1);
-    await page.waitForTimeout(800);
+    await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(10);
     await expect(row).toBeVisible();
 
@@ -598,7 +640,8 @@ test.describe('announcements: one steady list', () => {
       .poll(() => canvas.requests.filter((r) => r.method === 'DELETE').map((r) => r.path))
       .toEqual(['/api/v1/courses/101/discussion_topics/31901/read']);
     expect(state.readAnnouncements.has('101:31901')).toBe(false);
-    await page.waitForTimeout(800);
+    await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(10);
   });
 
@@ -634,7 +677,8 @@ test.describe('announcements: one steady list', () => {
     await unread.click();
     const mark = page.locator(`${LIST} article[data-wr-row="${key}"] .wr-a-read`);
     await expect(mark).toHaveAttribute('aria-pressed', 'true');
-    await page.waitForTimeout(800);
+    await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(count);
     await expect(mark).toBeVisible();
   });
@@ -654,7 +698,8 @@ test.describe('announcements: one steady list', () => {
     ).toHaveAttribute('aria-pressed', 'false');
     await expect.poll(() => canvas.requests.filter((r) => r.method === 'DELETE').length).toBe(1);
     // Well after the hold, the row is still there.
-    await page.waitForTimeout(900);
+    await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(10);
     await expect(row).toBeVisible();
     expect(state.readAnnouncements.has('101:31901')).toBe(false);
@@ -674,7 +719,7 @@ test.describe('announcements: one steady list', () => {
       .poll(() => served.canvas.requests.filter((r) => r.method === 'PUT').length)
       .toBe(1);
     // The hold is long over, and the row waits with its check.
-    await page.waitForTimeout(900);
+    await pageQuiet(page, 3, 500);
     await expect(row).toBeVisible();
     await expect(
       row.getByRole('button', { name: 'Mark Lab room change for Thursday as unread' }),
@@ -697,14 +742,14 @@ test.describe('announcements: one steady list', () => {
     slow.refuse('101:31901');
     const row = articles(page).first();
     await row.getByRole('button', { name: 'Mark Lab room change for Thursday as read' }).click();
-    await page.waitForTimeout(700);
+    await pageQuiet(page, 3, 500);
     await expect(row.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'true');
     slow.release('101:31901');
     await expect(page.locator(`${LIST} [role="status"]`).first()).toContainText(
       "Couldn't change the read mark.",
     );
     await expect(row.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'false');
-    await page.waitForTimeout(500);
+    await pageQuiet(page, 3, 500);
     await expect(articles(page)).toHaveCount(10);
     await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
   });
@@ -755,7 +800,7 @@ test.describe('announcements: one steady list', () => {
     );
     await expect(row.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'true');
     // Well after the hold, the student can still try again in this list.
-    await page.waitForTimeout(900);
+    await pageQuiet(page, 3, 500);
     await expect(articles(page)).toHaveCount(10);
     await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
   });
@@ -801,13 +846,13 @@ test.describe('announcements: one steady list', () => {
     context,
     page,
   }) => {
-    await open(context, page);
+    const { canvas } = await open(context, page);
     const search = page.locator(`${LIST} input[type="search"]`);
     await search.fill('lab');
     await expect(articles(page).first()).toBeVisible();
     await page.locator(`${LIST} .wr-a-read[data-read="false"]`).first().click();
     await expect(page.locator(`${LIST} .wr-a-read[data-read="true"]`).first()).toBeVisible();
-    await page.waitForTimeout(300);
+    await expect.poll(() => canvas.requests.filter((r) => r.method === 'PUT').length).toBe(1);
     await search.fill('');
     await expect(articles(page)).toHaveCount(9, { timeout: 300 });
     await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
@@ -827,7 +872,8 @@ test.describe('announcements: one steady list', () => {
     await second.locator('.wr-a-read').click();
     // The first row leaves. The second waits for Canvas, with its check.
     await expect(articles(page)).toHaveCount(9);
-    await page.waitForTimeout(500);
+    await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     await expect(articles(page)).toHaveCount(9);
     await expect(second).toBeVisible();
     await expect(second.locator('.wr-a-read')).toHaveAttribute('aria-pressed', 'true');
@@ -939,7 +985,8 @@ test.describe('announcements: one steady list', () => {
     await rowsOf(0).first().locator('.wr-a-read').click();
     await expect(rowsOf(0)).toHaveCount(9);
     await expect(rowsOf(1)).toHaveCount(9);
-    await page.waitForTimeout(600);
+    await pageQuiet(page, 3, 500);
+    await expect(page.locator(`${LIST} [data-leaving]`)).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 
@@ -995,7 +1042,7 @@ test.describe('announcements: one steady list', () => {
     await setReadFilter(page, 'Read');
     await expect(articles(page).first()).toHaveAttribute('aria-label', 'Syllabus quiz reminder');
     await expect(articles(page).filter({ hasText: 'Lab room change' })).toHaveCount(0);
-    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await expect.poll(() => feed(page).evaluate((el) => el.scrollTop)).toBe(0);
     expect(pageQueries(canvas).at(-1)).toMatchObject({ readState: 'read', after: null });
     // Every row of this list is read: a check.
     await expect(page.locator(`${LIST} .wr-a-read[data-read="false"]`)).toHaveCount(0);
@@ -1041,6 +1088,7 @@ test.describe('announcements: one steady list', () => {
     const widget = page.locator(WIDGET);
     await expect(widget.getByLabel('Course filter:')).toBeVisible();
     const height = await heightOf(widget);
+    const heights = await sampleHeights(widget);
     await widget
       .getByLabel('Course filter:')
       .selectOption({ label: 'BIO 110: Principles of Biology' });
@@ -1055,7 +1103,7 @@ test.describe('announcements: one steady list', () => {
     expect(names.filter((text) => text.includes(':') && !text.includes('Sent by'))).toEqual(
       names.filter((text) => text === 'BIO 110: Principles of Biology'),
     );
-    expect(await heightOf(widget)).toBe(height);
+    expect(await heights()).toEqual([height]);
 
     await widget.getByLabel('Course filter:').selectOption({ label: 'All courses' });
     await expect(articles(page).filter({ hasText: 'Office hours move' })).toHaveCount(1);
@@ -1176,7 +1224,7 @@ test.describe('announcements: one steady list', () => {
     const search = page.locator(`${LIST} input[type="search"]`);
     await search.fill('lockdown');
     await expect(articles(page)).toHaveCount(2);
-    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await expect.poll(() => feed(page).evaluate((el) => el.scrollTop)).toBe(0);
     await page.locator(`${LIST}`).getByRole('button', { name: 'Clear search' }).click();
     await expect(articles(page)).toHaveCount(20);
     await expect(search).toHaveValue('');
@@ -1210,7 +1258,7 @@ test.describe('announcements: one steady list', () => {
     // The announcements of October, from the REST list: the old ones and the new ones.
     await expect(articles(page).filter({ hasText: 'Lab room change' })).toHaveCount(1);
     await expect(articles(page).filter({ hasText: 'Install the Lockdown Browser' })).toHaveCount(1);
-    expect(await feed(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await expect.poll(() => feed(page).evaluate((el) => el.scrollTop)).toBe(0);
 
     // A text filters the results of the range.
     await page.locator(`${LIST} input[type="search"]`).fill('lockdown');
@@ -2124,10 +2172,22 @@ for (const state of ['covered', 'uncovered', 'native change'])
   test(`a copied eye waits for a native eye write to settle (${state})`, async ({
     context,
     page,
+    background,
   }) => {
     let filters = { gradeVisibilities: {} as Record<string, boolean> };
     let written: unknown;
-    let savedAt = 0;
+    await background.evaluate(() => {
+      const scope = globalThis as typeof globalThis & {
+        __eyeSentAt?: number;
+        __weekrowTestClock?: { real(): number };
+      };
+      const fetch = scope.fetch.bind(scope);
+      scope.fetch = (input, init) => {
+        if (typeof init?.body === 'string' && init.body.includes('updateWidgetDashboardConfig'))
+          scope.__eyeSentAt = scope.__weekrowTestClock!.real();
+        return fetch(input, init);
+      };
+    });
     const served = await serveScenario(
       context,
       [
@@ -2139,7 +2199,6 @@ for (const state of ['covered', 'uncovered', 'native change'])
             const body = JSON.parse(request.postData ?? '{}');
             if (body.query?.includes('updateWidgetDashboardConfig')) {
               written = body.variables.filters;
-              savedAt = Date.now();
               return { body: { errors: [{ message: 'Refused' }] } };
             }
             return {
@@ -2175,35 +2234,41 @@ for (const state of ['covered', 'uncovered', 'native change'])
       );
     }
     await page.exposeFunction('nativeEyeWrite', () => {
-      setTimeout(() => {
-        filters = { gradeVisibilities: { '101': false } };
-      }, 1200);
+      filters = { gradeVisibilities: { '101': false } };
     });
     const nativeEye = page.locator(
       '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
     );
-    await nativeEye.evaluate((button) =>
-      button.addEventListener('click', () => {
-        void (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
-      }),
+    await nativeEye.evaluate(
+      (button, changeGrade) =>
+        button.addEventListener(
+          'click',
+          () => {
+            button.setAttribute('data-native-at', String(Date.now()));
+            setTimeout(async () => {
+              await (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
+              if (changeGrade) {
+                document.querySelector('[data-testid="course-101-grade"]')!.textContent = '•••';
+                button.setAttribute('data-changed-at', String(Date.now()));
+              }
+            }, 1200);
+          },
+          { capture: true, once: true },
+        ),
+      state === 'native change',
     );
-    const nativeAt = Date.now();
     await nativeEye.click();
     await page.locator('[data-wr-card="107"] button').click();
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
     await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(2);
     await expect(page.locator('[data-wr-card][aria-busy="true"]')).toHaveCount(2);
-    await page.waitForTimeout(1500);
-    let changedAt = 0;
-    if (state === 'native change') {
-      changedAt = Date.now();
-      await page.getByTestId('course-101-grade').evaluate((grade) => {
-        grade.textContent = '•••';
-      });
-    }
-    await nativeEye.click();
+    await expect.poll(() => filters).toEqual({ gradeVisibilities: { '101': false } });
     await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
-    expect(savedAt - (changedAt || nativeAt)).toBeLessThan(4300);
+    const nativeAt = Number(await nativeEye.getAttribute('data-native-at'));
+    const changedAt = Number(await nativeEye.getAttribute('data-changed-at'));
+    const savedAt = await background.evaluate(
+      () => (globalThis as typeof globalThis & { __eyeSentAt?: number }).__eyeSentAt!,
+    );
     if (changedAt) expect(savedAt - changedAt).toBeGreaterThanOrEqual(3000);
     expect(savedAt - nativeAt).toBeGreaterThanOrEqual(3000);
   });

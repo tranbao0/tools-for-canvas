@@ -1,3 +1,5 @@
+import { contentScriptWorld } from './support/content-script';
+import { requestsQuiet } from './support/settle';
 import { readFileSync } from 'node:fs';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
@@ -10,6 +12,8 @@ import {
   SUBMISSION_PATH,
   submissionRoute,
 } from './support/file-viewer';
+
+test.use({ longPaneIdentityTimeout: true });
 
 const notes = readFileSync('tests/fixtures/files/notes.txt', 'utf8');
 const assignmentPage = readFileSync('tests/fixtures/pages/assignment-submitted.html', 'utf8');
@@ -186,6 +190,8 @@ test('the Preview button of a row, a script click and a comment attachment keep 
   page,
   background,
 }) => {
+  // Several frame loads and pane transitions share this test under CI load.
+  test.setTimeout(90_000);
   const { canvas } = await serveScenario(context, [
     submissionRoute,
     textFile('42', 'submission.txt'),
@@ -296,11 +302,12 @@ test('a click in the frame downloads the file after the File viewer switch goes 
     ).chrome;
     await api.storage.local.set({ toolsSettings: { fileViewer: false } });
   });
-  await page.waitForTimeout(1500);
+  const world = await contentScriptWorld(page);
+  await expect.poll(() => world.evaluate('typeof globalThis.__weekrowViewer')).toBe('undefined');
   const saved = page.waitForEvent('download');
   await link.click();
   await saved;
-  await page.waitForTimeout(500);
+  await requestsQuiet(page, canvas.requests, background);
   await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
 });
 

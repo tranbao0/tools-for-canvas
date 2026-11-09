@@ -15,6 +15,16 @@ import { ViewerUnconfirmedError } from './unconfirmed';
 import { ACK_TIMEOUT_MS, BYTES_CHUNK, BYTES_PORT, BYTES_WINDOW } from './bytes';
 import { FileBytesError, fileReadFacts } from '../../shared/canvas/fileBytes';
 
+const build = vi.hoisted(() => ({ browser: 'chrome' }));
+vi.mock('../../shared/platform/browserKind', () => ({
+  get BROWSER_KIND() {
+    return build.browser;
+  },
+}));
+afterEach(() => {
+  build.browser = 'chrome';
+});
+
 function setup() {
   const api = {
     getViewerFile: vi.fn(async () => ({
@@ -66,8 +76,28 @@ const hasTabs = (store: Map<string, unknown>) =>
 type Reply = { ids: string[]; active: string | null; token: string };
 const tabsGet = async (sender: Sender, host: ViewerHost) =>
   (await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)) as Reply;
-const tabsSet = (sender: Sender, host: ViewerHost, tabs: unknown, token: unknown) =>
-  routeViewerMessage({ type: 'viewer:tabs-set', tabs, token }, sender, host);
+const tabsSet = async (
+  sender: Sender,
+  host: ViewerHost,
+  tabs: { ids: string[]; active: string | null },
+  token: unknown,
+) => {
+  await routeViewerMessage({ type: 'viewer:tabs-clear', token }, sender, host);
+  for (const fileId of tabs.ids)
+    await routeViewerMessage({ type: 'viewer:tabs-open', fileId, token }, sender, host);
+  if (tabs.active === null)
+    await routeViewerMessage(
+      { type: 'viewer:tabs-undo', added: [], evicted: [], token },
+      sender,
+      host,
+    );
+  else
+    await routeViewerMessage(
+      { type: 'viewer:tabs-activate', fileId: tabs.active, token },
+      sender,
+      host,
+    );
+};
 
 describe('the student of the viewer data', () => {
   it('clears the viewer data before it names another student', async () => {
@@ -177,7 +207,11 @@ describe('viewer router', () => {
     'viewer:file',
     'viewer:module-item',
     'viewer:tabs-get',
-    'viewer:tabs-set',
+    'viewer:tabs-open',
+    'viewer:tabs-close',
+    'viewer:tabs-activate',
+    'viewer:tabs-undo',
+    'viewer:tabs-clear',
     'viewer:permission',
     'viewer:session',
     'viewer:fetch-allowed',
@@ -316,15 +350,15 @@ describe('viewer router', () => {
     store.set('viewer:session:epoch', 1);
     expect(await ask(token)).toBe(false);
   });
-  it('takes the tab id from the sender and normalizes the stored value', async () => {
+  it('takes the tab id from the sender', async () => {
     const { host, sender } = setup();
     const { token } = await tabsGet(sender, host);
     await routeViewerMessage(
       {
-        type: 'viewer:tabs-set',
+        type: 'viewer:tabs-open',
         tabId: 99,
         token,
-        tabs: { ids: ['1', '../bad'], active: 'bad' },
+        fileId: '1',
       },
       sender,
       host,
@@ -414,13 +448,24 @@ describe('tabs and students', () => {
     let release: (id: string) => void = () => undefined;
     const slow = new Promise<string>((resolve) => (release = resolve));
     vi.mocked(host.userId).mockImplementationOnce(() => slow);
-    const first = tabsSet(sender, host, { ids: ['1'], active: '1' }, token);
-    const second = tabsSet(sender, host, { ids: ['2'], active: '2' }, token);
+    const first = routeViewerMessage(
+      { type: 'viewer:tabs-open', fileId: '1', token },
+      sender,
+      host,
+    );
+    const second = routeViewerMessage(
+      { type: 'viewer:tabs-open', fileId: '2', token },
+      sender,
+      host,
+    );
     // Without the queue, the second write is done by now, and the slow first one comes last.
     await new Promise((resolve) => setTimeout(resolve, 20));
     release('u1');
     await Promise.all([first, second]);
-    expect(store.get('viewer:https://school.edu:7')).toMatchObject({ ids: ['2'], active: '2' });
+    expect(store.get('viewer:https://school.edu:7')).toMatchObject({
+      ids: ['1', '2'],
+      active: '2',
+    });
   });
 });
 
@@ -993,7 +1038,7 @@ describe('file bytes port', () => {
     vi.mocked(host.tabUrl).mockResolvedValue('https://evil.example/page');
     const fetchBytes = vi.fn();
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes, false);
+    serveBytesPort(p as never, host, fetchBytes);
     p.send({ fileId: '1' });
     await settle();
     expect(p.postMessage).toHaveBeenCalledWith({ error: { kind: 'unconfirmed' } });
@@ -1004,7 +1049,7 @@ describe('file bytes port', () => {
     const { host, pane, read, api } = setup();
     const fetchBytes = vi.fn(async () => new Uint8Array([1]));
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes, false);
+    serveBytesPort(p as never, host, fetchBytes);
     p.send({ fileId: '1' });
     await settle();
     expect(read).toHaveBeenCalledWith('https://school.edu', 7, expect.any(Function));
@@ -1030,7 +1075,7 @@ describe('file bytes port', () => {
     });
     const fetchBytes = vi.fn(async () => new Uint8Array([1]));
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes, false);
+    serveBytesPort(p as never, host, fetchBytes);
     p.send({ fileId: '1' });
     await settle();
     expect(fetchBytes).toHaveBeenCalledWith(
@@ -1042,7 +1087,7 @@ describe('file bytes port', () => {
     const { host, pane, api } = setup();
     const fetchBytes = vi.fn(async () => new Uint8Array([1]));
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes, false);
+    serveBytesPort(p as never, host, fetchBytes);
     p.send({ commentTab: COMMENT, truncateAt: 16 });
     await settle();
     expect(api.getViewerFile).not.toHaveBeenCalled();
@@ -1102,7 +1147,7 @@ describe('file bytes port', () => {
       return bytes;
     });
     const p = port(pane);
-    serveBytesPort(p as never, host, fetchBytes as never, false);
+    serveBytesPort(p as never, host, fetchBytes as never);
     p.send({ fileId: '1' });
     await settle();
     // The window holds back everything past the first chunks until the pane acknowledges.
@@ -1121,7 +1166,8 @@ describe('file bytes port', () => {
     const { host, pane } = setup();
     const bytes = new Uint8Array(BYTES_CHUNK + 1).fill(7);
     const p = port(pane);
-    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never, true);
+    build.browser = 'firefox';
+    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never);
     p.send({ fileId: '1' });
     await settle();
     await drain(p, 2);
@@ -1192,7 +1238,8 @@ describe('file bytes port', () => {
     const { host, pane } = setup();
     const bytes = new Uint8Array(BYTES_CHUNK * 10);
     const p = port(pane);
-    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never, true);
+    build.browser = 'firefox';
+    serveBytesPort(p as never, host, vi.fn(async () => bytes) as never);
     p.send({ fileId: '1' });
     await settle();
     const before = p.postMessage.mock.calls.length;
@@ -1218,7 +1265,8 @@ describe('file bytes port', () => {
         return bytes;
       });
       const p = port(pane);
-      serveBytesPort(p as never, host, fetchBytes as never, true);
+      build.browser = 'firefox';
+      serveBytesPort(p as never, host, fetchBytes as never);
       p.send({ fileId: '1' });
       await flush();
       expect(p.postMessage).toHaveBeenCalledTimes(1 + BYTES_WINDOW);
@@ -1340,4 +1388,95 @@ it('leaves the watcher of another store pane alone when the request store clears
   stop();
   stopReset();
   vi.useRealTimers();
+});
+
+describe('atomic page tab intents', () => {
+  const intent = (sender: Sender, host: ViewerHost, token: string, type: string, data = {}) =>
+    routeViewerMessage({ type: 'viewer:tabs-' + type, token, ...data }, sender, host);
+
+  it('opens against the current store and returns the evicted tab', async () => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    const ids = Array.from({ length: 8 }, (_, i) => String(i + 11));
+    await tabsSet(sender, host, { ids, active: '18' }, token);
+    expect(await intent(sender, host, token, 'open', { fileId: '5' })).toMatchObject({
+      added: true,
+      evicted: '11',
+      ids: [...ids.slice(1), '5'],
+      active: '5',
+    });
+    expect(await intent(sender, host, token, 'open', { fileId: '5' })).toMatchObject({
+      added: false,
+      evicted: null,
+    });
+  });
+
+  it('undoes only unseen additions and evictions against the current store', async () => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['12', '5', '7'], active: '7' }, token);
+    await intent(sender, host, token, 'undo', { added: ['5'], evicted: ['11'] });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['11', '12', '7'], active: null });
+  });
+
+  it('clears seen tabs', async () => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['4'], active: '4' }, token);
+    await intent(sender, host, token, 'clear');
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: [], active: null });
+  });
+
+  it('closes a tab against the current store without restoring its peers', async () => {
+    const { sender, host, pane } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['4', '5'], active: '5' }, token);
+    await intent(pane as Sender, host, token, 'close', { fileId: '4' });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['5'], active: '5' });
+  });
+
+  it('activates an existing tab and never recreates a removed tab', async () => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['4', '5'], active: '5' }, token);
+    await intent(sender, host, token, 'activate', { fileId: '4' });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['4', '5'], active: '4' });
+    await intent(sender, host, token, 'close', { fileId: '4' });
+    await intent(sender, host, token, 'activate', { fileId: '4' });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['5'], active: '5' });
+  });
+
+  it('retains pane changes between a page open and a page close', async () => {
+    const { sender, pane, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['4'], active: '4' }, token);
+    await intent(sender, host, token, 'open', { fileId: '5' });
+    await intent(pane as Sender, host, token, 'close', { fileId: '4' });
+    await intent(pane as Sender, host, token, 'open', { fileId: '8' });
+    await intent(sender, host, token, 'undo', { added: ['5'], evicted: [] });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['8'], active: null });
+  });
+
+  it.each(['open', 'undo', 'clear'])('rejects a stale token for %s', async (type) => {
+    const { sender, host } = setup();
+    await tabsGet(sender, host);
+    await expect(
+      intent(sender, host, 'wrong', type, { fileId: '5', added: [], evicted: [] }),
+    ).rejects.toThrow();
+  });
+});
+
+it('does not accept tab snapshots from any document', async () => {
+  const { sender, pane, host } = setup();
+  const { token } = await tabsGet(sender, host);
+  for (const source of [sender, pane]) {
+    expect(
+      routeViewerMessage(
+        { type: 'viewer:tabs-set', tabs: { ids: ['9'], active: '9' }, token },
+        source,
+        host,
+      ),
+    ).toBeNull();
+  }
+  expect(await tabsGet(sender, host)).toMatchObject({ ids: [], active: null });
 });

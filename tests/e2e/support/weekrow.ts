@@ -172,3 +172,43 @@ export async function refreshedSince(page: Page, canvas: FakeCanvas, from: numbe
     .toBe(true);
   await settledList(page);
 }
+
+/** Scrolls a slot control or the card into view and waits for the scroll listener to catch up. */
+export async function settleSlotCard(page: Page, control?: Locator): Promise<void> {
+  const card = inpageList(page).locator('weekrow-list[data-panel="slot"] .wr');
+  if (!(await card.count())) return;
+  await (control ?? card).scrollIntoViewIfNeeded();
+  await expect
+    .poll(() =>
+      card.evaluate(async (node) => {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        const container = document.querySelector('#weekrow-inpage')!;
+        return (
+          Math.abs(
+            parseFloat((node as HTMLElement).style.getPropertyValue('--wr-slot-top')) -
+              (12 - container.getBoundingClientRect().top),
+          ) < 0.5
+        );
+      }),
+    )
+    .toBe(true);
+}
+
+/** Prepares a slot control before Playwright presses and releases at its position. */
+export async function clickListControl(
+  control: Locator,
+  options?: Parameters<Locator['click']>[0],
+): Promise<void> {
+  await control.waitFor({ state: 'visible' });
+  const inSlot = await control.evaluate((node) => {
+    const root = node.getRootNode();
+    return root instanceof ShadowRoot && root.host.matches('weekrow-list[data-panel="slot"]');
+  });
+  if (inSlot) {
+    await control.page().bringToFront();
+    await settleSlotCard(control.page(), control);
+  }
+  await control.click(options);
+}

@@ -6,15 +6,10 @@
 import { isCanvasId } from '../../../shared/canvas/ids';
 import type { PeoplePageNode } from '../../../shared/canvas/types';
 import type { PersonEnrollment, PersonRow } from '../protocol';
-import { webAddress } from './announcementRows';
+import { MAX_NAME_CHARS, limited, webAddress } from './announcementRows';
 
-const MAX_NAME_CHARS = 300;
 /** A person teaches few courses, so a longer list is hostile or broken. */
 export const MAX_ENROLLMENTS = 50;
-
-function limited(value: unknown, max: number): string {
-  return typeof value === 'string' ? value.slice(0, max) : '';
-}
 
 const ROLES = { TeacherEnrollment: 'teacher', TaEnrollment: 'ta' } as const;
 

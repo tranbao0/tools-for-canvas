@@ -294,7 +294,18 @@ describe('the 60-second limit', () => {
     await h.owner.refresh('retry');
     await h.owner.settled();
 
-    expect([...methods(h)].sort()).toEqual([...LIGHT, ...FULL_EXTRA].sort());
+    expect([...methods(h)].sort()).toEqual(
+      [
+        ...LIGHT,
+        ...FULL_EXTRA,
+        'getProfile',
+        'listCourses',
+        'listGroups',
+        'getColors',
+        'getDashboardPositions',
+        'listCustomGradeStatuses',
+      ].sort(),
+    );
   });
 
   it('lets a write skip the limit and then refreshes everything', async () => {

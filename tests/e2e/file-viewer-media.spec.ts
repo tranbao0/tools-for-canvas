@@ -10,6 +10,8 @@ import {
 } from './support/file-viewer';
 import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
 
+test.use({ longPaneIdentityTimeout: true });
+
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
 
 const html = courseHomeWithFileLinks(
@@ -100,12 +102,16 @@ for (const kind of ['audio', 'video'] as const) {
       expect(Number.isFinite(duration)).toBe(true);
       expect(duration).toBeGreaterThan(0);
       if (kind === 'video')
-        expect(await media.evaluate((element: HTMLVideoElement) => element.videoWidth)).toBe(320);
+        await expect
+          .poll(() => media.evaluate((element: HTMLVideoElement) => element.videoWidth))
+          .toBe(320);
       const source = await media.getAttribute('src');
       expect(source).toMatch(/^blob:/);
       if (kind === 'video') {
-        // Chromium draws its loading spinner over a new video for about a second.
-        await page.waitForTimeout(1500);
+        // The native player finishes loading before the screenshots.
+        await expect
+          .poll(() => media.evaluate((element: HTMLMediaElement) => element.readyState))
+          .toBe(4);
         for (const width of [1920, 1280])
           for (const theme of ['light', 'dark'] as const) {
             await page.setViewportSize({ width, height: 1080 });

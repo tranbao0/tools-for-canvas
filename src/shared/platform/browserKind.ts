@@ -18,4 +18,9 @@ export function toBrowserKind(name: string): BrowserKind {
 }
 
 /** The browser of the current build. */
-export const BROWSER_KIND: BrowserKind = toBrowserKind(import.meta.env.BROWSER);
+export const BROWSER_KIND: BrowserKind =
+  import.meta.env.BROWSER === 'firefox'
+    ? 'firefox'
+    : import.meta.env.BROWSER === 'edge'
+      ? 'edge'
+      : 'chrome';

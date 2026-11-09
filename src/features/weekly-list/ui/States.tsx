@@ -126,6 +126,11 @@ export function StateBody(props: {
             {t('noCoursesTitle')}
           </Heading>
           <p class="wr-state-body">{withHost('noCoursesBody', state.origin)}</p>
+          <div class="wr-state-actions">
+            <button type="button" class="wr-btn" onClick={() => actions.retry()}>
+              {t('retry')}
+            </button>
+          </div>
         </div>
       );
     case 'cant_load':

@@ -47,6 +47,11 @@ export function isUsableOrigin(origin: string): boolean {
   );
 }
 
+/** The text when it is a usable origin (see `isUsableOrigin`), else `null`. */
+export function usableOrigin(origin: string | null): string | null {
+  return origin !== null && isUsableOrigin(origin) ? origin : null;
+}
+
 /** Whether the origin is `instructure.com` or one of its subdomains. */
 export function isInstructureHost(origin: string): boolean {
   const hostname = parseUrl(origin)?.hostname;

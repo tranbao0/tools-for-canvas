@@ -28,8 +28,9 @@ import {
   type TabSurface,
 } from './announcements';
 
-/** Data that loads once per browser session. */
+/** Session data that reloads at most once an hour and on Retry. */
 export interface SessionData {
+  loadedAt?: number;
   profile: Profile;
   courses: Course[];
   groups: Group[];
@@ -76,7 +77,7 @@ export interface SessionCache {
   undated: Record<string, AssignmentData[]>;
   /** `null` until the override list loads. */
   overrides: PlannerOverride[] | null;
-  /** Teacher status names keyed by course id. Loaded once per course per session. */
+  /** Teacher status names keyed by course id. Loaded per course and again with each session reload. */
   gradeStatuses: Record<string, CustomGradeStatus[]>;
   /** The Canvas planner is turned off for the student (Limited Access for Students). */
   limited: boolean;
@@ -195,6 +196,7 @@ const GROUP_FIELDS = [
  */
 export function toSessionData(data: SessionData): SessionData {
   return {
+    loadedAt: data.loadedAt,
     profile: pick(data.profile, PROFILE_FIELDS),
     courses: data.courses.map((course) => {
       const kept: Course = pick(course, COURSE_FIELDS);

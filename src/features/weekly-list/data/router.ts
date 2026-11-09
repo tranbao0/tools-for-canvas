@@ -10,7 +10,7 @@
  * is trusted only for the saved Canvas: its message must come from the top frame of a tab whose
  * page has the saved origin.
  */
-import { isUsableOrigin } from '../../../shared/platform/address';
+import { isUsableOrigin, usableOrigin } from '../../../shared/platform/address';
 import { browser, type Browser } from 'wxt/browser';
 import type { ToolsSettings } from '../../../shared/settings/tools';
 import { toolsSettingsItem } from '../../../shared/settings/toolsItem';
@@ -117,8 +117,7 @@ async function answerDetection(
 
 /** The saved origin that an extension page may use. */
 export async function extensionOrigin(read: () => Promise<string | null>): Promise<string | null> {
-  const saved = await read();
-  return saved !== null && isUsableOrigin(saved) ? saved : null;
+  return usableOrigin(await read());
 }
 
 /** Resolves when the sender may use the data of the saved Canvas, and rejects otherwise. */
@@ -329,10 +328,7 @@ export const browserRouterHost: RouterHost = {
       );
     return sender.url?.startsWith(browser.runtime.getURL('/')) === true;
   },
-  savedOrigin: async () => {
-    const saved = await canvasOriginItem.getValue();
-    return saved !== null && isUsableOrigin(saved) ? saved : null;
-  },
+  savedOrigin: () => extensionOrigin(() => canvasOriginItem.getValue()),
   async openPage() {
     await browser.tabs.create({ url: browser.runtime.getURL('/welcome.html') });
   },

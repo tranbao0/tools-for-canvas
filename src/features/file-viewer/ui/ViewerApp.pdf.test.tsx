@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { applyTabIntent, type TabIntent } from '../model';
 import { browser } from 'wxt/browser';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -53,8 +54,10 @@ function setup(overrides: Partial<PaneHost> = {}) {
     hasAccess: vi.fn(async () => true),
     requestAccess: vi.fn(async () => true),
     getTabs: vi.fn(async () => saved),
-    setTabs: vi.fn(async (tabs: Tabs) => {
-      saved = tabs;
+    tabToken: () => '1:1',
+    changeTabs: vi.fn(async (intent: TabIntent) => {
+      saved = applyTabIntent(saved, intent);
+      return saved;
     }),
     closePane: vi.fn(),
     fullView: createFullViewStore(vi.fn()),
@@ -66,12 +69,10 @@ function setup(overrides: Partial<PaneHost> = {}) {
   const opens = createOpenSource();
   render(<ViewerApp host={host} opens={opens} />);
   const open = async (fileId: string) => {
-    saved = {
-      ids: saved.ids.includes(fileId) ? saved.ids : [...saved.ids, fileId],
-      active: fileId,
-    };
+    const token = host.tabToken();
+    if (token !== undefined) saved = applyTabIntent(saved, { action: 'open', fileId });
     await act(async () => {
-      opens.emit({ fileId });
+      opens.emit({ fileId, token });
     });
   };
   return { host, open };

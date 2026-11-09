@@ -206,6 +206,13 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         url,
       );
 
+    /** Runs one request per batch of at most `size` distinct ids, side by side. */
+    const inBatches = <T>(
+      ids: readonly string[],
+      size: number,
+      request: (batch: string[]) => Promise<T>,
+    ): Promise<T[]> => Promise.all(chunk(unique(ids), size).map(request));
+
     const listAssignmentBatch = (courseId: string, ids: readonly string[]): Promise<Assignment[]> =>
       getAll<Assignment>(
         apiUrl(assignmentsPath(courseId), [
@@ -448,11 +455,12 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
           ]),
         ),
 
-      listAssignmentsByIds: async (courseId, assignmentIds) => {
-        const batches = chunk(unique(assignmentIds), MAX_ASSIGNMENT_IDS_PER_REQUEST);
-        const results = await Promise.all(batches.map((ids) => listAssignmentBatch(courseId, ids)));
-        return results.flat();
-      },
+      listAssignmentsByIds: async (courseId, assignmentIds) =>
+        (
+          await inBatches(assignmentIds, MAX_ASSIGNMENT_IDS_PER_REQUEST, (ids) =>
+            listAssignmentBatch(courseId, ids),
+          )
+        ).flat(),
 
       // `include[]=checkpoints` makes Canvas send `has_sub_assignments`, so the model can drop
       // checkpointed discussions, whose parent assignment has no due date.
@@ -483,11 +491,12 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         return uniqueBy(overrides, (override) => override.id);
       },
 
-      listCustomGradeStatuses: async (courseIds) => {
-        const batches = chunk(unique(courseIds), MAX_GRAPHQL_ALIASES);
-        const results = await Promise.all(batches.map(listStatusBatch));
-        return Object.fromEntries(results.flatMap((result) => Object.entries(result)));
-      },
+      listCustomGradeStatuses: async (courseIds) =>
+        Object.fromEntries(
+          (await inBatches(courseIds, MAX_GRAPHQL_ALIASES, listStatusBatch)).flatMap((result) =>
+            Object.entries(result),
+          ),
+        ),
 
       createOverride: async (input) =>
         write<PlannerOverride>('POST', '/api/v1/planner/overrides', {
@@ -517,18 +526,15 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
         getObject<AnnouncementTopic>(topicPath(courseId, topicId)),
 
       listAnnouncementFeed: async (courseIds, range) => {
-        const batches = chunk(unique(courseIds), MAX_FEED_COURSES_PER_REQUEST);
-        const results = await Promise.all(
-          batches.map((ids) =>
-            getAll<AnnouncementTopic>(
-              apiUrl('/api/v1/announcements', [
-                ...ids.map((id): QueryParam => ['context_codes[]', `course_${pathId(id)}`]),
-                ['start_date', range.start],
-                ['end_date', range.end],
-                ['active_only', true],
-                ['per_page', PER_PAGE],
-              ]),
-            ),
+        const results = await inBatches(courseIds, MAX_FEED_COURSES_PER_REQUEST, (ids) =>
+          getAll<AnnouncementTopic>(
+            apiUrl('/api/v1/announcements', [
+              ...ids.map((id): QueryParam => ['context_codes[]', `course_${pathId(id)}`]),
+              ['start_date', range.start],
+              ['end_date', range.end],
+              ['active_only', true],
+              ['per_page', PER_PAGE],
+            ]),
           ),
         );
         return uniqueBy(

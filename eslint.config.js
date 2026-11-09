@@ -35,6 +35,70 @@ const unusedOptions = {
   caughtErrorsIgnorePattern: '^_',
 };
 
+const testWaits = {
+  rules: {
+    'no-node-sleep': {
+      meta: {
+        type: 'problem',
+        schema: [],
+        messages: { sleep: 'Wait for a state or event, not a Node timer.' },
+      },
+      create(context) {
+        const promisedTimers = new Set();
+        const key = (node) =>
+          node?.name ??
+          node?.value ??
+          (node?.type === 'TemplateLiteral' && node.expressions.length === 0
+            ? node.quasis[0].value.cooked
+            : undefined);
+        const method = (node) =>
+          node?.type === 'MemberExpression' ? key(node.property) : undefined;
+        return {
+          ImportDeclaration(node) {
+            if (!['node:timers/promises', 'timers/promises'].includes(node.source.value)) return;
+            for (const specifier of node.specifiers) {
+              if (key(specifier.imported) === 'setTimeout')
+                promisedTimers.add(specifier.local.name);
+            }
+          },
+          MemberExpression(node) {
+            if (key(node.property) === 'waitForTimeout')
+              context.report({ node, messageId: 'sleep' });
+          },
+          CallExpression(node) {
+            const timer =
+              node.callee.type === 'Identifier'
+                ? node.callee.name === 'setTimeout' || promisedTimers.has(node.callee.name)
+                : method(node.callee) === 'setTimeout';
+            if (!timer) return;
+            const ancestors = context.sourceCode.getAncestors(node);
+            const exempt = ancestors.some(
+              (parent) =>
+                parent.type === 'CallExpression' &&
+                ([
+                  'evaluate',
+                  'evaluateAll',
+                  'evaluateHandle',
+                  'waitForFunction',
+                  'addInitScript',
+                  'executeScript',
+                  'route',
+                ].includes(method(parent.callee)) ||
+                  (method(parent.callee) === 'race' && parent.callee.object.name === 'Promise')),
+            );
+            const promise =
+              promisedTimers.has(node.callee.name) ||
+              ancestors.some(
+                (parent) => parent.type === 'NewExpression' && parent.callee.name === 'Promise',
+              );
+            if (promise && !exempt) context.report({ node, messageId: 'sleep' });
+          },
+        };
+      },
+    },
+  },
+};
+
 export default defineConfig([
   globalIgnores([
     '.output/',
@@ -89,7 +153,7 @@ export default defineConfig([
   },
   {
     // Code in these files also runs in the page or the extension, through page.evaluate and executeScript.
-    files: ['tests/e2e/**/*.ts', 'tests/firefox/**/*.mjs'],
+    files: ['tests/e2e/**/*.{ts,js,mjs}', 'tests/firefox/**/*.mjs'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: {
       // Playwright fixtures must destructure their first parameter, even when they need nothing.
@@ -104,5 +168,22 @@ export default defineConfig([
   {
     files: ['src/**/*.test.{ts,tsx}', 'tests/**/*.{js,mjs,ts,tsx}', 'scripts/**/*.test.mjs'],
     rules: allowNetworkRules,
+  },
+  {
+    // A fixed pause is too short on a loaded machine and too long on a fast one.
+    files: ['tests/e2e/**/*.{ts,js,mjs}'],
+    plugins: { 'test-waits': testWaits },
+    rules: {
+      'test-waits/no-node-sleep': 'error',
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "MemberExpression[property.name='waitForTimeout'], MemberExpression[computed=true][property.value='waitForTimeout'], Property[key.name='waitForTimeout'], Property[key.value='waitForTimeout']",
+          message:
+            'Wait for a state or an event, or use the waits in tests/e2e/support/settle.ts, not a fixed pause.',
+        },
+      ],
+    },
   },
 ]);

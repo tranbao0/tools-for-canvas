@@ -7,6 +7,7 @@ import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import {
+  clickListControl,
   addCsrfCookie,
   doneBox,
   expect,
@@ -101,9 +102,9 @@ function gear(list: Locator): Locator {
 }
 
 async function chooseRows(list: Locator, choice: 'Compact' | 'Comfortable'): Promise<void> {
-  await gear(list).click();
-  await list.getByRole('radio', { name: choice }).check();
-  await list.getByRole('button', { name: 'Back' }).click();
+  await clickListControl(gear(list));
+  await clickListControl(list.getByRole('radio', { name: choice }));
+  await clickListControl(list.getByRole('button', { name: 'Back' }));
   await expect(list.locator('.wr-item').first()).toBeVisible();
 }
 
@@ -314,7 +315,7 @@ test('opening a tip in a Compact row moves nothing above it', async ({
       };
     });
   const before = await tops();
-  await row.getByRole('button', { name: /confirm/i }).click();
+  await clickListControl(row.getByRole('button', { name: /confirm/i }));
   await expect(row.locator('.wr-item-tip')).toBeVisible();
   const after = await tops();
   for (const key of Object.keys(before) as (keyof typeof before)[]) {
@@ -328,7 +329,7 @@ test('Row size is a radio group in Settings, and the arrow keys move between the
   background,
 }) => {
   const list = await openSlot(context, page, {}, background);
-  await gear(list).click();
+  await clickListControl(gear(list));
   const group = list.getByRole('radiogroup', { name: 'Row size' });
   await expect(group).toBeVisible();
   await expect(list.getByText('Compact fits about twice as many tasks in the card.')).toBeVisible();
@@ -500,11 +501,11 @@ for (const theme of ['light', 'dark'] as const) {
     const options = theme === 'dark' ? { theme } : {};
     const list = await openSlot(context, page, options, background);
     await page.locator(HOST).screenshot({ path: `${SHOTS}/card-compact-${theme}.png` });
-    await gear(list).click();
+    await clickListControl(gear(list));
     await expect(list.getByRole('radiogroup', { name: 'Row size' })).toBeVisible();
     await page.locator(HOST).screenshot({ path: `${SHOTS}/settings-${theme}.png` });
-    await list.getByRole('radio', { name: 'Comfortable' }).check();
-    await list.getByRole('button', { name: 'Back' }).click();
+    await clickListControl(list.getByRole('radio', { name: 'Comfortable' }));
+    await clickListControl(list.getByRole('button', { name: 'Back' }));
     await expect(list.locator('.wr-type-block').first()).toHaveCSS('width', '80px');
     await page.locator(HOST).screenshot({ path: `${SHOTS}/card-comfortable-${theme}.png` });
     await saveSettings(background, {
@@ -576,7 +577,7 @@ for (const theme of ['light', 'dark'] as const) {
     background,
   }) => {
     const list = await openSlot(context, page, theme === 'dark' ? { theme } : {}, background);
-    await gear(list).click();
+    await clickListControl(gear(list));
     const group = list.getByRole('radiogroup', { name: 'Row size' });
     await expect(group).toBeVisible();
     // Tab from the Theme select into the group.
@@ -604,7 +605,7 @@ test('the checked Row size segment uses the system highlight in forced colors', 
 }) => {
   const list = await openSlot(context, page, {}, background);
   await page.emulateMedia({ forcedColors: 'active' });
-  await gear(list).click();
+  await clickListControl(gear(list));
   const group = list.getByRole('radiogroup', { name: 'Row size' });
   await expect(group).toBeVisible();
   const segments = await group.locator('.wr-segment').evaluateAll((els) => {

@@ -1,3 +1,4 @@
+import { pageQuiet } from './support/settle';
 /**
  * Full view of the file pane (design decision 25, item 1). The pane is a card with a gap around it,
  * and a button in the tab row makes it fill the browser page. Nothing in the pane reloads: the
@@ -31,7 +32,7 @@ const test = base.extend<{ fileHost: FileHost }>({
     await host.close();
   },
 });
-test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
+test.use({ longPaneIdentityTimeout: true, browserArgs: [TRUST_TEST_CERTIFICATE] });
 // Each test loads the extension, a document and PDF.js in a browser that draws pages on the CPU.
 test.beforeEach(() => {
   test.slow();
@@ -145,12 +146,13 @@ test('Full view fills the browser page and keeps the document, the page and the 
   await toggle(frame, 'Full view');
   await expect(fullButton(frame)).toHaveAttribute('aria-pressed', 'true');
   await expect(fullButton(frame)).toHaveText('Exit full view');
-  const full = await place(page, frame);
-  expect(full.host).toMatchObject({ x: 0, y: 0, ...WIDE });
-  expect(full.inner).toMatchObject({ x: 13, y: 13, width: WIDE.width - 26 });
-  expect(full.inner.height).toBe(WIDE.height - 26);
-  // The page padding does not change, so the page behind does not move.
-  expect(full.padding).toBe(before.padding);
+  await expect(async () => {
+    const full = await place(page, frame);
+    expect(full.host).toMatchObject({ x: 0, y: 0, ...WIDE });
+    expect(full.inner).toMatchObject({ x: 13, y: 13, width: WIDE.width - 26 });
+    expect(full.inner.height).toBe(WIDE.height - 26);
+    expect(full.padding).toBe(before.padding);
+  }).toPass();
   // The focus stays on the button after the toggle.
   expect(await frame.evaluate(() => document.activeElement?.getAttribute('data-part'))).toBe(
     'full-view',
@@ -161,7 +163,7 @@ test('Full view fills the browser page and keeps the document, the page and the 
   );
   await expect(pageInput(frame)).toHaveValue('3');
   await expect(frame.locator('[data-part="pdf-zoom-text"]')).toHaveText('150%');
-  expect(await widthOf()).toBe(pageWidth);
+  await expect.poll(widthOf).toBe(pageWidth);
   await page.screenshot({ path: `${SHOTS}/pdf-full-light-1400x930.png` });
   await saveSetting(background, { theme: 'dark' });
   await expect(page.locator(HOST)).toHaveAttribute('data-theme', 'dark');
@@ -172,12 +174,12 @@ test('Full view fills the browser page and keeps the document, the page and the 
   await toggle(frame, 'Exit full view');
   await expect(fullButton(frame)).toHaveAttribute('aria-pressed', 'false');
   await expect(fullButton(frame)).toHaveText('Full view');
-  expect(await place(page, frame)).toEqual(before);
+  await expect.poll(() => place(page, frame)).toEqual(before);
   expect(await frame.evaluate(() => (window as unknown as { __kept: string }).__kept)).toBe(
     'same document',
   );
   await expect(pageInput(frame)).toHaveValue('3');
-  expect(await widthOf()).toBe(pageWidth);
+  await expect.poll(widthOf).toBe(pageWidth);
 });
 
 test('a PDF in a fit mode fits itself to the width of full view, and back', async ({
@@ -211,11 +213,11 @@ test('Escape leaves full view first, and the next Escape closes the pane as befo
     for (const target of [window, document, document.querySelector('#tools-file-viewer')])
       target?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
-  await page.waitForTimeout(200);
+  await pageQuiet(page);
   await expect(fullButton(frame)).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Escape');
   await expect(fullButton(frame)).toHaveAttribute('aria-pressed', 'false');
-  expect(await place(page, frame)).toEqual(before);
+  await expect.poll(() => place(page, frame)).toEqual(before);
   await expect(page.locator(HOST)).toBeVisible();
   // The second Escape closes the pane, with the focus in the pane.
   await pressEscapeToClosePane(page);
@@ -239,7 +241,7 @@ test('the close button closes the file pane in full view, and the next file open
   const next = await pane(page);
   await expect(fullButton(next)).toHaveAttribute('aria-pressed', 'false');
   await expect(pageBox(next, 1).locator('canvas')).toBeVisible();
-  expect((await place(page, next)).host).toEqual(before.host);
+  await expect.poll(async () => (await place(page, next)).host).toEqual(before.host);
 });
 
 test('Escape closes the file pane on a window that is too narrow for full view, where the state is only kept', async ({

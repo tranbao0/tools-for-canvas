@@ -78,6 +78,21 @@ export function readCustomGradeStatuses(
   return Object.fromEntries(courseIds.map((id, index) => [id, statusesOf(data[alias(index)])]));
 }
 
+function validPage(first: number, offset: number, most: number): boolean {
+  return (
+    Number.isInteger(first) &&
+    first >= 1 &&
+    first <= most &&
+    Number.isInteger(offset) &&
+    offset >= 0
+  );
+}
+
+/** The `after` cursor of a page: Canvas reads an offset from base64 text, and the first page sends none. */
+function cursor(offset: number): string | null {
+  return offset === 0 ? null : btoa(String(offset));
+}
+
 /**
  * The most rows one announcements page may ask for. Canvas caps `first` at 100 with no error. The
  * query has no aliases, so the limit of 20 aliases does not apply.
@@ -92,13 +107,7 @@ export const MAX_ANNOUNCEMENT_PAGE = 100;
  * first page sends nothing.
  */
 export function announcementPageQuery(request: AnnouncementPageRequest): GraphQLBody {
-  if (
-    !Number.isInteger(request.first) ||
-    request.first < 1 ||
-    request.first > MAX_ANNOUNCEMENT_PAGE ||
-    !Number.isInteger(request.offset) ||
-    request.offset < 0
-  ) {
+  if (!validPage(request.first, request.offset, MAX_ANNOUNCEMENT_PAGE)) {
     throw new RangeError('An announcements page needs first from 1 to 100 and a whole offset');
   }
   return {
@@ -117,7 +126,7 @@ export function announcementPageQuery(request: AnnouncementPageRequest): GraphQL
     variables: {
       userId: request.userId,
       first: request.first,
-      after: request.offset === 0 ? null : btoa(String(request.offset)),
+      after: cursor(request.offset),
       readState: request.read,
       courseId: request.courseId,
     },
@@ -146,35 +155,49 @@ function toAnnouncementNode(node: unknown): AnnouncementPageNode | null {
 }
 
 /**
- * Reads the answer to `announcementPageQuery`. A 200 answer can hold `errors`, so they are
- * checked first. An answer without the connection is no page: Canvas sends `legacyNode: null`
- * for a user that it does not show.
+ * Reads a page of a GraphQL connection. A 200 answer can hold `errors`, so they are checked
+ * first. An answer without the connection is no page.
  */
-export function readAnnouncementPage(body: unknown): AnnouncementPage {
+function readPage<T>(
+  body: unknown,
+  name: string,
+  connectionOf: (data: Record<string, unknown>) => unknown,
+  toNode: (node: unknown) => T | null,
+): { nodes: T[]; count: number; total: number | null; hasNext: boolean } {
   if (!isJsonObject(body)) throw new CanvasError('not_canvas', 'Expected a GraphQL object');
   const errors = body['errors'];
   if (Array.isArray(errors) ? errors.length > 0 : errors !== undefined && errors !== null) {
-    throw new CanvasError('bad_request', 'The announcements query returned errors');
+    throw new CanvasError('bad_request', `The ${name} query returned errors`);
   }
-  const data = isJsonObject(body['data']) ? body['data'] : null;
-  const user = data !== null && isJsonObject(data['legacyNode']) ? data['legacyNode'] : null;
-  const connection =
-    user !== null && isJsonObject(user['discussionParticipantsConnection'])
-      ? user['discussionParticipantsConnection']
-      : null;
-  if (connection === null || !Array.isArray(connection['nodes'])) {
-    throw new CanvasError('not_canvas', 'The announcements answer has no connection');
+  const connection = connectionOf(isJsonObject(body['data']) ? body['data'] : {});
+  if (!isJsonObject(connection) || !Array.isArray(connection['nodes'])) {
+    throw new CanvasError('not_canvas', `The ${name} answer has no connection`);
   }
   const info = isJsonObject(connection['pageInfo']) ? connection['pageInfo'] : {};
   const total = info['totalCount'];
   return {
     count: connection['nodes'].length,
-    nodes: connection['nodes']
-      .map(toAnnouncementNode)
-      .filter((node): node is AnnouncementPageNode => node !== null),
+    nodes: connection['nodes'].map(toNode).filter((node): node is T => node !== null),
     total: typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : null,
     hasNext: info['hasNextPage'] === true,
   };
+}
+
+/**
+ * Reads the answer to `announcementPageQuery`. A 200 answer can hold `errors`, so they are
+ * checked first. An answer without the connection is no page: Canvas sends `legacyNode: null`
+ * for a user that it does not show.
+ */
+export function readAnnouncementPage(body: unknown): AnnouncementPage {
+  return readPage(
+    body,
+    'announcements',
+    (data) => {
+      const user = data['legacyNode'];
+      return isJsonObject(user) ? user['discussionParticipantsConnection'] : null;
+    },
+    toAnnouncementNode,
+  );
 }
 
 /** The most rows one People page may ask for. Canvas caps `first` at 100 with no error. */
@@ -190,11 +213,7 @@ export const MAX_PEOPLE_PAGE = 100;
 export function peoplePageQuery(request: PeoplePageRequest): GraphQLBody {
   if (
     request.courseIds.length === 0 ||
-    !Number.isInteger(request.first) ||
-    request.first < 1 ||
-    request.first > MAX_PEOPLE_PAGE ||
-    !Number.isInteger(request.offset) ||
-    request.offset < 0
+    !validPage(request.first, request.offset, MAX_PEOPLE_PAGE)
   ) {
     throw new RangeError('A People page needs a course, first from 1 to 100 and a whole offset');
   }
@@ -210,7 +229,7 @@ export function peoplePageQuery(request: PeoplePageRequest): GraphQLBody {
     variables: {
       courseIds: request.courseIds,
       first: request.first,
-      after: request.offset === 0 ? null : btoa(String(request.offset)),
+      after: cursor(request.offset),
       enrollmentTypes:
         request.role === 'all'
           ? null
@@ -251,27 +270,5 @@ function toPeopleNode(node: unknown): PeoplePageNode | null {
  * first. An answer without the connection is no page.
  */
 export function readPeoplePage(body: unknown): PeoplePage {
-  if (!isJsonObject(body)) throw new CanvasError('not_canvas', 'Expected a GraphQL object');
-  const errors = body['errors'];
-  if (Array.isArray(errors) ? errors.length > 0 : errors !== undefined && errors !== null) {
-    throw new CanvasError('bad_request', 'The People query returned errors');
-  }
-  const data = isJsonObject(body['data']) ? body['data'] : null;
-  const connection =
-    data !== null && isJsonObject(data['courseInstructorsConnection'])
-      ? data['courseInstructorsConnection']
-      : null;
-  if (connection === null || !Array.isArray(connection['nodes'])) {
-    throw new CanvasError('not_canvas', 'The People answer has no connection');
-  }
-  const info = isJsonObject(connection['pageInfo']) ? connection['pageInfo'] : {};
-  const total = info['totalCount'];
-  return {
-    count: connection['nodes'].length,
-    nodes: connection['nodes']
-      .map(toPeopleNode)
-      .filter((node): node is PeoplePageNode => node !== null),
-    total: typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : null,
-    hasNext: info['hasNextPage'] === true,
-  };
+  return readPage(body, 'People', (data) => data['courseInstructorsConnection'], toPeopleNode);
 }

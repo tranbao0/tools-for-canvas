@@ -1,6 +1,4 @@
-import { isCommentTab } from '../model';
-
-const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
+import { isCommentTab, isFileId } from '../model';
 
 export interface FileLinks {
   /** The file bytes on the saved Canvas, by the file id alone. */
@@ -22,8 +20,8 @@ export function fileLinks(
   courseId: string | null | undefined,
 ): FileLinks | null {
   if (isCommentTab(fileId)) return { download: new URL(fileId, origin).href, canvas: null };
-  if (!ID.test(fileId)) return null;
-  const course = typeof courseId === 'string' && ID.test(courseId) ? courseId : null;
+  if (!isFileId(fileId)) return null;
+  const course = isFileId(courseId) ? courseId : null;
   const page = new URL(course ? `/courses/${course}/files/${fileId}` : `/files/${fileId}`, origin);
   const download = new URL(`/files/${fileId}/download`, origin);
   // Canvas shows a text or HTML file in the tab unless this parameter asks for the file.

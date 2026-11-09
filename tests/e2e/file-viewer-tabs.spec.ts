@@ -17,6 +17,8 @@ import {
   waitForListLoaded,
 } from './support/file-viewer';
 
+test.use({ longPaneIdentityTimeout: true });
+
 const HOST = '#tools-file-viewer';
 
 /** A file link in the main column of the course page. */
@@ -188,7 +190,7 @@ test('a file that does not load shows the error with Retry', async ({
   background,
 }) => {
   const canvas = await openCoursePage(context, page, background);
-  await waitForListLoaded(canvas);
+  await waitForListLoaded(canvas, background);
   await background.evaluate(() => {
     const api = globalThis as unknown as {
       fetch: typeof fetch;
@@ -238,7 +240,7 @@ test('an evicted file loads fresh after its failed read succeeds', async ({
       body: { ...SYLLABUS, id, display_name: `File ${id}.docx` },
     })),
   );
-  await waitForListLoaded(canvas);
+  await waitForListLoaded(canvas, background);
   await background.evaluate(() => {
     const api = globalThis as unknown as { fetch: typeof fetch; __realFetch?: typeof fetch };
     api.__realFetch = api.fetch;

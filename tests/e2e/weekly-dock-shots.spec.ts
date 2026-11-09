@@ -1,3 +1,4 @@
+import { pageQuiet } from './support/settle';
 /**
  * Screenshots of the weekly list dock, in `screenshots/weekly-dock` or in the folder of
  * `WEEKLY_SHOTS_DIR`: the classic dashboard at 1797 x 1074 and 1368 x 762, open and minimized,
@@ -7,7 +8,14 @@
 import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
-import { NOTES, openFirstFile, pdfDownloadRoute, saveSetting } from './support/file-viewer';
+import {
+  FILE_NAME,
+  NOTES,
+  openFirstFile,
+  pane,
+  pdfDownloadRoute,
+  saveSetting,
+} from './support/file-viewer';
 import {
   addCsrfCookie,
   doneBox,
@@ -20,6 +28,8 @@ import {
   test,
 } from './support/weekrow';
 import { waitForListLoaded } from './support/file-viewer';
+
+test.use({ longPaneIdentityTimeout: true });
 
 const DIR =
   process.env['WEEKLY_SHOTS_DIR'] ?? path.join(process.cwd(), 'screenshots', 'weekly-dock');
@@ -75,10 +85,11 @@ for (const size of SIZES) {
         link.textContent = 'Read notes';
         document.getElementById('content')?.prepend(link);
       });
-      await waitForListLoaded(served.canvas);
+      await waitForListLoaded(served.canvas, background);
       await openFirstFile(page, 'Read notes');
       await expect(page.locator('#tools-weekly')).toBeHidden();
-      await page.waitForTimeout(800);
+      await expect((await pane(page)).locator(FILE_NAME)).toHaveText('Course notes.pdf');
+      await pageQuiet(page);
       await shoot(page, `${size.width}-${theme}-file-pane`);
       await saveSetting(background, { theme });
     });
