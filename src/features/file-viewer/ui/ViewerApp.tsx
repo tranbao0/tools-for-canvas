@@ -116,8 +116,8 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const localTabs = useRef(new Map<string, boolean>());
   const selection = useRef(0);
   const failedSelection = useRef<number | undefined>(undefined);
-  // The change that last touched each file. A write that finishes sets the local state of a file
-  // only when no later change, with or without a write, touched that file.
+  // The change that last showed or hid each file, or the write that last named it. A write that
+  // finishes sets the local state of a file only when no later change showed or hid that file.
   const lastChange = useRef(new Map<string, number>());
   const reading = useRef<Promise<{ tabs: Tabs; token: string | undefined }> | undefined>(undefined);
   const readTabs = useCallback(() => {
@@ -138,23 +138,26 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       before: Tabs,
     ) => {
       const after = tabsRef.current;
-      // Include evictions as well as the file named by the intent.
-      const touched = new Set(
-        [...before.ids, ...after.ids].filter(
-          (id) => before.ids.includes(id) !== after.ids.includes(id),
-        ),
+      // The tabs that this change showed or hid, evictions included.
+      const shownOrHidden = [...before.ids, ...after.ids].filter(
+        (id) => before.ids.includes(id) !== after.ids.includes(id),
       );
+      const touched = new Set(shownOrHidden);
       if ('fileId' in intent && intent.action !== 'activate') touched.add(intent.fileId);
       const selects =
         before.active !== after.active || intent.action === 'open' || intent.action === 'activate';
       const selectedAt = selects ? ++selection.current : selection.current;
       const change = ++changes.current;
-      for (const id of touched) lastChange.current.set(id, change);
+      for (const id of shownOrHidden) lastChange.current.set(id, change);
       if (credential === undefined) return;
       writes.current = writes.current
         .then(async () => {
           const token = await credential;
           if (token === undefined) return;
+          // A write also owns the file it names, unless a later change showed or hid that file.
+          for (const id of touched) {
+            if ((lastChange.current.get(id) ?? 0) < change) lastChange.current.set(id, change);
+          }
           let latest: Tabs;
           const own = () => [...touched].filter((id) => lastChange.current.get(id) === change);
           try {

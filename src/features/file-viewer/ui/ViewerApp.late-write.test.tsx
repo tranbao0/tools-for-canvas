@@ -171,4 +171,96 @@ describe('writes that finish after a later change of the same tab', () => {
     const panel = document.querySelector('[role=tabpanel]');
     expect(document.getElementById(panel?.getAttribute('aria-labelledby') ?? '')).not.toBeNull();
   });
+  it('keeps a tab whose saved open fails after the page opened it again without a token', async () => {
+    const held = gate();
+    const app = mount({ ids: ['1', '3'], active: '1' }, async (intent) => {
+      if (intent.action === 'open' && intent.fileId === '2') {
+        await held.promise;
+      }
+    });
+    await act(async () => app.opens.emit({ fileId: '1', token: 'T' }));
+    await waitFor(() => expect(ids()).toEqual(['1', '3']));
+    await settle();
+    await act(async () => app.opens.emit({ fileId: '2', token: 'T' }));
+    await waitFor(() => expect(ids()).toEqual(['1', '3', '2']));
+    // The page clicks the same file again, now without a token.
+    await act(async () => app.opens.emit({ fileId: '2' }));
+    await settle();
+    held.reject();
+    await settle();
+    await act(async () => {
+      fireEvent.click(tab('1'));
+    });
+    await settle();
+    expect(ids()).toEqual(['1', '3', '2']);
+  });
+
+  it('ends the closed state of a tab when its saved reopen succeeds, also after a tokenless open', async () => {
+    const held = gate();
+    let failClose = true;
+    const app = mount({ ids: ['1', '2', '3'], active: '1' }, async (intent) => {
+      if (failClose && intent.action === 'close' && intent.fileId === '2') {
+        failClose = false;
+        throw new Error('refused');
+      }
+      if (intent.action === 'open' && intent.fileId === '2') await held.promise;
+    });
+    await act(async () => app.opens.emit({ fileId: '1', token: 'T' }));
+    await waitFor(() => expect(ids()).toEqual(['1', '2', '3']));
+    await settle();
+    await act(async () => {
+      fireEvent.click(closeButton('2'));
+    });
+    await settle();
+    expect(ids()).toEqual(['1', '3']);
+    await act(async () => app.opens.emit({ fileId: '2', token: 'T' }));
+    await waitFor(() => expect(ids()).toEqual(['1', '3', '2']));
+    await act(async () => app.opens.emit({ fileId: '2' }));
+    await settle();
+    held.resolve();
+    await settle();
+    await act(async () => {
+      fireEvent.click(tab('3'));
+    });
+    await settle();
+    expect(app.stored().ids).toContain('2');
+    // The saved store order wins after a failed close; only the tab itself must stay.
+    expect([...ids()].sort()).toEqual(['1', '2', '3']);
+    // Later writes keep it too.
+    await act(async () => {
+      fireEvent.click(tab('1'));
+    });
+    await settle();
+    expect([...ids()].sort()).toEqual(['1', '2', '3']);
+  });
+
+  it('keeps a tab stored and shown when the page opens it again without a token during its save', async () => {
+    const held = gate();
+    const app = mount({ ids: ['1', '3'], active: '1' }, async (intent) => {
+      if (intent.action === 'open' && intent.fileId === '2') await held.promise;
+    });
+    await act(async () => app.opens.emit({ fileId: '1', token: 'T' }));
+    await waitFor(() => expect(ids()).toEqual(['1', '3']));
+    await settle();
+    await act(async () => app.opens.emit({ fileId: '2', token: 'T' }));
+    await act(async () => app.opens.emit({ fileId: '2' }));
+    held.resolve();
+    await settle();
+    await act(async () => {
+      fireEvent.click(tab('1'));
+    });
+    await settle();
+    expect(ids()).toEqual(['1', '3', '2']);
+    // Closing it removes it for good.
+    await act(async () => {
+      fireEvent.click(closeButton('2'));
+    });
+    await settle();
+    await act(async () => {
+      fireEvent.click(tab('3'));
+    });
+    await settle();
+    expect(ids()).toEqual(['1', '3']);
+    expect(app.stored().ids).toEqual(['1', '3']);
+  });
 });
