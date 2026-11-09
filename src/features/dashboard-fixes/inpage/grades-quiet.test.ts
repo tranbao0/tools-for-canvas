@@ -7,6 +7,8 @@ import { dashboardData, drawDashboard, ORIGIN } from './testing/dashboard';
 
 const DATA = { ...dashboardData(), userId: '5' };
 let send: Mock<(message: DataMessage) => Promise<unknown>>;
+/** The fake time of each grade visibility save, taken when the page sends it. */
+let sentAt: number[];
 let engine: FixesEngine;
 const settle = (ms = 120) => vi.advanceTimersByTimeAsync(ms);
 const writes = () => send.mock.calls.filter(([m]) => m.type === 'weekrow:grade-visibility');
@@ -21,9 +23,12 @@ function trustedClick(node: Element): void {
 beforeEach(() => {
   vi.useFakeTimers();
   drawDashboard();
-  send = vi.fn(async (message: DataMessage) =>
-    message.type === 'weekrow:grade-visibility' ? { ok: false } : DATA,
-  );
+  sentAt = [];
+  send = vi.fn(async (message: DataMessage) => {
+    if (message.type !== 'weekrow:grade-visibility') return DATA;
+    sentAt.push(Date.now());
+    return { ok: false };
+  });
   engine = createFixesEngine({ doc: document, origin: ORIGIN, send });
 });
 afterEach(() => {
@@ -53,7 +58,7 @@ describe('copied eye save wait', () => {
     expect(writes()).toHaveLength(0);
     await settle(3000);
     expect(writes()).toHaveLength(1);
-    expect(Date.now() - changedAt).toBeGreaterThanOrEqual(3000);
+    expect(sentAt[0]! - changedAt).toBeGreaterThanOrEqual(3000);
   });
 });
 
@@ -77,7 +82,7 @@ describe('copied eye save wait (control)', () => {
     expect(writes()).toHaveLength(0);
     await settle(3000);
     expect(writes()).toHaveLength(1);
-    expect(Date.now() - changedAt).toBeGreaterThanOrEqual(3000);
+    expect(sentAt[0]! - changedAt).toBeGreaterThanOrEqual(3000);
     expect(changedAt - nativeAt).toBe(2900);
   });
 });
