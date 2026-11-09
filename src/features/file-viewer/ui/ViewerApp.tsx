@@ -116,6 +116,9 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const localTabs = useRef(new Map<string, boolean>());
   const selection = useRef(0);
   const failedSelection = useRef<number | undefined>(undefined);
+  // The change that last touched each file. A write that finishes sets the local state of a file
+  // only when no later change, with or without a write, touched that file.
+  const lastChange = useRef(new Map<string, number>());
   const reading = useRef<Promise<{ tabs: Tabs; token: string | undefined }> | undefined>(undefined);
   const readTabs = useCallback(() => {
     if (reading.current) return reading.current;
@@ -146,22 +149,24 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
         before.active !== after.active || intent.action === 'open' || intent.action === 'activate';
       const selectedAt = selects ? ++selection.current : selection.current;
       const change = ++changes.current;
+      for (const id of touched) lastChange.current.set(id, change);
       if (credential === undefined) return;
       writes.current = writes.current
         .then(async () => {
           const token = await credential;
           if (token === undefined) return;
           let latest: Tabs;
+          const own = () => [...touched].filter((id) => lastChange.current.get(id) === change);
           try {
             latest = await host.changeTabs(intent, token);
-            for (const id of touched) {
+            for (const id of own()) {
               localTabs.current.delete(id);
               memory.current.delete(id);
             }
             if (selects && failedSelection.current === selectedAt)
               failedSelection.current = undefined;
           } catch {
-            for (const id of touched) {
+            for (const id of own()) {
               const present = after.ids.includes(id);
               localTabs.current.set(id, present);
               if (present) memory.current.add(id);
@@ -175,6 +180,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           for (const [id, present] of localTabs.current) {
             if (!present) latest = closeFile(latest, id);
           }
+          const kept = latest.active;
           const selected =
             failedSelection.current === selection.current ||
             (local.active && memory.current.has(local.active))
@@ -187,7 +193,12 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             ids.splice(Math.min(index, ids.length), 0, id);
             latest = { ids, active: selected };
           }
-          latest = { ...latest, active: selected };
+          // The tab that the student chose may be gone by now, for example after a later close.
+          const valid = (id: string | null) => id !== null && latest.ids.includes(id);
+          latest = {
+            ...latest,
+            active: valid(selected) ? selected : valid(kept) ? kept : (latest.ids[0] ?? null),
+          };
           tabsRef.current = latest;
           setTabs(latest);
         })

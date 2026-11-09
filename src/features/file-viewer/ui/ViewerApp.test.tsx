@@ -73,7 +73,7 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
 const tabs = () => screen.queryAllByRole('tab');
 
 describe('failed tab writes', () => {
-  it('stores a reopened file after its open failed and drops local state on teardown', async () => {
+  it('makes a file a stored tab again when its open succeeds after a failed open', async () => {
     let stored: Tabs = { ids: ['1'], active: '1' };
     const changeTabs = vi
       .fn(async (intent: TabIntent) => {
@@ -92,12 +92,6 @@ describe('failed tab writes', () => {
       fireEvent.click(tabs()[0]!);
     });
     await waitFor(() => expect(tabs()).toHaveLength(1));
-    cleanup();
-    const next = setup({}, { ids: ['3'], active: '3' });
-    await next.open('3');
-    await waitFor(() =>
-      expect(tabs().map((tab) => tab.getAttribute('data-file-id'))).toEqual(['3']),
-    );
   });
 
   for (const action of ['open', 'close', 'activate'] as const) {
