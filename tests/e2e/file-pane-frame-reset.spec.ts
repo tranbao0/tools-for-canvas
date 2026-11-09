@@ -10,6 +10,7 @@ import type { BrowserContext, Page, Worker } from '@playwright/test';
 import { test, expect, serveScenario } from './support/weekrow';
 import { saveAddress } from './support/scenario-api';
 import { previewFrame, SUBMISSION_PATH, submissionRoute } from './support/file-viewer';
+import { expectStartupDecision } from './support/file-pane';
 
 type WorkerScope = {
   chrome: {
@@ -83,8 +84,8 @@ async function clickWhileOpenIsHeld(
     .toBeGreaterThan(0);
   const link = previewFrame(page).locator('body').getByRole('link', { name: 'Submission text' });
   await expect(link).toBeVisible();
-  // The viewer script of the top page has loaded its settings by now.
-  await page.waitForTimeout(1500);
+  // The viewer script of the top page has loaded its settings and made its startup decision.
+  await expectStartupDecision(background, page);
   await holdSessionWrite(background);
   const saved = page
     .waitForEvent('download', { timeout: 8_000 })
