@@ -19,6 +19,7 @@ import { isSettings } from '../model/settings';
 import type { Settings, SurfaceState } from '../model/types';
 import type { SurfaceKind, TaskInput } from '../ui/contract';
 import { isCanvasId, isGradeWidgetId } from '../../../shared/canvas/ids';
+import { hasType, isObject } from '../../../shared/platform/shape';
 import { isListTab, type AnnouncementFeedRequest } from './announcements';
 import type { OverrideFlags } from './patches';
 
@@ -283,16 +284,6 @@ export interface CourseChoice {
 }
 
 export const OK_REPLY: OkReply = { ok: true };
-
-type Fields = Record<string, unknown>;
-
-function isObject(value: unknown): value is Fields {
-  return typeof value === 'object' && value !== null;
-}
-
-function hasType(value: unknown, type: string): value is Fields {
-  return isObject(value) && value['type'] === type;
-}
 
 function isString(value: unknown): value is string {
   return typeof value === 'string';

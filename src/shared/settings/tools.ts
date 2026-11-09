@@ -1,4 +1,5 @@
 import { normalizeWidth } from '../../features/file-viewer/width';
+import { isObject } from '../platform/shape';
 /**
  * The settings of the small tools, one switch for each fix. See docs/design.md, decisions 18
  * and 22.
@@ -67,31 +68,27 @@ export const DEFAULT_TOOLS_SETTINGS: ToolsSettings = {
   assignmentView: true,
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
 /**
  * Complete, valid tools settings from a stored value. A missing or invalid field takes its
  * default, field by field, so one bad field changes nothing else. Other keys are dropped.
  */
 export function normalizeToolsSettings(stored: unknown): ToolsSettings {
   const group =
-    isRecord(stored) && isRecord(stored['dashboardFixes']) ? stored['dashboardFixes'] : {};
+    isObject(stored) && isObject(stored['dashboardFixes']) ? stored['dashboardFixes'] : {};
   const fixes = { ...DEFAULT_TOOLS_SETTINGS.dashboardFixes };
   for (const key of DASHBOARD_FIX_KEYS) {
     if (typeof group[key] === 'boolean') fixes[key] = group[key];
   }
   return {
     fileViewer:
-      isRecord(stored) && typeof stored['fileViewer'] === 'boolean' ? stored['fileViewer'] : true,
-    fileViewerWidth: normalizeWidth(isRecord(stored) ? stored['fileViewerWidth'] : undefined),
+      isObject(stored) && typeof stored['fileViewer'] === 'boolean' ? stored['fileViewer'] : true,
+    fileViewerWidth: normalizeWidth(isObject(stored) ? stored['fileViewerWidth'] : undefined),
     weeklyDockWidth: normalizeWeeklyDockWidth(
-      isRecord(stored) ? stored['weeklyDockWidth'] : undefined,
+      isObject(stored) ? stored['weeklyDockWidth'] : undefined,
     ),
     dashboardFixes: fixes,
     assignmentView:
-      isRecord(stored) && typeof stored['assignmentView'] === 'boolean'
+      isObject(stored) && typeof stored['assignmentView'] === 'boolean'
         ? stored['assignmentView']
         : true,
   };

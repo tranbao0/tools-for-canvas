@@ -1,4 +1,5 @@
 import { isCanvasId } from '../../shared/canvas/ids';
+import { hasType } from '../../shared/platform/shape';
 
 export interface AssignmentDetailsMessage {
   type: 'assignment:details';
@@ -7,12 +8,10 @@ export interface AssignmentDetailsMessage {
 }
 
 export function isAssignmentDetailsMessage(value: unknown): value is AssignmentDetailsMessage {
-  if (typeof value !== 'object' || value === null) return false;
-  const fields = value as Record<string, unknown>;
   return (
-    fields['type'] === 'assignment:details' &&
-    isCanvasId(fields['courseId']) &&
-    isCanvasId(fields['assignmentId'])
+    hasType(value, 'assignment:details') &&
+    isCanvasId(value['courseId']) &&
+    isCanvasId(value['assignmentId'])
   );
 }
 
@@ -28,12 +27,10 @@ export interface AssignmentOwnerMessage {
 }
 
 export function isAssignmentOwnerMessage(value: unknown): value is AssignmentOwnerMessage {
-  if (typeof value !== 'object' || value === null) return false;
-  const fields = value as Record<string, unknown>;
   return (
-    fields['type'] === 'assignment:owner' &&
-    isCanvasId(fields['courseId']) &&
-    isCanvasId(fields['assignmentId'])
+    hasType(value, 'assignment:owner') &&
+    isCanvasId(value['courseId']) &&
+    isCanvasId(value['assignmentId'])
   );
 }
 
@@ -60,13 +57,11 @@ export interface RubricReadMessage {
 }
 
 export function isRubricReadMessage(value: unknown): value is RubricReadMessage {
-  if (typeof value !== 'object' || value === null) return false;
-  const fields = value as Record<string, unknown>;
   return (
-    fields['type'] === 'assignment:rubric-read' &&
-    isCanvasId(fields['courseId']) &&
-    isCanvasId(fields['assignmentId']) &&
-    isCanvasId(fields['userId'])
+    hasType(value, 'assignment:rubric-read') &&
+    isCanvasId(value['courseId']) &&
+    isCanvasId(value['assignmentId']) &&
+    isCanvasId(value['userId'])
   );
 }
 

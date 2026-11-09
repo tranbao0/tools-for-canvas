@@ -14,7 +14,7 @@ export type Limiter = <T>(task: () => Promise<T>, priority?: PrioritySource) => 
 
 const RANK: Readonly<Record<RequestPriority, number>> = { high: 2, normal: 1, low: 0 };
 
-function rankOf(priority: PrioritySource): number {
+export function rankOf(priority: PrioritySource): number {
   return RANK[typeof priority === 'function' ? priority() : priority];
 }
 

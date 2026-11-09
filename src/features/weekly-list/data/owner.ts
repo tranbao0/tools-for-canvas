@@ -9,7 +9,7 @@ import type { WidgetGradePreferences } from '../../../shared/canvas/types';
  * Everything it touches comes in through `DataOwnerDeps`, so it does not depend on where it
  * runs. The background uses it today; a panel page or a content script could host it instead.
  */
-import type { RequestPriority } from '../../../shared/canvas/limiter';
+import { rankOf, type RequestPriority } from '../../../shared/canvas/limiter';
 import { isCanvasId, isGradeWidgetId } from '../../../shared/canvas/ids';
 import type {
   CanvasApi,
@@ -56,8 +56,8 @@ import {
   type AnnouncementMark,
 } from './announcements';
 import { moveToTodayTodoDate, todoDateFor } from '../model/tasks';
-import type { Item, Offer, Settings } from '../model/types';
-import { canAutoSaveOrigin, isUsableOrigin } from '../../../shared/platform/address';
+import type { AssignmentData, Item, Offer, Settings } from '../model/types';
+import { canAutoSaveOrigin, isUsableOrigin, usableOrigin } from '../../../shared/platform/address';
 import type { SeenNotes } from './storage';
 import type { TaskInput } from '../ui/contract';
 import {
@@ -429,6 +429,9 @@ export interface DataOwner {
   dispose(): void;
 }
 
+/** No cached details, so that every id of a lookup counts as missing. */
+const NO_DETAILS: Readonly<Record<string, AssignmentData>> = Object.create(null);
+
 const NO_UNDO: ActionReply = { undo: null };
 /** The reply to an Undo that the cookie check refused. The surface shows the notice again. */
 const UNDO_REFUSED: ActionReply = { undo: null, refused: true };
@@ -478,8 +481,6 @@ interface PlannerJob {
   /** Epoch milliseconds when the job started. */
   startedAt: number;
 }
-
-const PRIORITY_RANK: Readonly<Record<RequestPriority, number>> = { high: 2, normal: 1, low: 0 };
 
 function hull(intervals: readonly Interval[]): Interval {
   return {
@@ -1380,7 +1381,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   function raiseJobs(interval: Interval, priority: RequestPriority): void {
     for (const job of jobs) {
       if (!job.all.some((chunk) => overlaps(chunk, interval))) continue;
-      if (PRIORITY_RANK[job.priority] < PRIORITY_RANK[priority]) job.priority = priority;
+      if (rankOf(job.priority) < rankOf(priority)) job.priority = priority;
       job.shown = true;
     }
   }
@@ -1490,16 +1491,6 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     );
   }
 
-  /** Ids of the lookup that no other job is fetching. */
-  function notInFlight(lookup: Readonly<Record<string, string[]>>): Record<string, string[]> {
-    const result: Record<string, string[]> = {};
-    for (const [courseId, ids] of Object.entries(lookup)) {
-      const free = ids.filter((id) => !detailsInFlight.has(id));
-      if (free.length > 0) result[courseId] = free;
-    }
-    return result;
-  }
-
   /**
    * Runs a planner job. Its chunks load side by side, and each goes into the cache and shows as
    * soon as it arrives. The assignment details of the arrived items then fill in the chips, in
@@ -1540,9 +1531,13 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
         return;
       }
       const lookup = assignmentIdsToLookup(items, context.settings.hiddenCourseIds);
-      const detailIds = reloadDetails
-        ? notInFlight(lookup)
-        : missingDetailIds(lookup, cache.details, detailsInFlight);
+      // A reload asks for the details that the cache already holds too, but not for those that
+      // another job is fetching.
+      const detailIds = missingDetailIds(
+        lookup,
+        reloadDetails ? NO_DETAILS : cache.details,
+        detailsInFlight,
+      );
       const ids = Object.values(detailIds).flat();
       if (ids.length === 0) return;
       ids.forEach((id) => detailsInFlight.add(id));
@@ -1720,12 +1715,11 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    * origin. Whatever the store holds, the owner never requests data from anything else.
    */
   async function savedOrigin(): Promise<string | null> {
-    const stored = await store.origin.getValue();
-    return stored !== null && isUsableOrigin(stored) ? stored : null;
+    return usableOrigin(await store.origin.getValue());
   }
 
   async function handleOrigin(candidate: string | null): Promise<void> {
-    const origin = candidate !== null && isUsableOrigin(candidate) ? candidate : null;
+    const origin = usableOrigin(candidate);
     if (origin === knownOrigin) return;
     if (knownOrigin !== null && cache !== null) {
       sendWaitingDeletes(knownOrigin, cache, new Set(startedDeletes));

@@ -8,6 +8,7 @@
  * (src/shared/ui/sanitize.ts). A service worker has no `DOMParser`, so it could not sanitize it anyway.
  */
 import { isCanvasId } from '../../shared/canvas/ids';
+import { hasType } from '../../shared/platform/shape';
 import { isToolsSettings, type ToolsSettings } from '../../shared/settings/tools';
 
 /** In-page script to background: the student changed the tools settings shown in place. */
@@ -225,12 +226,6 @@ export interface PeoplePageReply {
 
 /** The most rows that a range reply holds. */
 export const MAX_RANGE_ROWS = 500;
-
-type Fields = Record<string, unknown>;
-
-function hasType(value: unknown, type: string): value is Fields {
-  return typeof value === 'object' && value !== null && (value as Fields)['type'] === type;
-}
 
 export function isSaveToolsMessage(value: unknown): value is SaveToolsMessage {
   return hasType(value, 'weekrow:save-tools') && isToolsSettings(value['tools']);

@@ -633,11 +633,11 @@ export function wireViewerRouter(
     savedOrigin: () => canvasOriginItem.getValue(),
     isExtensionPage: (sender) =>
       sender.url?.startsWith(browser.runtime.getURL('/')) === true && isPaneFrame(sender),
-    read: (origin, tabId, read) => owner.viewerRead(origin, tabId, read),
-    paneCheck: (origin, tabId, retry) => owner.viewerPaneCheck(origin, tabId, retry),
-    mayFetch: (origin, tabId) => owner.viewerMayFetch(origin, tabId),
-    userId: (origin, tabId) => owner.viewerUserId(origin, tabId),
-    confirm: (origin, tabId) => owner.viewerConfirm(origin, tabId),
+    read: owner.viewerRead,
+    paneCheck: owner.viewerPaneCheck,
+    mayFetch: owner.viewerMayFetch,
+    userId: owner.viewerUserId,
+    confirm: owner.viewerConfirm,
     get: async (key) => (await browser.storage.session.get(key))[key],
     set: (key, value) => browser.storage.session.set({ [key]: value }),
     // File redirects can use hosts selected by Canvas, so check the full file host grant.

@@ -128,12 +128,10 @@ export function staleParts(
   before: number,
 ): Interval[] {
   return mergeIntervals(
-    coverage.spans
-      .filter((span) => span.loadedAt < before && overlaps(span, range))
-      .map((span) => ({
-        start: Math.max(span.start, range.start),
-        end: Math.min(span.end, range.end),
-      })),
+    intersectIntervals(
+      coverage.spans.filter((span) => span.loadedAt < before),
+      range,
+    ),
   );
 }
 
@@ -256,11 +254,7 @@ export function withItems(
  * fall in it are dropped, so the cache stays within the storage limits.
  */
 export function clipCoverage(coverage: PlannerCoverage, keep: Interval): PlannerCoverage {
-  const spans = coverage.spans.flatMap((span) => {
-    const start = Math.max(span.start, keep.start);
-    const end = Math.min(span.end, keep.end);
-    return start < end ? [{ start, end, loadedAt: span.loadedAt }] : [];
-  });
+  const spans = intersectIntervals(coverage.spans, keep);
   const items: Record<string, PlannerItem> = {};
   const filed: Record<string, Interval> = {};
   for (const [key, item] of Object.entries(coverage.items)) {
@@ -338,12 +332,15 @@ export function nearChunks(
   return chunks;
 }
 
-/** The parts of `intervals` that lie inside `bounds`. */
-export function intersectIntervals(intervals: readonly Interval[], bounds: Interval): Interval[] {
+/** The parts of `intervals` that lie inside `bounds`. Each part keeps the other fields of its interval. */
+export function intersectIntervals<T extends Interval>(
+  intervals: readonly T[],
+  bounds: Interval,
+): T[] {
   return intervals.flatMap((interval) => {
     const start = Math.max(interval.start, bounds.start);
     const end = Math.min(interval.end, bounds.end);
-    return start < end ? [{ start, end }] : [];
+    return start < end ? [{ ...interval, start, end }] : [];
   });
 }
 
