@@ -122,8 +122,9 @@ export async function startViewer(): Promise<void> {
     evicted: new Set<string>(),
     token: undefined as string | undefined,
   };
-  const flushOpens = () => {
-    const ids = [...addedTabs].map((id) => [id, actionTokens.get(id)] as const);
+  const savedOpens = new Set<string>();
+  const flushOpens = (files: Iterable<string> = addedTabs) => {
+    const ids = [...files].map((id) => [id, actionTokens.get(id)] as const);
     const effects = unseen;
     const current = attempt;
     const started = generation;
@@ -131,12 +132,20 @@ export async function startViewer(): Promise<void> {
       for (const [fileId, credential] of ids) {
         if (credential === undefined) continue;
         if (!active() || current.result || started !== generation) return;
-        const reply = await browser.runtime.sendMessage({
-          type: 'viewer:tabs-open',
-          fileId,
-          token: credential,
-        });
-        if (!reply || typeof reply !== 'object') throw new Error('The tabs did not save');
+        const reply = await browser.runtime
+          .sendMessage({
+            type: 'viewer:tabs-open',
+            fileId,
+            token: credential,
+          })
+          .catch(() => undefined);
+        if (!reply || typeof reply !== 'object') {
+          if (active() && !current.result && started === generation) {
+            actionTokens.set(fileId, undefined);
+            savedOpens.delete(fileId);
+          }
+          continue;
+        }
         effects.token = credential;
         if (reply.added) effects.added.add(fileId);
         if (
@@ -148,8 +157,9 @@ export async function startViewer(): Promise<void> {
         const kept = normalizeTabs(reply);
         for (const id of effects.added) if (!kept.ids.includes(id)) effects.added.delete(id);
         if (active() && !current.result && started === generation) {
+          savedOpens.add(fileId);
           tabs = normalizeTabs(reply);
-          for (const [id, token] of ids) if (token === undefined) tabs = openFile(tabs, id);
+          for (const [id] of ids) if (actionTokens.get(id) === undefined) tabs = openFile(tabs, id);
           if (waitingFile) tabs = openFile(tabs, waitingFile);
           tabsToken = credential;
         }
@@ -236,6 +246,7 @@ export async function startViewer(): Promise<void> {
       type: 'open-file' as const,
       fileId,
       token: actionTokens.get(fileId),
+      saved: savedOpens.has(fileId),
       ...(courseId ? { courseId } : {}),
       ...(name ? { name } : {}),
       ...(address ? { address } : {}),
@@ -432,6 +443,7 @@ export async function startViewer(): Promise<void> {
     names.clear();
     addresses.clear();
     actionTokens.clear();
+    savedOpens.clear();
   };
   const stopReset = watchPaneReset(() => reset());
   lifetime.signal.addEventListener('abort', stopReset, { once: true });
@@ -674,11 +686,9 @@ export async function startViewer(): Promise<void> {
       keptAddress(href, location.origin) ??
       canvasAddress(file.fileId, courseId);
     const open = async () => {
-      // The pane is open and owns the tabs, so it opens the file and saves the tabs itself. This
-      // request also makes a pane that has not been told yet restore the stored tabs, so the files
-      // that waited for the pane join the store first.
-      if (!synced && addedTabs.size > 0) {
-        await flushOpens().catch(() => undefined);
+      // Page opens share the write queue so Close can undo every unseen addition and eviction.
+      if (synced || addedTabs.size > 0) {
+        await flushOpens(synced ? [file.fileId] : addedTabs).catch(() => undefined);
         if (ended()) return ended()!;
         if (!paneOpen() || (!port && !connection)) {
           removeAddedTabs();
@@ -828,8 +838,6 @@ export async function startViewer(): Promise<void> {
     'pageshow',
     (event) => {
       if (!active() || !(event as PageTransitionEvent).persisted) return;
-      if (waitingFile || addedTabs.size || unseen.added.size || unseen.evicted.size)
-        void undoUnseen().catch(() => undefined);
       reset('closed');
       const restored = generation;
       starting = load().catch(() => undefined);

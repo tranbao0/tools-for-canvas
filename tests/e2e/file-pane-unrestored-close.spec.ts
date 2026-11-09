@@ -121,6 +121,53 @@ async function expectInactive(background: Worker): Promise<void> {
 test.describe('a close of a pane that did not restore the stored tabs', () => {
   test.setTimeout(75_000);
 
+  test('a cache restore keeps the tabs and active file saved by a later page view', async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openCoursePage(context, page, background);
+    await openThenReloadBlocked(page, () => context.newCDPSession(page));
+    await page.getByRole('link', { name: 'Lecture photo', exact: true }).click();
+    await background.evaluate(async (origin) => {
+      const api = (
+        globalThis as unknown as {
+          chrome: {
+            tabs: { query(filter: object): Promise<{ id: number }[]> };
+            storage: {
+              session: {
+                get(key: string): Promise<Record<string, object>>;
+                set(items: Record<string, object>): Promise<void>;
+              };
+            };
+          };
+        }
+      ).chrome;
+      const [tab] = await api.tabs.query({ url: `${origin}/*` });
+      const key = `viewer:${origin}:${tab!.id}`;
+      const old = (await api.storage.session.get(key))[key];
+      await api.storage.session.set({ [key]: { ...old, ids: ['42', '44'], active: '44' } });
+    }, new URL(page.url()).origin);
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })),
+    );
+    await expect(page.locator(HOST)).toBeVisible();
+    const active = await background.evaluate(async (origin) => {
+      const api = (
+        globalThis as unknown as {
+          chrome: {
+            tabs: { query(filter: object): Promise<{ id: number }[]> };
+            storage: { session: { get(key: string): Promise<Record<string, { active: string }>> } };
+          };
+        }
+      ).chrome;
+      const [tab] = await api.tabs.query({ url: `${origin}/*` });
+      const key = `viewer:${origin}:${tab!.id}`;
+      return (await api.storage.session.get(key))[key]?.active;
+    }, new URL(page.url()).origin);
+    expect(active).toBe('44');
+  });
+
   test('a removed host opens the clicked file without also following its link', async ({
     context,
     page,

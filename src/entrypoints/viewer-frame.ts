@@ -167,6 +167,7 @@ export default defineUnlistedScript(() => {
         opens.emit({
           fileId: message.fileId,
           token: message.token,
+          saved: message.saved,
           ...(message.courseId ? { courseId: message.courseId } : {}),
           ...(message.name ? { name: message.name } : {}),
           ...(message.address ? { address: message.address } : {}),

@@ -133,6 +133,73 @@ describe('file pane lifetime and unseen changes', () => {
   const host = () => document.getElementById('tools-file-viewer');
 
   it.each([false, true])(
+    'a restored page sends no undo from its earlier life: %s',
+    async (connected) => {
+      identity.confirmed = false;
+      setup({ ids: ['4', '8'], active: null });
+      await startViewer();
+      click('file');
+      await settle();
+      if (connected) await connect();
+      stored = { ids: ['8', '5', '6'], active: '5' };
+      writes.length = 0;
+      pageshow();
+      await settle();
+      expect(writes).toEqual([]);
+      expect(stored).toEqual({ ids: ['8', '5', '6'], active: '5' });
+    },
+  );
+
+  it.each(['refused', 'rejected'])(
+    'a %s waiting save stays local and does not stop the next save',
+    async (mode) => {
+      setup({ ids: ['4'], active: null });
+      sendMessage.mockImplementation(async (message) => {
+        if (message.type === 'viewer:tabs-open' && message.fileId === '5') {
+          if (mode === 'rejected') throw new Error('refused');
+          return undefined;
+        }
+        return base(message);
+      });
+      await startViewer();
+      click('file');
+      click('other');
+      await settle();
+      await connect();
+      expect(stored).toEqual({ ids: ['4', '6'], active: '6' });
+      expect(ports.at(-1)!.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'open-file',
+          fileId: '5',
+          token: undefined,
+        }),
+      );
+    },
+  );
+
+  it.each([1, 8])(
+    'Close under the cover undoes a synced open and its eviction with %s stored tabs',
+    async (count) => {
+      capture();
+      identity.confirmed = false;
+      const ids = Array.from({ length: count }, (_, i) => String(i + 11));
+      setup({ ids, active: ids.at(-1)! });
+      await startViewer();
+      await connect();
+      ports.at(-1)!.postMessage.mockImplementation((message) => {
+        if (message.type === 'open-file' && message.token !== undefined && !message.saved)
+          void base({ ...message, type: 'viewer:tabs-open' });
+      });
+      click('other');
+      await settle();
+      expect(stored.ids).toContain('6');
+      close();
+      await settle();
+      expect(stored).toEqual({ ids, active: null });
+    },
+  );
+
+  it.each([false, true])(
     'binds early clicks to their startup read without crossing a reset: %s',
     async (reset) => {
       setup({ ids: [], active: null });
@@ -164,7 +231,7 @@ describe('file pane lifetime and unseen changes', () => {
     await settle();
     await connect();
     ports.at(-1)!.postMessage.mockImplementation((message) => {
-      if (message.type === 'open-file' && message.token !== undefined)
+      if (message.type === 'open-file' && message.token !== undefined && !message.saved)
         void base({ ...message, type: 'viewer:tabs-open', fileId: message.fileId });
     });
     answerTabs = true;
