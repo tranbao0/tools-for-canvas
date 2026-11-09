@@ -4,6 +4,11 @@ import { resetPanes } from './paneReset';
 export type PaneVerdict = { verdict: 'yes'; token: string } | { verdict: 'no' | 'unknown' };
 const KEY = Symbol.for('tools-for-canvas.pane-identity');
 const TIMEOUT_MS = 5000;
+// Read the test override once, before the first identity check.
+const identityTimeoutMs =
+  import.meta.env.WXT_E2E === '1'
+    ? Number(sessionStorage.getItem('e2ePaneIdentityTimeoutMs')) || 120_000
+    : TIMEOUT_MS;
 interface Registration {
   token?: string;
   show(confirmed: boolean): void;
@@ -37,7 +42,7 @@ export async function checkPaneIdentity(token?: string): Promise<PaneVerdict> {
         ...(token === undefined ? {} : { token }),
       }),
       new Promise<undefined>((resolve) => {
-        timeout = globalThis.setTimeout(() => resolve(undefined), TIMEOUT_MS);
+        timeout = globalThis.setTimeout(() => resolve(undefined), identityTimeoutMs);
       }),
     ]);
     if (typeof reply !== 'object' || reply === null) return { verdict: 'unknown' };
@@ -64,7 +69,7 @@ export function watchPaneIdentity(show: (confirmed: boolean) => void, token?: st
     const sequence = ++state.sequence;
     const bound = [...state.panes].find((pane) => pane.token !== undefined)?.token;
     const oldest = state.pending.values().next().value;
-    if (oldest !== undefined && Date.now() - oldest >= TIMEOUT_MS)
+    if (oldest !== undefined && Date.now() - oldest >= identityTimeoutMs)
       for (const pane of state.panes) pane.show(false);
     state.pending.set(sequence, Date.now());
     void checkPaneIdentity(bound).then((reply) => {

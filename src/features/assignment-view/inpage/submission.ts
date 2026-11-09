@@ -1,3 +1,4 @@
+import { RETRY_MS } from './submissionTiming';
 import { checkPaneIdentity } from '../../file-viewer/paneIdentity';
 import { resetPanes } from '../../file-viewer/paneReset';
 /**
@@ -107,8 +108,6 @@ const SHOWN_TYPES: ReadonlySet<string | null | undefined> = new Set([
 
 /** How long the report cells of the frame are watched after a load. */
 const FRAME_WAIT_MS = 10_000;
-/** How long the view waits before it asks again after a read that failed. It asks once. */
-const RETRY_MS = 2000;
 
 type Mode = 'replace' | 'above';
 

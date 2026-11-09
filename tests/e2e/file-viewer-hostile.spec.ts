@@ -11,6 +11,8 @@ import {
 import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
 import { pageQuiet } from './support/settle';
 
+test.use({ longPaneIdentityTimeout: true });
+
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
 
 const html = courseHomeWithFileLinks(

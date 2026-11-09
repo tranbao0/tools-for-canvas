@@ -41,8 +41,9 @@
     "check:manifest": "node scripts/check-manifest.mjs",
     "check:fetch": "node scripts/check-fetch.mjs",
     "check:storage": "node scripts/check-storage.mjs",
+    "check:pane-identity-setting": "node scripts/check-pane-identity-setting.mjs",
     "check:file-check": "node scripts/check-file-check.mjs",
-    "check": "npm run build && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage && npm run check:file-check",
+    "check": "npm run build && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage && npm run check:file-check && npm run check:pane-identity-setting",
     "test:firefox:private-tabs": "node tests/firefox/private-tabs.mjs"
   },
   "devDependencies": {

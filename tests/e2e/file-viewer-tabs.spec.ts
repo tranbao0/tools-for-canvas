@@ -17,6 +17,8 @@ import {
   waitForListLoaded,
 } from './support/file-viewer';
 
+test.use({ longPaneIdentityTimeout: true });
+
 const HOST = '#tools-file-viewer';
 
 /** A file link in the main column of the course page. */

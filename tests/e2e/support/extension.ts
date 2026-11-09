@@ -9,7 +9,7 @@ import {
 } from '@playwright/test';
 import { targetDir } from '../../../scripts/lib/ensure-build.mjs';
 
-/** The unpacked Chrome build that the tests load. tests/e2e/global-setup.ts keeps it fresh. */
+/** The unpacked Chrome store build that tests load by default. tests/e2e/global-setup.ts keeps it fresh. */
 export const CHROME_EXTENSION_DIR = targetDir('chrome');
 
 /**
@@ -43,6 +43,8 @@ const SLOW_STEP_MS = 5_000;
 export interface ExtensionOptions {
   /** The unpacked extension that the context loads. Defaults to {@link CHROME_EXTENSION_DIR}. */
   extensionDir: string;
+  /** Use the test build so a delayed identity reply cannot cover a pane under test. */
+  longPaneIdentityTimeout: boolean;
   /** More command line flags for Chromium. */
   browserArgs: string[];
   /** Whether pages draw their classic scroll bars. Headless Chromium hides them by default. */
@@ -158,7 +160,13 @@ export async function launchBrowser(
  * The built-in `page` fixture opens a tab in the extension context.
  */
 export const test = base.extend<ExtensionFixtures & ExtensionOptions>({
-  extensionDir: [CHROME_EXTENSION_DIR, { option: true }],
+  longPaneIdentityTimeout: [false, { option: true }],
+  extensionDir: [
+    async ({ longPaneIdentityTimeout }, use) => {
+      await use(longPaneIdentityTimeout ? CHROME_E2E_EXTENSION_DIR : CHROME_EXTENSION_DIR);
+    },
+    { option: true },
+  ],
   browserArgs: [[], { option: true }],
   scrollBars: [false, { option: true }],
   context: [

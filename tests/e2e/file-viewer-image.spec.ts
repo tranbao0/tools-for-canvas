@@ -11,6 +11,8 @@ import {
 } from './support/file-viewer';
 import { startFileHost, TRUST_TEST_CERTIFICATE } from './support/file-host';
 
+test.use({ longPaneIdentityTimeout: true });
+
 test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
 
 test('image zoom, early blob cleanup and file card', async ({ context, page, background }) => {

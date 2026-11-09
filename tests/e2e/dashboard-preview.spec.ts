@@ -9,7 +9,6 @@ import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/
 import { DEFAULT_TOOLS_SETTINGS } from '../../src/shared/settings/tools';
 import { ASSIGNMENT_DETAILS, rawRecords } from '../fixtures/assignment-view';
 import type { FakeCanvasRoute } from './support/fake-canvas';
-import { CHROME_E2E_EXTENSION_DIR } from './support/extension';
 import { SCENARIO_NOW, buildScenario } from '../fixtures/scenario';
 import { advanceBackgroundClock } from './support/clock';
 import { closePane, pane } from './support/file-viewer';
@@ -29,7 +28,7 @@ import {
   test,
 } from './support/weekrow';
 
-test.use({ extensionDir: CHROME_E2E_EXTENSION_DIR });
+test.use({ longPaneIdentityTimeout: true });
 
 const SHOTS = process.env['X32_SHOTS'] ?? '';
 const PANE_HOST = '#tools-turn-in';
