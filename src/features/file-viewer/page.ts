@@ -83,7 +83,8 @@ export async function startViewer(): Promise<void> {
   // `null` when the background did not answer, such as before the first load of the list. The
   // tabs in memory stay as they are then. The token comes with the tabs and goes back with a
   // write, so the background can refuse a write for tabs that it has cleared since.
-  const readTabs = async (): Promise<{ tabs: Tabs; token: string | undefined } | null> => {
+  type StoredTabs = { tabs: Tabs; token: string | undefined };
+  const readTabs = async (): Promise<StoredTabs | null> => {
     let pendingWrites: Promise<unknown>;
     do {
       pendingWrites = writes;
@@ -95,8 +96,9 @@ export async function startViewer(): Promise<void> {
     return { tabs: normalizeTabs(reply), token: typeof token === 'string' ? token : undefined };
   };
   let writes: Promise<unknown> = Promise.resolve();
-  const writeTabs = (next: Tabs) => {
-    const token = tabsToken;
+  let changedStore = false;
+  const writeTabs = (next: Tabs, token = tabsToken) => {
+    changedStore = true;
     const run = writes.then(() =>
       browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs: next, token }),
     );
@@ -121,8 +123,17 @@ export async function startViewer(): Promise<void> {
   // Another pane may hide the file pane. The pane page is told, because it cannot see that: its
   // tabs pause their media and keep their place while the pane is hidden.
   const markSeen = () => {
-    if (synced && port && dock?.shown && dock.host.getAttribute('data-identity') === 'yes')
+    if (
+      synced &&
+      port &&
+      presentedTabs &&
+      dock?.shown &&
+      dock.host.isConnected &&
+      dock.host.getAttribute('data-identity') === 'yes'
+    ) {
       sawTabs = true;
+      keptTabs = presentedTabs;
+    }
   };
   const sendCovered = () => {
     markSeen();
@@ -163,11 +174,27 @@ export async function startViewer(): Promise<void> {
   // copy is older than the pane, so it never goes out again, or it would undo what the student
   // did in the pane since.
   let synced = false;
+  let presentedTabs: StoredTabs | undefined;
   let sawTabs = false;
   // The file of an open that has not reached the pane yet.
   let waitingFile: string | null = null;
   const addedTabs = new Set<string>();
-  let keptTabs: Tabs | undefined;
+  let keptTabs: StoredTabs | undefined;
+  const rememberStored = (stored: StoredTabs) => {
+    if (keptTabs && keptTabs.token !== stored.token) {
+      addedTabs.clear();
+      waitingFile = null;
+      synced = false;
+      presentedTabs = undefined;
+      sawTabs = false;
+      changedStore = false;
+      courses.clear();
+      names.clear();
+      addresses.clear();
+    }
+    if (!changedStore || keptTabs?.token !== stored.token) keptTabs = stored;
+    tabsToken = stored.token;
+  };
   let failureAddress = '';
   let failedConnection = false;
   /** The address of a file or a comment attachment in Canvas. */
@@ -176,7 +203,8 @@ export async function startViewer(): Promise<void> {
     return links?.canvas ?? links!.download;
   };
   const removeAddedTabs = () => {
-    tabs = keptTabs ?? { ids: [], active: null };
+    tabs = keptTabs?.tabs ?? { ids: [], active: null };
+    tabsToken = keptTabs?.token;
     addedTabs.clear();
     waitingFile = null;
   };
@@ -215,10 +243,9 @@ export async function startViewer(): Promise<void> {
       return;
     if (latest?.settings?.theme) themeChoice = latest.settings.theme;
     if (stored) {
-      keptTabs ??= stored.tabs;
+      rememberStored(stored);
       const next = [...addedTabs].reduce(openFile, stored.tabs);
       tabs = waitingFile ? openFile(next, waitingFile) : next;
-      tabsToken = stored.token;
     }
     // The pane has connected, so the files of the clicks that waited for it join the stored tabs,
     // and the pane restores them.
@@ -238,6 +265,7 @@ export async function startViewer(): Promise<void> {
     sendFullView();
     sendCovered();
     if (tabs.active && port && !synced) {
+      presentedTabs = { tabs: { ids: [...tabs.ids], active: tabs.active }, token: tabsToken };
       synced = true;
       markSeen();
       waitingFile = null;
@@ -278,6 +306,7 @@ export async function startViewer(): Promise<void> {
     port = undefined;
     dock?.close();
     dock = undefined;
+    presentedTabs = undefined;
   };
   const save = async () => {
     const latest = (await browser.runtime.sendMessage({ type: 'weekrow:page-context' })) as {
@@ -291,8 +320,9 @@ export async function startViewer(): Promise<void> {
   const close = () => {
     if (!sawTabs) removeAddedTabs();
     tabs = sawTabs ? { ids: [], active: null } : { ids: [...tabs.ids], active: null };
+    keptTabs = { tabs, token: tabsToken };
     drop('closed');
-    void writeTabs(tabs).catch(() => undefined);
+    void writeTabs(tabs, keptTabs.token).catch(() => undefined);
   };
   // The background cleared the data of a student: a sign-out, another student or a new address.
   // The pane closes, also a pane that another pane covers, and nothing of the earlier student
@@ -312,6 +342,7 @@ export async function startViewer(): Promise<void> {
     synced = false;
     sawTabs = false;
     keptTabs = undefined;
+    changedStore = false;
     courses.clear();
     names.clear();
     addresses.clear();
@@ -555,7 +586,8 @@ export async function startViewer(): Promise<void> {
         await writeTabs(tabs).catch(() => undefined);
         if (ended()) return ended()!;
         if (!paneOpen() || (!port && !connection)) {
-          tabs = (sawTabs ? beforeOpen : keptTabs) ?? { ids: [], active: null };
+          removeAddedTabs();
+          if (!sawTabs) tabs = { ids: [...tabs.ids], active: null };
           addedTabs.delete(file.fileId);
           if (waitingFile === file.fileId) waitingFile = null;
           await writeTabs(tabs).catch(() => undefined);
@@ -563,6 +595,10 @@ export async function startViewer(): Promise<void> {
         }
         if (!port) return { connected: connection! };
       }
+      presentedTabs = {
+        tabs: openFile(synced && presentedTabs ? presentedTabs.tabs : tabs, file.fileId),
+        token: tabsToken,
+      };
       synced = true;
       markSeen();
       waitingFile = null;
@@ -577,11 +613,9 @@ export async function startViewer(): Promise<void> {
     if (ended()) return ended()!;
     if (failedConnection) return connected ? { connected } : 'timeout';
     if (stored) {
-      tabsToken = stored.token;
-      keptTabs ??= stored.tabs;
+      rememberStored(stored);
     }
     const previous = [...addedTabs].reduce(openFile, stored?.tabs ?? tabs);
-    const beforeOpen = previous;
     if (!previous.ids.includes(file.fileId)) {
       addedTabs.add(file.fileId);
     }
@@ -665,8 +699,8 @@ export async function startViewer(): Promise<void> {
     { capture: true, signal: lifetime.signal },
   );
   // The settings and the stored tabs load while the listeners above already work.
-  const born = generation;
-  const starting = (async () => {
+  const load = async () => {
+    const born = generation;
     const context = await readContext();
     if (!live) return;
     // The settings say the switch is off, so this copy ends. A read that failed ends nothing.
@@ -682,11 +716,25 @@ export async function startViewer(): Promise<void> {
     // A reset during the read drops the answer: those tabs belong to the earlier student.
     if (stored && born === generation) {
       tabs = stored.tabs;
-      keptTabs = stored.tabs;
-      tabsToken = stored.token;
+      rememberStored(stored);
     }
     enabled = true;
-  })().catch(() => undefined);
+  };
+  let starting = load().catch(() => undefined);
+  addEventListener(
+    'pageshow',
+    (event) => {
+      if (!(event as PageTransitionEvent).persisted) return;
+      reset();
+      starting = load().catch(() => undefined);
+      void starting
+        .then(async () => {
+          if (live && enabled && tabs.active) await show();
+        })
+        .finally(reportFilePane);
+    },
+    { signal: lifetime.signal },
+  );
   // The background sends three kinds of message to this script. It says when a setting changed, so
   // the pane follows the Theme setting at once, and the script ends when the File viewer switch
   // goes off. It says when it cleared the data of a student, and the pane closes. And it passes on

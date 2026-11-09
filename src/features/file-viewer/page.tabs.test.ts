@@ -352,6 +352,119 @@ describe('the stored tabs of a click that waits for the pane', () => {
     expect(stored).toEqual({ ids: [], active: null });
   });
 
+  it('keeps the newest stored list read before the first write', async () => {
+    capture();
+    await start('1:1', { ids: ['4'], active: null });
+    // Another writer of this tab key (e.g. a later page of the same tab before a bfcache return).
+    stored = { ids: ['7', '8'], active: '8' };
+    click('file');
+    await settle();
+    close();
+    await settle();
+    expect(stored).toEqual({ ids: ['7', '8'], active: null });
+  });
+
+  it('never writes the startup snapshot with a different student token', async () => {
+    capture();
+    await start('1:1', { ids: ['4'], active: null });
+    const answer = sendMessage.getMockImplementation()!;
+    // The background cleared student 1 and now serves student 2 (epoch 2); the reset message
+    // did not reach this document (for example a page that was in the back-forward cache).
+    stored = { ids: [], active: null };
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-get') return { ...stored, token: '2:2' };
+      return answer(message);
+    });
+    click('file');
+    await settle();
+    close();
+    await settle();
+    expect(writes.at(-1)).toEqual({ tabs: { ids: [], active: null }, token: '2:2' });
+  });
+
+  it('rolls back only to stored or seen tabs after a seen pane closes', async () => {
+    capture();
+    await start();
+    click('file');
+    await settle();
+    await connect();
+    close();
+    await settle();
+    const answer = sendMessage.getMockImplementation()!;
+    let releaseRead: (() => void) | undefined;
+    let releaseWrite: (() => void) | undefined;
+    let heldRead = false;
+    let getsAfterArm = 0;
+    let heldWrite = false;
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-get' && !heldRead && ++getsAfterArm === 2) {
+        heldRead = true;
+        await new Promise<void>((resolve) => {
+          releaseRead = resolve;
+        });
+      }
+      const result = await answer(message);
+      if (message.type === 'viewer:tabs-set' && !heldWrite) {
+        heldWrite = true;
+        await new Promise<void>((resolve) => {
+          releaseWrite = resolve;
+        });
+      }
+      return result;
+    });
+    const follow = followed();
+    click('file');
+    await settle();
+    click('other');
+    await settle();
+    await connect();
+    expect(releaseRead).toBeDefined();
+    expect(releaseWrite).toBeDefined();
+    releaseRead!();
+    await settle();
+    document.getElementById('tools-file-viewer')!.remove();
+    releaseWrite!();
+    await settle();
+    await settle();
+    expect(follow).toHaveBeenCalledOnce();
+    expect(stored).toEqual({ ids: [], active: null });
+  });
+
+  it('starts a fresh page view on a persisted pageshow before any write', async () => {
+    capture();
+    await start('1:1', { ids: ['4'], active: '4' });
+    await connect();
+    stored = { ids: ['7', '8'], active: null };
+    const answer = sendMessage.getMockImplementation()!;
+    let release: (() => void) | undefined;
+    let reads = 0;
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-get') {
+        reads += 1;
+        if (!release)
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        return { ...stored, token: '2:2' };
+      }
+      return answer(message);
+    });
+    const event = new Event('pageshow');
+    Object.defineProperty(event, 'persisted', { value: true });
+    window.dispatchEvent(event);
+    await settle();
+    expect(document.getElementById('tools-file-viewer')).toBeNull();
+    expect(reads).toBe(1);
+    click('file');
+    await settle();
+    expect(writes).toEqual([]);
+    release!();
+    await settle();
+    close();
+    await settle();
+    expect(writes.at(-1)).toEqual({ tabs: { ids: ['7', '8'], active: null }, token: '2:2' });
+  });
+
   it('stores the file with the token of the last read once the pane connects', async () => {
     await start('4:7');
     click('file');
