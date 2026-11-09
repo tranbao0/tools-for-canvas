@@ -246,6 +246,23 @@ describe('pane tabs', () => {
     expect(changeTabs).toHaveBeenNthCalledWith(2, { action: 'activate', fileId: '1' }, '1:A');
   });
 
+  it('keeps a memory-only tab in place and keeps the next stored tab selected', async () => {
+    const { opens, open, host } = setup();
+    await act(async () => {
+      opens.emit({ fileId: '1' });
+    });
+    await waitFor(() => expect(tabs()).toHaveLength(1));
+    await open('2');
+    await waitFor(() => expect(host.changeTabs).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await vi.mocked(host.changeTabs).mock.results[0]!.value;
+    });
+    await waitFor(() =>
+      expect(tabs().map((tab) => tab.getAttribute('data-file-id'))).toEqual(['1', '2']),
+    );
+    expect(tabs()[1]!.getAttribute('aria-selected')).toBe('true');
+  });
+
   it('opens one tab for each file and activates an open file again', async () => {
     const { open, host } = setup();
     await open('1');

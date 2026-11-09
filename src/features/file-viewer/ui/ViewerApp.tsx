@@ -120,9 +120,16 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
         .then(async () => {
           let latest = await host.changeTabs(intent, token);
           if (change !== changes.current) return;
-          const active = tabsRef.current.active;
-          for (const id of memory.current) latest = openFile(latest, id);
-          if (active && memory.current.has(active)) latest = { ids: latest.ids, active };
+          const local = tabsRef.current;
+          const selected =
+            local.active && memory.current.has(local.active) ? local.active : latest.active;
+          for (const [index, id] of local.ids.entries()) {
+            if (!memory.current.has(id)) continue;
+            latest = openFile({ ids: latest.ids, active: selected }, id);
+            const ids = latest.ids.filter((entry) => entry !== id);
+            ids.splice(Math.min(index, ids.length), 0, id);
+            latest = { ids, active: selected };
+          }
           tabsRef.current = latest;
           setTabs(latest);
         })
