@@ -4,8 +4,8 @@
  * page, open in a tab, and the click opens the panel in that window. See docs/design.md,
  * decision 13.
  *
- * Only the build made with `WXT_E2E=1` includes this file. The release builds drop it, because
- * the page entry point loads it behind a `import.meta.env.WXT_E2E` check.
+ * Only the `e2e` build (`npm run build:e2e`) includes this file. The release builds drop it,
+ * because the page entry point loads it behind a `import.meta.env.WXT_E2E` check.
  */
 import { browser } from 'wxt/browser';
 import { openPanel } from '../../../shared/platform/panel';

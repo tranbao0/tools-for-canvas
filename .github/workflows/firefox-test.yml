@@ -52,7 +52,7 @@ jobs:
         env:
           FIREFOX_TEST_VERSION: ${{ steps.version.outputs.version }}
           FIREFOX_TEST_UPDATE_URL: ${{ env.SITE }}/firefox/updates.json
-        run: npx wxt zip -b firefox
+        run: npm run build:firefox-test
 
       - name: Sign for self-distribution
         env:

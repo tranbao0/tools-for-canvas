@@ -16,9 +16,9 @@ const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const PDF = '%PDF-1.4\n%%EOF\n';
 process.env.SE_OFFLINE = 'true';
 // Always build the test channel. The store smoke test uses its own release build.
-execFileSync('npx', ['wxt', 'build', '-b', 'firefox'], {
+execFileSync(process.execPath, ['scripts/build.mjs', 'firefox', 'firefox-test'], {
   stdio: 'inherit',
-  env: { ...process.env, WXT_E2E: '', FIREFOX_TEST_VERSION: '0.1.0.1' },
+  env: { ...process.env, FIREFOX_TEST_VERSION: '0.1.0.1', FIREFOX_TEST_UPDATE_URL: '' },
 });
 // The Canvas routes and file bytes share a local server with one redirect between them.
 const files = {};
@@ -106,8 +106,5 @@ try {
   await driver?.quit();
   await server.close();
   // Put a store build back in the release folder, so later commands never use the test build.
-  execFileSync('npx', ['wxt', 'build', '-b', 'firefox'], {
-    stdio: 'inherit',
-    env: { ...process.env, WXT_E2E: '', FIREFOX_TEST_VERSION: '' },
-  });
+  execFileSync(process.execPath, ['scripts/build.mjs', 'firefox'], { stdio: 'inherit' });
 }
