@@ -13,12 +13,12 @@
     "dev": "wxt -b chrome",
     "dev:firefox": "wxt -b firefox",
     "build": "npm run build:chrome && npm run build:edge && npm run build:firefox",
-    "build:chrome": "wxt build -b chrome",
+    "build:chrome": "node scripts/build.mjs chrome",
     "build:e2e": "node scripts/build-e2e.mjs",
-    "build:edge": "wxt build -b edge",
-    "build:firefox": "wxt build -b firefox",
-    "build-for-amo": "wxt build -b firefox",
-    "zip": "wxt zip -b chrome && wxt zip -b edge && wxt zip -b firefox",
+    "build:edge": "node scripts/build.mjs edge",
+    "build:firefox": "node scripts/build.mjs firefox",
+    "build-for-amo": "node scripts/build.mjs firefox",
+    "zip": "node scripts/build.mjs chrome release zip && node scripts/build.mjs edge release zip && node scripts/build.mjs firefox release zip",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:webext": "web-ext lint --source-dir .output/firefox-mv3",
@@ -45,7 +45,8 @@
     "check:test-only-code": "node scripts/check-test-only-code.mjs",
     "check:file-check": "node scripts/check-file-check.mjs",
     "check": "npm run build && npm run build:e2e && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage && npm run check:file-check && npm run check:test-only-code",
-    "test:firefox:private-tabs": "node tests/firefox/private-tabs.mjs"
+    "test:firefox:private-tabs": "node tests/firefox/private-tabs.mjs",
+    "build:firefox-test": "node scripts/build.mjs firefox firefox-test zip"
   },
   "devDependencies": {
     "@babel/core": "7.29.7",

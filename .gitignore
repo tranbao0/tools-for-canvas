@@ -11,3 +11,5 @@ web-ext-artifacts/
 .DS_Store
 screenshots/
 /gallery/
+
+.env*

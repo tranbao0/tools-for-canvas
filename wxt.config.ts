@@ -4,6 +4,15 @@ import { defineConfig } from 'wxt';
 import type { Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 
+// Capture command switches before WXT loads any environment file.
+
+const explicit =
+  process.argv[1] && path.resolve(process.argv[1]) === path.resolve('scripts/build.mjs');
+const mode = explicit ? process.argv[3] : 'release';
+const E2E = mode === 'e2e';
+const TEST_VERSION = mode === 'firefox-test' ? process.env.FIREFOX_TEST_VERSION : undefined;
+const TEST_UPDATE_URL = mode === 'firefox-test' ? process.env.FIREFOX_TEST_UPDATE_URL : undefined;
+
 /**
  * In the build of the extension pages, all code under `src/shared` and `src/features`, and all
  * libraries, go in one chunk, which every page loads. Several small chunks cost more after gzip than one, because each
@@ -40,10 +49,6 @@ function pagesShareOneChunk(): Plugin {
   };
 }
 
-/** Set only by the Firefox test channel workflow. */
-const TEST_VERSION = process.env.FIREFOX_TEST_VERSION;
-const TEST_UPDATE_URL = process.env.FIREFOX_TEST_UPDATE_URL;
-
 /**
  * Whether a build includes the file access check (docs/design.md, decision 23). Only the Firefox
  * build of the test channel and the end-to-end build of any browser do. A store build never
@@ -52,7 +57,7 @@ const TEST_UPDATE_URL = process.env.FIREFOX_TEST_UPDATE_URL;
  * `FIREFOX_TEST_VERSION`.
  */
 function hasFileCheck(browser: string): boolean {
-  return (Boolean(TEST_VERSION) && browser === 'firefox') || process.env['WXT_E2E'] === '1';
+  return (Boolean(TEST_VERSION) && browser === 'firefox') || E2E;
 }
 const FILE_CHECK_PAGES = ['file-check', 'file-probe'];
 
@@ -86,7 +91,7 @@ export default defineConfig({
   hooks: {
     // All release routes, including AMO and the Firefox test channel, reject all test-only markers.
     'build:done': async (wxt) => {
-      const problems = await (process.env['WXT_E2E'] === '1'
+      const problems = await (E2E
         ? findMissingTestOnlyMarkers(wxt.config.outDir)
         : findTestOnlyCode(wxt.config.outDir));
       if (problems.length > 0) throw new Error(problems.join('\n'));
@@ -117,7 +122,7 @@ export default defineConfig({
     // `import.meta.env.WXT_E2E` guards. The build is otherwise a production build. It goes to
     // `.output-e2e`, so no folder of release output holds the test-only code.
     'config:resolved': (wxt) => {
-      if (process.env['WXT_E2E'] !== '1') return;
+      if (!E2E) return;
       wxt.config.outBaseDir = path.resolve(wxt.config.root, '.output-e2e');
       wxt.config.outDir = path.resolve(
         wxt.config.outBaseDir,
@@ -126,7 +131,10 @@ export default defineConfig({
     },
   },
   vite: ({ browser }) => ({
-    define: { __FILE_CHECK__: JSON.stringify(hasFileCheck(browser)) },
+    define: {
+      __FILE_CHECK__: JSON.stringify(hasFileCheck(browser)),
+      'import.meta.env.WXT_E2E': JSON.stringify(E2E ? '1' : ''),
+    },
     plugins: [preact(), pagesShareOneChunk()],
     build: {
       // The pages are local files, so a preload link for the shared chunk only adds bytes.

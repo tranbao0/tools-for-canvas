@@ -1,6 +1,6 @@
 // Builds one browser target when its output is missing or older than its inputs.
 import { execSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,7 +10,14 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 /** @typedef {'release' | 'e2e'} BuildMode */
 
 /** Files and folders whose changes make a build stale. */
-const BUILD_INPUTS = ['src', 'wxt.config.ts', 'tsconfig.json', 'package.json', 'package-lock.json'];
+const BUILD_INPUTS = [
+  'src',
+  'wxt.config.ts',
+  'tsconfig.json',
+  'package.json',
+  'package-lock.json',
+  'scripts',
+];
 
 /**
  * Returns the build directory of a browser, such as `<root>/.output/chrome-mv3`.
@@ -49,14 +56,24 @@ export function isBuildFresh(browser, mode = 'release') {
   const manifest = path.join(dir, 'manifest.json');
   if (!existsSync(manifest)) return false;
   // A build of the test channel can sit in the release folder. It is not a release build.
-  if (mode === 'release' && existsSync(path.join(dir, 'file-check.html'))) return false;
+  if (mode === 'release') {
+    if (existsSync(path.join(dir, 'file-check.html'))) return false;
+    const built = JSON.parse(readFileSync(manifest, 'utf8'));
+    const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    if (
+      built.version !== pkg.version ||
+      built.browser_specific_settings?.gecko?.update_url !== undefined
+    ) {
+      return false;
+    }
+  }
   const builtAt = statSync(manifest).mtimeMs;
   return BUILD_INPUTS.every((input) => newestModification(path.join(ROOT, input)) <= builtAt);
 }
 
 /**
- * Builds a browser target with `npm run build:<browser>` unless its build is fresh.
- * The `e2e` mode builds with `WXT_E2E=1`, which adds the test-only code.
+ * Builds a browser target through `scripts/build.mjs` unless its build is fresh.
+ * The explicit `e2e` mode adds the test-only code.
  * @param {'chrome' | 'edge' | 'firefox'} browser
  * @param {BuildMode} [mode]
  * @returns {string} the build directory
@@ -67,24 +84,15 @@ export function ensureBuild(browser, mode = 'release') {
 }
 
 /**
- * Builds a browser target with `npm run build:<browser>`, also when its build is fresh. The switch
+ * Builds a browser target through `scripts/build.mjs`, also when its build is fresh. The switch
  * is set here in Node, not in a shell, so the build runs the same on every platform.
- * The `e2e` mode builds with `WXT_E2E=1`, which adds the test-only code.
+ * The explicit `e2e` mode adds the test-only code.
  * @param {'chrome' | 'edge' | 'firefox'} browser
  * @param {BuildMode} [mode]
  * @returns {string} the build directory
  */
 export function build(browser, mode = 'release') {
   console.log(`Building the ${browser} extension (${mode})...`);
-  // A release build never takes a test switch from the shell, so it always writes the release
-  // output and holds no test-only code, such as the file access check.
-  const {
-    WXT_E2E: _e2e,
-    FIREFOX_TEST_VERSION: _version,
-    FIREFOX_TEST_UPDATE_URL: _updateUrl,
-    ...releaseEnv
-  } = process.env;
-  const env = mode === 'e2e' ? { ...releaseEnv, WXT_E2E: '1' } : releaseEnv;
-  execSync(`npm run build:${browser}`, { cwd: ROOT, stdio: 'inherit', env });
+  execSync(`node scripts/build.mjs ${browser} ${mode}`, { cwd: ROOT, stdio: 'inherit' });
   return targetDir(browser, mode);
 }

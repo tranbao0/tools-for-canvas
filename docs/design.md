@@ -2757,7 +2757,7 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
 **Question:** Can the planned file viewer (roadmap item 3) fetch Canvas files and frame an extension page on a real school?
 
 **Decision:** Build a "File access check" before the viewer.
-Only builds of the Firefox test channel (`FIREFOX_TEST_VERSION` is set) and the end-to-end build include it.
+Only explicit builds of the Firefox test channel (`npm run build:firefox-test`) and the end-to-end build include it.
 A store build has none of it.
 The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
 
@@ -2841,13 +2841,15 @@ The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
 
 **Test builds only.**
 
-- `wxt.config.ts` includes the check when the build is for Firefox and `FIREFOX_TEST_VERSION` is set, or when `WXT_E2E=1` is set.
+- `wxt.config.ts` includes the check for the explicit Firefox test command with `FIREFOX_TEST_VERSION`, or for `npm run build:e2e` and `ensureBuild(browser, 'e2e')`.
   A Chrome or Edge build never has it because of `FIREFOX_TEST_VERSION`.
   The build then keeps the two pages (`file-check`, `file-probe`) and adds the manifest entry.
   It also defines `__FILE_CHECK__` as a literal, so the branches behind it fall away in a store build.
   The text of the group is in the code of the check, not in `_locales`, so it stays out of the store message file.
-- `scripts/lib/ensure-build.mjs` removes `FIREFOX_TEST_VERSION` and `WXT_E2E` from the environment of a release build.
-  It also counts a release folder that holds `file-check.html` as stale.
+- Build commands select release mode unless they explicitly request a test build.
+  The config reads the command switches once before WXT loads environment files.
+  Release builds ignore `FIREFOX_TEST_VERSION`, `FIREFOX_TEST_UPDATE_URL` and `WXT_E2E` from the shell and environment files.
+  `scripts/lib/ensure-build.mjs` counts a release folder with test code or test manifest values as stale.
 - `npm run check:file-check` fails when a built store target holds a page, a string or a manifest entry of the check.
   It runs at the end of `npm run check`, after a build without the flag.
 

@@ -2,9 +2,13 @@
 // Checks each built manifest against design decisions 4, 5, 13, 14 and 15.
 //
 // Usage: node scripts/check-manifest.mjs [--out-dir <dir>] [target ...]
-import { existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { browserOf, readJson, runForTargets } from './lib/build-output.mjs';
+
+const PACKAGE_VERSION = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
 
 /** The one host permission, and the only match of the detector (decision 5). */
 export const ALL_HTTPS = 'https://*/*';
@@ -82,6 +86,12 @@ function show(value) {
  */
 function checkCommon(browser, manifest, fileExists) {
   const problems = [];
+  if (manifest.version !== PACKAGE_VERSION) {
+    problems.push(`version is ${show(manifest.version)}, expected ${show(PACKAGE_VERSION)}`);
+  }
+  if (manifest.browser_specific_settings?.gecko?.update_url !== undefined) {
+    problems.push('gecko.update_url must not be set in a release build');
+  }
   if (manifest.manifest_version !== 3) {
     problems.push(`manifest_version is ${show(manifest.manifest_version)}, expected 3`);
   }

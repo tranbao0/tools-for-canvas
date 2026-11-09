@@ -83,6 +83,7 @@ const CHROME_MANIFEST = {
   web_accessible_resources: [
     { resources: ['viewer.html'], matches: ['https://*/*'], use_dynamic_url: true },
   ],
+  version: '0.1.0',
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
@@ -97,6 +98,7 @@ const CHROME_MANIFEST = {
 
 const FIREFOX_MANIFEST = {
   web_accessible_resources: [{ resources: ['viewer.html'], matches: ['https://*/*'] }],
+  version: '0.1.0',
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
@@ -353,6 +355,8 @@ describe('check-manifest', () => {
   });
 
   const chromeCases = [
+    ['a test version', (m) => (m.version = '0.1.0.99'), /version is/],
+    ['no version', (m) => delete m.version, /version is/],
     ['manifest version 2', (m) => (m.manifest_version = 2), /manifest_version is 2/],
     [
       'a second content script',
@@ -463,6 +467,12 @@ describe('check-manifest', () => {
   }
 
   const firefoxCases = [
+    ['a test version', (m) => (m.version = '0.1.0.99'), /version is/],
+    [
+      'an update URL',
+      (m) => (m.browser_specific_settings.gecko.update_url = 'https://example.test/updates.json'),
+      /gecko.update_url/,
+    ],
     ['no add-on id', (m) => delete m.browser_specific_settings.gecko.id, /gecko\.id/],
     [
       'an old minimum version',
