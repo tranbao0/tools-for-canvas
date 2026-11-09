@@ -99,8 +99,10 @@ export async function startViewer(): Promise<void> {
     return { tabs: normalizeTabs(reply), token: typeof token === 'string' ? token : undefined };
   };
   let writes: Promise<unknown> = Promise.resolve();
-  const enqueue = <T>(run: () => Promise<T>): Promise<T | undefined> => {
-    const next = writes.then(() => (active() ? run() : undefined));
+  const enqueue = <T>(run: () => Promise<T>, finishCleanup = false): Promise<T | undefined> => {
+    if (!active()) return Promise.resolve(undefined);
+    // Accepted cleanup must follow earlier intents even when the document tears down.
+    const next = writes.then(() => (active() || finishCleanup ? run() : undefined));
     writes = next.catch(() => undefined);
     return next;
   };
@@ -155,7 +157,6 @@ export async function startViewer(): Promise<void> {
         const reply = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
         credential = reply?.token;
       }
-      if (!active()) return;
       const reply = await browser.runtime.sendMessage({
         type: clear ? 'viewer:tabs-clear' : 'viewer:tabs-undo',
         ...(!clear ? { added: [...effects.added], evicted: [...effects.evicted] } : {}),
@@ -167,7 +168,7 @@ export async function startViewer(): Promise<void> {
         tabs = normalizeTabs(reply);
         tabsToken = credential;
       }
-    });
+    }, true);
   };
   type Attempt = { result?: 'closed' };
   let attempt: Attempt = {};
@@ -755,11 +756,14 @@ export async function startViewer(): Promise<void> {
     { capture: true, signal: lifetime.signal },
   );
   // The settings and the stored tabs load while the listeners above already work.
+  // A newer load replaces an older one. A reset alone does not: it only drops the tabs it read.
+  let loads = 0;
   const load = async () => {
     if (!active()) return;
+    const mine = ++loads;
     const born = generation;
     const context = await readContext();
-    if (!active() || born !== generation) return;
+    if (!active() || mine !== loads) return;
     // The settings say the switch is off, so this copy ends. A read that failed ends nothing.
     if (context?.tools.fileViewer === false) {
       teardown();
@@ -769,7 +773,7 @@ export async function startViewer(): Promise<void> {
     themeChoice = context.settings?.theme ?? 'auto';
     width = normalizeWidth(context.tools.fileViewerWidth);
     const stored = await readTabs().catch(() => null);
-    if (!active() || born !== generation) return;
+    if (!active() || mine !== loads) return;
     // A reset during the read drops the answer: those tabs belong to the earlier student.
     if (stored && born === generation) {
       tabs = stored.tabs;
