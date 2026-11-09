@@ -1,14 +1,14 @@
 import { findTestOnlyCode, findMissingTestOnlyMarkers } from './scripts/check-test-only-code.mjs';
+import { BUILD_MODE_KEY, type BuildMode } from './scripts/lib/build-mode.mjs';
 import path from 'node:path';
 import { defineConfig } from 'wxt';
 import type { Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 
-// Capture command switches before WXT loads any environment file.
-
-const explicit =
-  process.argv[1] && path.resolve(process.argv[1]) === path.resolve('scripts/build.mjs');
-const mode = explicit ? process.argv[3] : 'release';
+// Only scripts/build.mjs sets a test build mode, in this process, before WXT loads the config and
+// any .env file. Every other command, such as `wxt prepare` or `npm run dev`, builds a release.
+const mode: BuildMode =
+  (globalThis as unknown as Record<symbol, BuildMode | undefined>)[BUILD_MODE_KEY] ?? 'release';
 const E2E = mode === 'e2e';
 const TEST_VERSION = mode === 'firefox-test' ? process.env.FIREFOX_TEST_VERSION : undefined;
 const TEST_UPDATE_URL = mode === 'firefox-test' ? process.env.FIREFOX_TEST_UPDATE_URL : undefined;
@@ -118,8 +118,8 @@ export default defineConfig({
         if (FILE_CHECK_PAGES.includes(infos[i]?.name ?? '')) infos.splice(i, 1);
       }
     },
-    // `WXT_E2E=1` builds the extension for the end-to-end tests, with the test-only code that
-    // `import.meta.env.WXT_E2E` guards. The build is otherwise a production build. It goes to
+    // The `e2e` mode (`npm run build:e2e`) builds the extension for the end-to-end tests, with the
+    // test-only code that `import.meta.env.WXT_E2E` guards. The build is otherwise a production build. It goes to
     // `.output-e2e`, so no folder of release output holds the test-only code.
     'config:resolved': (wxt) => {
       if (!E2E) return;

@@ -3,6 +3,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { manifestVersion } from './build-mode.mjs';
 
 /** The repository root. */
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -61,7 +62,7 @@ export function isBuildFresh(browser, mode = 'release') {
     const built = JSON.parse(readFileSync(manifest, 'utf8'));
     const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
     if (
-      built.version !== pkg.version ||
+      built.version !== manifestVersion(pkg.version) ||
       built.browser_specific_settings?.gecko?.update_url !== undefined
     ) {
       return false;

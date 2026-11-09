@@ -5,10 +5,12 @@
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { browserOf, readJson, runForTargets } from './lib/build-output.mjs';
+import { manifestVersion } from './lib/build-mode.mjs';
 
-const PACKAGE_VERSION = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-).version;
+/** The version of a release build: the package.json version as WXT writes it. */
+const PACKAGE_VERSION = manifestVersion(
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version,
+);
 
 /** The one host permission, and the only match of the detector (decision 5). */
 export const ALL_HTTPS = 'https://*/*';

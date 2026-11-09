@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -10,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { CHECK_MARKERS, findCheckTraces } from './check-file-check.mjs';
 import { checkManifest } from './check-manifest.mjs';
+import { manifestVersion } from './lib/build-mode.mjs';
 import {
   BUDGET_BYTES,
   DETECTOR_BUDGET_BYTES,
@@ -79,11 +81,24 @@ async function runScript(script, args) {
   }
 }
 
+/** The version of a release build, as WXT writes the package.json version. */
+const RELEASE_VERSION = manifestVersion(
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version,
+);
+
+describe('manifestVersion', () => {
+  test('keeps up to four numbers and drops a prerelease part, as WXT does', () => {
+    assert.equal(manifestVersion('0.1.0'), '0.1.0');
+    assert.equal(manifestVersion('0.2.0-beta.1'), '0.2.0');
+    assert.equal(manifestVersion('1.2.3.4.5'), '1.2.3.4');
+  });
+});
+
 const CHROME_MANIFEST = {
   web_accessible_resources: [
     { resources: ['viewer.html'], matches: ['https://*/*'], use_dynamic_url: true },
   ],
-  version: '0.1.0',
+  version: RELEASE_VERSION,
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',
@@ -98,7 +113,7 @@ const CHROME_MANIFEST = {
 
 const FIREFOX_MANIFEST = {
   web_accessible_resources: [{ resources: ['viewer.html'], matches: ['https://*/*'] }],
-  version: '0.1.0',
+  version: RELEASE_VERSION,
   manifest_version: 3,
   name: '__MSG_extName__',
   default_locale: 'en',

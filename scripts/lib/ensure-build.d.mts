@@ -12,5 +12,5 @@ export declare function targetDir(browser: BuildBrowser, mode?: BuildMode): stri
 /** Tells whether the build of a browser exists and is newer than every build input. */
 export declare function isBuildFresh(browser: BuildBrowser, mode?: BuildMode): boolean;
 
-/** Builds a browser target with `npm run build:<browser>` unless its build is fresh. Returns the build directory. */
+/** Builds a browser target through `scripts/build.mjs` unless its build is fresh. Returns the build directory. */
 export declare function ensureBuild(browser: BuildBrowser, mode?: BuildMode): string;
