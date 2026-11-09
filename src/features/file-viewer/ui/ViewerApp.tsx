@@ -112,12 +112,26 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const writes = useRef<Promise<unknown>>(Promise.resolve());
   const memory = useRef(new Set<string>());
   const changes = useRef(0);
+  const reading = useRef<Promise<{ tabs: Tabs; token: string | undefined }> | undefined>(undefined);
+  const readTabs = useCallback(() => {
+    if (reading.current) return reading.current;
+    const result = host.getTabs().then((tabs) => ({ tabs, token: host.tabToken() }));
+    reading.current = result;
+    void result
+      .finally(() => {
+        if (reading.current === result) reading.current = undefined;
+      })
+      .catch(() => undefined);
+    return result;
+  }, [host]);
   const save = useCallback(
-    (intent: TabIntent, token: string | undefined) => {
+    (intent: TabIntent, credential: string | undefined | Promise<string | undefined>) => {
       const change = ++changes.current;
-      if (token === undefined) return;
+      if (credential === undefined) return;
       writes.current = writes.current
         .then(async () => {
+          const token = await credential;
+          if (token === undefined) return;
           let latest = await host.changeTabs(intent, token);
           if (change !== changes.current) return;
           const local = tabsRef.current;
@@ -142,9 +156,15 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       tabsRef.current = next;
       setTabs(next);
       if (intent.action === 'close') memory.current.delete(intent.fileId);
-      save(intent, host.tabToken());
+      const token =
+        host.tabToken() ??
+        readTabs().then(
+          (reply) => reply.token,
+          () => undefined,
+        );
+      save(intent, token);
     },
-    [host, save],
+    [host, readTabs, save],
   );
 
   const load = useCallback(
@@ -157,7 +177,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
       // fails again changes nothing, and the file loads as before.
       (loaded.current
         ? Promise.resolve()
-        : host.getTabs().then(
+        : readTabs().then(
             () => undefined,
             () => undefined,
           )
@@ -172,7 +192,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           setFiles((all) => ({ ...all, [fileId]: state }));
           refreshAccess();
           if (state.kind === 'ready' && !loaded.current) {
-            void host.getTabs().then(
+            void readTabs().then(
               () => {
                 loaded.current = true;
               },
@@ -181,7 +201,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           }
         });
     },
-    [host, refreshAccess],
+    [host, readTabs, refreshAccess],
   );
 
   useEffect(refreshAccess, [refreshAccess]);
@@ -194,6 +214,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
         // The page decides: a click on a link without the parameters drops an older address.
         if (request.address) addresses.current.set(request.fileId, request.address);
         else addresses.current.delete(request.fileId);
+        // A page request keeps its own read result, even when this pane reads again.
         const token = request.token;
         // The requests run one after another, so the first read of the stored tabs finishes
         // before the next request adds to the tabs.
@@ -205,7 +226,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             let known = tabsRef.current;
             if (!loaded.current) {
               try {
-                const stored = await host.getTabs();
+                const { tabs: stored } = await readTabs();
                 loaded.current = true;
                 if (known.ids.length === 0) known = stored;
               } catch {
@@ -222,7 +243,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           })
           .catch(() => undefined);
       }),
-    [host, props.opens, save],
+    [host, props.opens, readTabs, save],
   );
 
   useEffect(() => {
