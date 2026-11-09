@@ -112,6 +112,13 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const writes = useRef<Promise<unknown>>(Promise.resolve());
   const memory = useRef(new Set<string>());
   const changes = useRef(0);
+  // Failed writes belong to this mounted pane, just like tokenless opens.
+  const localTabs = useRef(new Map<string, boolean>());
+  const selection = useRef(0);
+  const failedSelection = useRef<number | undefined>(undefined);
+  // The change that last showed or hid each file, or the write that last named it. A write that
+  // finishes sets the local state of a file only when no later change showed or hid that file.
+  const lastChange = useRef(new Map<string, number>());
   const reading = useRef<Promise<{ tabs: Tabs; token: string | undefined }> | undefined>(undefined);
   const readTabs = useCallback(() => {
     if (reading.current) return reading.current;
@@ -125,18 +132,63 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
     return result;
   }, [host]);
   const save = useCallback(
-    (intent: TabIntent, credential: string | undefined | Promise<string | undefined>) => {
+    (
+      intent: TabIntent,
+      credential: string | undefined | Promise<string | undefined>,
+      before: Tabs,
+    ) => {
+      const after = tabsRef.current;
+      // The tabs that this change showed or hid, evictions included.
+      const shownOrHidden = [...before.ids, ...after.ids].filter(
+        (id) => before.ids.includes(id) !== after.ids.includes(id),
+      );
+      const touched = new Set(shownOrHidden);
+      if ('fileId' in intent && intent.action !== 'activate') touched.add(intent.fileId);
+      const selects =
+        before.active !== after.active || intent.action === 'open' || intent.action === 'activate';
+      const selectedAt = selects ? ++selection.current : selection.current;
       const change = ++changes.current;
+      for (const id of shownOrHidden) lastChange.current.set(id, change);
       if (credential === undefined) return;
       writes.current = writes.current
         .then(async () => {
           const token = await credential;
           if (token === undefined) return;
-          let latest = await host.changeTabs(intent, token);
+          // A write also owns the file it names, unless a later change showed or hid that file.
+          for (const id of touched) {
+            if ((lastChange.current.get(id) ?? 0) < change) lastChange.current.set(id, change);
+          }
+          let latest: Tabs;
+          const own = () => [...touched].filter((id) => lastChange.current.get(id) === change);
+          try {
+            latest = await host.changeTabs(intent, token);
+            for (const id of own()) {
+              localTabs.current.delete(id);
+              memory.current.delete(id);
+            }
+            if (selects && failedSelection.current === selectedAt)
+              failedSelection.current = undefined;
+          } catch {
+            for (const id of own()) {
+              const present = after.ids.includes(id);
+              localTabs.current.set(id, present);
+              if (present) memory.current.add(id);
+              else memory.current.delete(id);
+            }
+            if (selects) failedSelection.current = selectedAt;
+            return;
+          }
           if (change !== changes.current) return;
           const local = tabsRef.current;
+          for (const [id, present] of localTabs.current) {
+            if (!present) latest = closeFile(latest, id);
+          }
+          const kept = latest.active;
           const selected =
-            local.active && memory.current.has(local.active) ? local.active : latest.active;
+            failedSelection.current === selection.current ||
+            (local.active && memory.current.has(local.active))
+              ? local.active
+              : latest.active;
           for (const [index, id] of local.ids.entries()) {
             if (!memory.current.has(id)) continue;
             latest = openFile({ ids: latest.ids, active: selected }, id);
@@ -144,6 +196,12 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             ids.splice(Math.min(index, ids.length), 0, id);
             latest = { ids, active: selected };
           }
+          // The tab that the student chose may be gone by now, for example after a later close.
+          const valid = (id: string | null) => id !== null && latest.ids.includes(id);
+          latest = {
+            ...latest,
+            active: valid(selected) ? selected : valid(kept) ? kept : (latest.ids[0] ?? null),
+          };
           tabsRef.current = latest;
           setTabs(latest);
         })
@@ -153,6 +211,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   );
   const commit = useCallback(
     (next: Tabs, intent: TabIntent) => {
+      const before = tabsRef.current;
       tabsRef.current = next;
       setTabs(next);
       if (intent.action === 'close') memory.current.delete(intent.fileId);
@@ -162,7 +221,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
           (reply) => reply.token,
           () => undefined,
         );
-      save(intent, token);
+      save(intent, token, before);
     },
     [host, readTabs, save],
   );
@@ -239,7 +298,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             const next = openFile(known, request.fileId);
             tabsRef.current = next;
             setTabs(next);
-            save({ action: 'open', fileId: request.fileId }, token);
+            save({ action: 'open', fileId: request.fileId }, token, known);
           })
           .catch(() => undefined);
       }),
