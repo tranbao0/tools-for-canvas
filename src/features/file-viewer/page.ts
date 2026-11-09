@@ -118,11 +118,8 @@ export async function startViewer(): Promise<void> {
     const started = generation;
     const token = tabsToken;
     return enqueue(async () => {
-      let credential = token;
-      if (credential === undefined) {
-        const reply = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
-        credential = reply?.token;
-      }
+      const credential = token;
+      if (credential === undefined) return;
       for (const fileId of ids) {
         if (!active() || current.result || started !== generation) return;
         const reply = await browser.runtime.sendMessage({
@@ -152,11 +149,8 @@ export async function startViewer(): Promise<void> {
     const effects = unseen;
     const token = tabsToken;
     return enqueue(async () => {
-      let credential = effects.token ?? token;
-      if (credential === undefined) {
-        const reply = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
-        credential = reply?.token;
-      }
+      const credential = effects.token ?? token;
+      if (credential === undefined) return;
       const reply = await browser.runtime.sendMessage({
         type: clear ? 'viewer:tabs-clear' : 'viewer:tabs-undo',
         ...(!clear ? { added: [...effects.added], evicted: [...effects.evicted] } : {}),

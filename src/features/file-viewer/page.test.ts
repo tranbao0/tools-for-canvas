@@ -78,7 +78,7 @@ describe('the page script', () => {
       case 'weekrow:page-context':
         return { tools: { fileViewer: true, fileViewerWidth: 480 }, settings: {} };
       case 'viewer:tabs-get':
-        return { ids: [], active: null };
+        return { ids: [], active: null, token: '1:1' };
       case 'viewer:session':
         return { secret: SECRET };
       default:
@@ -130,14 +130,16 @@ describe('the page script', () => {
     async ({ synced, covered, reconnect, writing }) => {
       prepare();
       sendMessage.mockImplementation(async (message: { type: string }) =>
-        message.type === 'viewer:tabs-get' ? { ids: ['42'], active: '42' } : reply(message),
+        message.type === 'viewer:tabs-get'
+          ? { ids: ['42'], active: '42', token: '1:1' }
+          : reply(message),
       );
       let releaseWrite: (() => void) | undefined;
       let storedTabs: { ids: string[]; active: string | null } = { ids: ['42'], active: '42' };
       if (writing) {
         sendMessage.mockImplementation(
           async (message: { type: string; tabs: typeof storedTabs }) => {
-            if (message.type === 'viewer:tabs-get') return storedTabs;
+            if (message.type === 'viewer:tabs-get') return { ...storedTabs, token: '1:1' };
             if (/^viewer:tabs-(open|undo|clear)$/.test(message.type)) {
               if (message.type === 'viewer:tabs-open' && !releaseWrite)
                 await new Promise<void>((resolve) => {

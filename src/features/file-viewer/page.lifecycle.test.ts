@@ -225,6 +225,30 @@ describe('file pane lifetime and unseen changes', () => {
       }),
     );
   });
+  it.each([false, true])(
+    'a tokenless Close never changes the store after a lost reset: %s',
+    async (changedStudent) => {
+      capture();
+      setup({ ids: ['4', '6'], active: null });
+      answerTabs = false;
+      await startViewer();
+      click('file');
+      await settle();
+      await connect();
+      answerTabs = true;
+      if (changedStudent) {
+        token = '2:2';
+        stored = { ids: ['8', '9'], active: '9' };
+      }
+      const current = { ...stored };
+      close();
+      await settle();
+      expect(stored).toEqual(current);
+      expect(writes).toEqual([]);
+      expect(host()).toBeNull();
+    },
+  );
+
   it('restores a seen pane with a new port for the same student', async () => {
     capture();
     setup({ ids: ['4'], active: '4' });
