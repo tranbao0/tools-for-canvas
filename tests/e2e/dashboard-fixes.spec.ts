@@ -2170,10 +2170,22 @@ for (const state of ['covered', 'uncovered', 'native change'])
   test(`a copied eye waits for a native eye write to settle (${state})`, async ({
     context,
     page,
+    background,
   }) => {
     let filters = { gradeVisibilities: {} as Record<string, boolean> };
     let written: unknown;
-    let savedAt = 0;
+    await background.evaluate(() => {
+      const scope = globalThis as typeof globalThis & {
+        __eyeSentAt?: number;
+        __weekrowTestClock?: { real(): number };
+      };
+      const fetch = scope.fetch.bind(scope);
+      scope.fetch = (input, init) => {
+        if (typeof init?.body === 'string' && init.body.includes('updateWidgetDashboardConfig'))
+          scope.__eyeSentAt = scope.__weekrowTestClock!.real();
+        return fetch(input, init);
+      };
+    });
     const served = await serveScenario(
       context,
       [
@@ -2185,7 +2197,6 @@ for (const state of ['covered', 'uncovered', 'native change'])
             const body = JSON.parse(request.postData ?? '{}');
             if (body.query?.includes('updateWidgetDashboardConfig')) {
               written = body.variables.filters;
-              savedAt = Date.now();
               return { body: { errors: [{ message: 'Refused' }] } };
             }
             return {
@@ -2221,35 +2232,41 @@ for (const state of ['covered', 'uncovered', 'native change'])
       );
     }
     await page.exposeFunction('nativeEyeWrite', () => {
-      setTimeout(() => {
-        filters = { gradeVisibilities: { '101': false } };
-      }, 1200);
+      filters = { gradeVisibilities: { '101': false } };
     });
     const nativeEye = page.locator(
       '[data-testid="course-grade-card-101"] button[data-testid*="single-grade-button-"]',
     );
-    await nativeEye.evaluate((button) =>
-      button.addEventListener('click', () => {
-        void (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
-      }),
+    await nativeEye.evaluate(
+      (button, changeGrade) =>
+        button.addEventListener(
+          'click',
+          () => {
+            button.setAttribute('data-native-at', String(Date.now()));
+            setTimeout(async () => {
+              await (window as unknown as { nativeEyeWrite(): Promise<void> }).nativeEyeWrite();
+              if (changeGrade) {
+                document.querySelector('[data-testid="course-101-grade"]')!.textContent = '•••';
+                button.setAttribute('data-changed-at', String(Date.now()));
+              }
+            }, 1200);
+          },
+          { capture: true, once: true },
+        ),
+      state === 'native change',
     );
-    const nativeAt = Date.now();
     await nativeEye.click();
     await page.locator('[data-wr-card="107"] button').click();
     await expect(page.getByTestId('course-107-grade')).toHaveText('•••');
     await expect(page.locator('[data-wr-card] button:disabled')).toHaveCount(2);
     await expect(page.locator('[data-wr-card][aria-busy="true"]')).toHaveCount(2);
     await expect.poll(() => filters).toEqual({ gradeVisibilities: { '101': false } });
-    let changedAt = 0;
-    if (state === 'native change') {
-      changedAt = Date.now();
-      await page.getByTestId('course-101-grade').evaluate((grade) => {
-        grade.textContent = '•••';
-      });
-    }
-    await nativeEye.click();
     await expect.poll(() => written).toEqual({ gradeVisibilities: { '101': false, '107': false } });
-    expect(savedAt - (changedAt || nativeAt)).toBeLessThan(4300);
+    const nativeAt = Number(await nativeEye.getAttribute('data-native-at'));
+    const changedAt = Number(await nativeEye.getAttribute('data-changed-at'));
+    const savedAt = await background.evaluate(
+      () => (globalThis as typeof globalThis & { __eyeSentAt?: number }).__eyeSentAt!,
+    );
     if (changedAt) expect(savedAt - changedAt).toBeGreaterThanOrEqual(3000);
     expect(savedAt - nativeAt).toBeGreaterThanOrEqual(3000);
   });

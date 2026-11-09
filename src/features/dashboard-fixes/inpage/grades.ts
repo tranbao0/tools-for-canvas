@@ -219,10 +219,13 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         // Showing waits for the saved preference; hiding conceals the text immediately.
         fill(card, course.id, 'grade', HIDDEN_GRADE);
         try {
-          while (Date.now() - nativeChangedAt < 3000)
-            await new Promise((resolve) =>
-              setTimeout(resolve, 3000 - (Date.now() - nativeChangedAt)),
-            );
+          for (;;) {
+            if (started !== lifetime) return;
+            for (const found of findGradeWidgets(context.doc)) observeNative(found);
+            const remaining = 3000 - (Date.now() - nativeChangedAt);
+            if (remaining <= 0) break;
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          }
           if (started !== lifetime) return;
           const note = openWorkNote(context.doc);
           if (note) {
@@ -308,21 +311,10 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     return card;
   }
 
-  function sync(context: FixContext, found: GradeCards): void {
-    if (context.data === null) return;
-    const courses = context.data.courses;
-    const template = found.cards.find((card) => !card.hasAttribute('data-wr-card'));
-    const native = found.cards.filter((card) => !card.hasAttribute('data-wr-card'));
-    const shown = new Set(native.map(cardCourseId));
-    const missing = template === undefined ? [] : courses.filter((course) => !shown.has(course.id));
-    // Canvas's pager and the steady navigator give way only when the page shows a card for every
-    // page that the pager of Canvas reaches. A grid that is short of cards keeps the pager.
-    const pages = findPagedWidgets(context.doc).find(({ widget }) => widget === found.widget);
-    const covered =
-      pages === undefined || native.length + missing.length > (pages.total - 1) * CARDS_PER_PAGE;
-    found.widget.toggleAttribute('data-wr-grades', covered);
+  /** Reads native state directly, including changes that still await the observer batch. */
+  function observeNative(found: GradeCards): void {
     const widgetId = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
-    const visibility = context.data?.gradeVisibilities;
+    const native = found.cards.filter((card) => !card.hasAttribute('data-wr-card'));
     let overrides = observed.get(widgetId);
     if (!overrides) {
       overrides = new Map();
@@ -353,6 +345,25 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     )
       nativeChangedAt = Date.now();
     nativeStates.set(found.widget, { hidden: found.gradesHidden, values });
+  }
+
+  function sync(context: FixContext, found: GradeCards): void {
+    if (context.data === null) return;
+    const courses = context.data.courses;
+    const template = found.cards.find((card) => !card.hasAttribute('data-wr-card'));
+    const native = found.cards.filter((card) => !card.hasAttribute('data-wr-card'));
+    const shown = new Set(native.map(cardCourseId));
+    const missing = template === undefined ? [] : courses.filter((course) => !shown.has(course.id));
+    // Canvas's pager and the steady navigator give way only when the page shows a card for every
+    // page that the pager of Canvas reaches. A grid that is short of cards keeps the pager.
+    const pages = findPagedWidgets(context.doc).find(({ widget }) => widget === found.widget);
+    const covered =
+      pages === undefined || native.length + missing.length > (pages.total - 1) * CARDS_PER_PAGE;
+    found.widget.toggleAttribute('data-wr-grades', covered);
+    const widgetId = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
+    const visibility = context.data?.gradeVisibilities;
+    observeNative(found);
+    const overrides = observed.get(widgetId);
     if (saving) return;
     const hidden = (id: string): boolean =>
       visibility == null ||
