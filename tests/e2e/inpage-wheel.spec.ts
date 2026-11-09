@@ -373,27 +373,44 @@ test.describe('the wheel over a list of the card', () => {
     page,
     background,
   }) => {
-    // The window is so low that the list keeps 128 px and the card scrolls as a whole.
-    await openCard(context, page, background, {
-      page: 'dashboard-card-view',
-      settings: {},
-      height: 400,
-    });
     const list = listOf(page);
     const card = inpageList(page).locator('.wr');
-    await expect(list.locator('[data-row-key]').first()).toBeVisible();
-    await expect
-      .poll(() => card.evaluate((el) => el.scrollHeight > el.clientHeight + 20))
-      .toBe(true);
-    await scrollToEnd(list);
-    // The list is at its end: the card scrolls first, and the rows stay.
-    {
+    // The list is at its end: the card scrolls first, and the rows stay. The product never takes
+    // this wheel, so the browser chains it from the list to the card. In about 2 to 3 of 100 page
+    // loads, headless Chromium sends it to the page instead (the event arrives not cancelable,
+    // after the page moved), which no page code can change. Only that case loads the page again;
+    // a wheel that moves neither the card nor the page fails at once.
+    for (let load = 1; ; load += 1) {
+      // The window is so low that the list keeps 128 px and the card scrolls as a whole.
+      await openCard(context, page, background, {
+        page: 'dashboard-card-view',
+        settings: {},
+        height: 400,
+      });
+      await expect(list.locator('[data-row-key]').first()).toBeVisible();
+      await expect
+        .poll(() => card.evaluate((el) => el.scrollHeight > el.clientHeight + 20))
+        .toBe(true);
+      await scrollToEnd(list);
       await scrollStopped(list);
       const samples = sample(page, SETTLE_MS);
       await wheel(page, list, 100);
-      await expect.poll(() => card.evaluate((el) => el.scrollTop)).toBeGreaterThan(20);
-      expect((await samples).pull).toBe(0);
-      expect((await samples).pagePositions).toEqual([0]);
+      await expect
+        .poll(
+          async () =>
+            (await card.evaluate((el) => el.scrollTop)) > 20 ||
+            (await page.evaluate(() => scrollY)) > 0,
+        )
+        .toBe(true);
+      const result = await samples;
+      expect(result.pull).toBe(0);
+      const cardTop = await card.evaluate((el) => el.scrollTop);
+      if (cardTop > 20) {
+        expect(result.pagePositions).toEqual([0]);
+        break;
+      }
+      // Chromium sent the wheel to the page. A third time in a row is not the browser quirk.
+      expect(load, 'the wheel reached the page, not the card, on every load').toBeLessThan(3);
     }
     // The card is at its end too: now the rows pull, and the page stays still.
     await card.evaluate((el) => {
