@@ -7,7 +7,6 @@ import { listFiles, runForTargets } from './lib/build-output.mjs';
 export const TEST_ONLY_MARKERS = Object.freeze([
   'e2ePaneIdentityTimeoutMs',
   'e2ePaneHandshakeMs',
-  'e2eOpenPanelButton',
   'e2e-open-side-panel',
   'Open the side panel (end-to-end test build)',
   'data-av-started',
@@ -23,6 +22,18 @@ export async function findTestOnlyCode(dir) {
     }
   }
   return problems;
+}
+
+/** Returns markers absent from the test build, including its source maps. */
+export async function findMissingTestOnlyMarkers(dir) {
+  const missing = new Set(TEST_ONLY_MARKERS);
+  for (const file of await listFiles(dir)) {
+    const bytes = await readFile(path.join(dir, file));
+    for (const marker of missing) {
+      if (bytes.includes(marker)) missing.delete(marker);
+    }
+  }
+  return [...missing].map((marker) => `Missing test-only marker "${marker}"`);
 }
 
 if (import.meta.main) {

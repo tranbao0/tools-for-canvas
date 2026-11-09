@@ -4,6 +4,7 @@
  */
 import type { Locator, Page } from '@playwright/test';
 import {
+  clickListControl,
   addCsrfCookie,
   doneBox,
   expect,
@@ -39,7 +40,7 @@ function layoutOf(card: Locator): Promise<Layout> {
 /** Opens the settings with the gear and compares the heading's place with the list's heading. */
 async function expectSettingsAtListTop(card: Locator, scope: Locator | Page): Promise<void> {
   const list = await layoutOf(card);
-  await scope.getByTitle('Settings', { exact: true }).click();
+  await clickListControl(scope.getByTitle('Settings', { exact: true }));
   await expect(scope.getByRole('button', { name: 'Back' })).toBeVisible();
   await expect(scope.getByRole('switch', { name: 'Show progress rings' })).toBeVisible();
   const settings = await layoutOf(card);
@@ -169,7 +170,7 @@ test('puts the heading of a state without a week at the top of the slot card lik
   await expect(list.getByText('No active courses', { exact: true })).toBeVisible();
   const card = list.locator('.wr');
   const state = await layoutOf(card);
-  await list.getByTitle('Settings', { exact: true }).click();
+  await clickListControl(list.getByTitle('Settings', { exact: true }));
   await expect(list.getByRole('button', { name: 'Back' })).toBeVisible();
   const settings = await layoutOf(card);
   expect(Math.abs(state.top - settings.top)).toBeLessThanOrEqual(1);

@@ -12,10 +12,6 @@ import { expectStartupDecision } from './support/file-pane';
 // The pane must not be covered by a slow identity reply under load; see support/extension.ts.
 test.use({ longPaneIdentityTimeout: true });
 
-test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
-});
-
 const HOST = '#tools-file-viewer';
 
 /** Blocks the hello of the pane page while the flag of this tab is set. It survives a reload. */
@@ -151,6 +147,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     page,
     background,
   }) => {
+    await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
     await openCoursePage(context, page, background);
     const cdp = await openThenReloadBlocked(page, () => context.newCDPSession(page));
     await failurePanelShown(cdp);
@@ -158,6 +155,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
   });
 
   test('Close on the failure panel keeps the stored tab', async ({ context, page, background }) => {
+    await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
     await openCoursePage(context, page, background);
     const cdp = await openThenReloadBlocked(page, () => context.newCDPSession(page));
     await failurePanelShown(cdp);
@@ -182,6 +180,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     page,
     background,
   }) => {
+    await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
     await openCoursePage(context, page, background);
     const cdp = await openThenReloadBlocked(page, () => context.newCDPSession(page));
     await failurePanelShown(cdp);

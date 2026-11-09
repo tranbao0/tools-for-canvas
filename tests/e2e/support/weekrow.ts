@@ -156,7 +156,6 @@ export async function settledList(page: Page): Promise<void> {
   await page.getByRole('progressbar', { name: 'Refreshing' }).waitFor({ state: 'detached' });
   // The marker can be missing before the first refresh draws it, so the data must also be in.
   await expect(page.getByText('Loading past due…')).toHaveCount(0);
-  await settleSlotCard(page);
 }
 
 /**
@@ -174,11 +173,11 @@ export async function refreshedSince(page: Page, canvas: FakeCanvas, from: numbe
   await settledList(page);
 }
 
-/** Scrolls the slot card into view and waits for its scroll listener to catch up. */
-export async function settleSlotCard(page: Page): Promise<void> {
+/** Scrolls a slot control or the card into view and waits for the scroll listener to catch up. */
+export async function settleSlotCard(page: Page, control?: Locator): Promise<void> {
   const card = inpageList(page).locator('weekrow-list[data-panel="slot"] .wr');
   if (!(await card.count())) return;
-  await card.scrollIntoViewIfNeeded();
+  await (control ?? card).scrollIntoViewIfNeeded();
   await expect
     .poll(() =>
       card.evaluate(async (node) => {
@@ -195,4 +194,21 @@ export async function settleSlotCard(page: Page): Promise<void> {
       }),
     )
     .toBe(true);
+}
+
+/** Prepares a slot control before Playwright presses and releases at its position. */
+export async function clickListControl(
+  control: Locator,
+  options?: Parameters<Locator['click']>[0],
+): Promise<void> {
+  await control.waitFor({ state: 'visible' });
+  const inSlot = await control.evaluate((node) => {
+    const root = node.getRootNode();
+    return root instanceof ShadowRoot && root.host.matches('weekrow-list[data-panel="slot"]');
+  });
+  if (inSlot) {
+    await control.page().bringToFront();
+    await settleSlotCard(control.page(), control);
+  }
+  await control.click(options);
 }

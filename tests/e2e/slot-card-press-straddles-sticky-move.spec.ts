@@ -17,6 +17,7 @@ const MONTH: Settings = { ...DEFAULT_SETTINGS, span: { kind: 'month', days: 30 }
 
 interface Gate {
   hold: boolean;
+  blocked: boolean;
   seen: string[];
 }
 
@@ -40,12 +41,15 @@ for (const catchUpFirst of [false, true]) {
       await addCsrfCookie(context, canvas.origin);
       // The gate sits before the listener of the card on the window, so it can hold the scroll back.
       await page.addInitScript(() => {
-        const gate: Gate = { hold: false, seen: [] };
+        const gate: Gate = { hold: false, blocked: false, seen: [] };
         Object.assign(window, { gate });
         window.addEventListener(
           'scroll',
           (event) => {
-            if (gate.hold && event.isTrusted) event.stopImmediatePropagation();
+            if (gate.hold && !gate.blocked && event.isTrusted) {
+              gate.blocked = true;
+              event.stopImmediatePropagation();
+            }
           },
           true,
         );
@@ -56,6 +60,10 @@ for (const catchUpFirst of [false, true]) {
               const first = event.composedPath()[0] as HTMLElement;
               const done = first.closest?.('[data-group="done"]') ? '(done)' : '';
               gate.seen.push(`${type}:${first.tagName}${done}`);
+              if (type === 'pointerdown' && gate.hold) {
+                gate.hold = false;
+                window.dispatchEvent(new Event('scroll'));
+              }
             },
             true,
           );
@@ -92,15 +100,11 @@ for (const catchUpFirst of [false, true]) {
         );
         expect((await doneTop(page)).top).toBeCloseTo(before.top - 300, 0);
       }
-      // The delayed event arrives while the shared helper waits for the card.
-      await page.evaluate(() => {
-        setTimeout(() => {
-          (window as unknown as { gate: Gate }).gate.hold = false;
-          window.dispatchEvent(new Event('scroll'));
-        }, 150);
-      });
       await settleSlotCard(page);
-      await done.click();
+      const box = await doneTop(page);
+      await page.mouse.move(box.x, box.top + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.up();
 
       const seen = await page.evaluate(() => (window as unknown as { gate: Gate }).gate.seen);
       // The press went to the input of the Done part.

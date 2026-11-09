@@ -18,10 +18,6 @@ import {
 
 test.use({ longPaneIdentityTimeout: true });
 
-test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
-});
-
 const html = `<!doctype html><html style="padding-right: 13px"><head><script>INST={environment:'production'};ENV={current_user_id:'5501'};</script></head><body><header>Canvas</header><nav>Course navigation</nav><main><h1>Course files</h1><a class="instructure_file_link" href="/courses/101/files/42">Read notes</a><div data-module-id="7" data-type="File"><a href="/courses/101/modules/items/9">Module notes</a></div><a href="/courses/101/pages/next">Next page</a></main></body></html>`;
 
 const realisticHtml = html
@@ -821,6 +817,7 @@ test('a failed hello keeps typed work and offers a student link', async ({
   page,
   background,
 }, testInfo) => {
+  await context.addInitScript(() => sessionStorage.setItem('e2ePaneHandshakeMs', '1000'));
   const canvas = await openCoursePage(context, page, background);
   await page.evaluate(() => {
     window.addEventListener(

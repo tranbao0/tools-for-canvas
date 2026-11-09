@@ -39,7 +39,7 @@ test('the failed hello message shows within the 20 s poll when the background an
           (node) => !node.ignored && node.name?.value === "Couldn't open this file.",
         );
       },
-      { timeout: Number(process.env['POLL_MS'] ?? 20_000) },
+      { timeout: 20_000 },
     )
     .toBe(true);
   await stalled;

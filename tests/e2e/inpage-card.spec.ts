@@ -10,6 +10,7 @@ import { errorReply, type CanvasState } from './support/canvas-state';
 import { CANVAS_ERRORS } from '../fixtures/errors';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import {
+  clickListControl,
   addCsrfCookie,
   doneBox,
   expect,
@@ -418,7 +419,7 @@ test.describe('the full list in the card', () => {
       await openBottomLayout(context, page, background, layout, 400);
       const list = inpageList(page);
       const root = list.locator('.wr');
-      await dayList(list).getByRole('checkbox').first().click();
+      await clickListControl(dayList(list).getByRole('checkbox').first());
       const toast = list.locator('.wr-toast');
       await expect(toast).toBeVisible();
       await root.evaluate((element) => {
@@ -472,7 +473,7 @@ test.describe('the full list in the card', () => {
         else expect(sizes.bottom).toBeLessThanOrEqual(sizes.cardBottom + 0.5);
 
         for (const group of [undated, done]) {
-          await toggleOf(group).click();
+          await clickListControl(toggleOf(group));
           await expect(toggleOf(group)).toBeChecked();
           await expect(groupArea(list)).toBeVisible();
           await expect(dayList(list)).toBeHidden();
@@ -519,7 +520,7 @@ test.describe('the full list in the card', () => {
             expect(gap).toBeLessThanOrEqual(32);
           }
 
-          await backOf(list).click();
+          await clickListControl(backOf(list));
           await expect(dayList(list)).toBeVisible();
           await expect(groupArea(list)).toBeHidden();
           await expect(toggleOf(group)).not.toBeChecked();
@@ -527,19 +528,19 @@ test.describe('the full list in the card', () => {
         }
 
         // Another part switches the group, and To do brings the day list back.
-        await toggleOf(undated).click();
-        await toggleOf(done).click();
+        await clickListControl(toggleOf(undated));
+        await clickListControl(toggleOf(done));
         await expect(toggleOf(done)).toBeChecked();
         await expect(toggleOf(undated)).not.toBeChecked();
         expectSameBar(await barState(root), closed);
-        await backOf(list).click();
+        await clickListControl(backOf(list));
         await expect(dayList(list)).toBeVisible();
         expectSameBar(await barState(root), closed);
         // The hidden courses line and the Settings link take a click too.
-        await list
-          .locator('.wr-pinned .wr-foot')
-          .getByRole('button', { name: 'Settings' })
-          .click({ trial: true });
+        await clickListControl(
+          list.locator('.wr-pinned .wr-foot').getByRole('button', { name: 'Settings' }),
+          { trial: true },
+        );
       });
     }
   }
@@ -561,30 +562,30 @@ test.describe('the full list in the card', () => {
       const barHeight = await height();
 
       for (const toggle of [undated, done]) {
-        await toggle.click();
+        await clickListControl(toggle);
         await expect(toggle).toBeChecked();
         expect(await height()).toBe(barHeight);
         expectSameBar(await barState(root), closed);
-        await backOf(list).click();
+        await clickListControl(backOf(list));
         await expect(toggle).not.toBeChecked();
         expect(await height()).toBe(barHeight);
       }
 
       // Two months ahead the span holds nothing undated and nothing done. All three parts stay,
       // with the count 0, so a click on one adds nothing and removes nothing.
-      await list.getByRole('button', { name: 'Next month' }).click();
-      await list.getByRole('button', { name: 'Next month' }).click();
+      await clickListControl(list.getByRole('button', { name: 'Next month' }));
+      await clickListControl(list.getByRole('button', { name: 'Next month' }));
       await settledList(page);
       for (const toggle of [undated, done]) {
         await expect(toggle.locator('xpath=..').locator('.wr-count')).toHaveText('0');
         expect(await height()).toBe(barHeight);
         expectSameBar(await barState(root), closed);
-        await toggle.click();
+        await clickListControl(toggle);
         await expect(toggle).toBeChecked();
         await expect(groupArea(list).locator('.wr-empty')).toBeVisible();
         expect(await height()).toBe(barHeight);
         expectSameBar(await barState(root), closed);
-        await backOf(list).click();
+        await clickListControl(backOf(list));
         await expect(toggle).not.toBeChecked();
         expect(await height()).toBe(barHeight);
         expectSameBar(await barState(root), closed);
@@ -603,7 +604,7 @@ test.describe('the full list in the card', () => {
       const area = groupArea(list);
       const rowsOf = (name: RegExp) => area.getByRole('region', { name });
 
-      await toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')).click();
+      await clickListControl(toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')));
       await expect(rowsOf(/^No due date/)).toBeVisible();
       // The heading line has the name at the left and the count at the right, in line with the
       // counts of the days.
@@ -616,12 +617,12 @@ test.describe('the full list in the card', () => {
       await expect(area.getByRole('button', { name: /^\d+ done$/ })).toBeVisible();
       await expect(dayList(list)).toBeHidden();
 
-      await toggleOf(list.locator('.wr-pinned [data-group="done"]')).click();
+      await clickListControl(toggleOf(list.locator('.wr-pinned [data-group="done"]')));
       await expect(rowsOf(/^Done/)).toBeVisible();
       await expect(rowsOf(/^No due date/)).toHaveCount(0);
       await expect(area.locator('[data-row-key]').first()).toBeVisible();
 
-      await backOf(list).click();
+      await clickListControl(backOf(list));
       await expect(dayList(list)).toBeVisible();
       await expect(area.locator('[data-row-key]')).toHaveCount(0);
     });
@@ -740,11 +741,11 @@ test.describe('the full list in the card', () => {
     await openBottomLayout(context, page, background, LAYOUTS[0]!, 800);
     const list = inpageList(page);
     const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
-    await undated.click();
+    await clickListControl(undated);
     await expect(undated).toBeChecked();
     await expect(undated).toBeFocused();
     await expect(groupArea(list)).toBeVisible();
-    await backOf(list).click();
+    await clickListControl(backOf(list));
     await expect(dayList(list)).toBeVisible();
     await expect(backOf(list)).toBeFocused();
   });
@@ -787,9 +788,9 @@ test.describe('the full list in the card', () => {
     await expect(
       list.locator('.wr-pinned .wr-foot').getByRole('button', { name: 'Settings' }),
     ).toBeVisible();
-    await list.getByRole('tab', { name: /^Announcements/ }).click();
+    await clickListControl(list.getByRole('tab', { name: /^Announcements/ }));
     await expect(group).toHaveCount(0);
-    await list.getByRole('tab', { name: 'Tasks' }).click();
+    await clickListControl(list.getByRole('tab', { name: 'Tasks' }));
     await expect(group).toBeVisible();
   });
 
@@ -813,37 +814,37 @@ test.describe('the full list in the card', () => {
       });
       await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
 
-      await done.click();
+      await clickListControl(done);
       const area = groupArea(list);
       await expect(area.locator('[data-row-key]').first()).toBeVisible();
       await area.evaluate((element) => {
         element.scrollTop = 120;
       });
       await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(120);
-      await backOf(list).click();
+      await clickListControl(backOf(list));
       await expect(dayList(list)).toBeVisible();
       await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
 
       if (layout.tabs === true) {
         // A round trip through the other tab, with the group open, keeps the day position.
-        await done.click();
+        await clickListControl(done);
         await expect(groupArea(list)).toBeVisible();
-        await list.getByRole('tab', { name: /^Announcements/ }).click();
+        await clickListControl(list.getByRole('tab', { name: /^Announcements/ }));
         await expect(groupArea(list)).toBeHidden();
-        await list.getByRole('tab', { name: 'Tasks' }).click();
+        await clickListControl(list.getByRole('tab', { name: 'Tasks' }));
         await expect(groupArea(list)).toBeVisible();
-        await backOf(list).click();
+        await clickListControl(backOf(list));
         await expect(dayList(list)).toBeVisible();
         await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
       }
 
       // A group opens at the top, also when it was scrolled before.
-      await done.click();
+      await clickListControl(done);
       await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(0);
       await area.evaluate((element) => {
         element.scrollTop = 120;
       });
-      await toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')).click();
+      await clickListControl(toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')));
       await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(0);
     });
   }
@@ -856,7 +857,7 @@ test.describe('the full list in the card', () => {
     await openBottomLayout(context, page, background, LAYOUTS[0]!, 900);
     const list = inpageList(page);
     const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
-    await undated.click();
+    await clickListControl(undated);
     const area = groupArea(list);
     const boxes = area.getByRole('checkbox');
     const count = await boxes.count();
@@ -882,10 +883,10 @@ test.describe('the full list in the card', () => {
   }) => {
     await openBottomLayout(context, page, background, LAYOUTS[0]!, 900);
     const list = inpageList(page);
-    await toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')).click();
+    await clickListControl(toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]')));
     await expect(list.getByRole('region', { name: /^No due date/ })).toHaveCount(1);
     await expect(groupArea(list).getByRole('region', { name: /^No due date/ })).toHaveCount(1);
-    await backOf(list).click();
+    await clickListControl(backOf(list));
     await expect(list.getByRole('region', { name: /^(No due date|Done)/ })).toHaveCount(0);
   });
 
@@ -954,7 +955,7 @@ test.describe('the full list in the card', () => {
         return found;
       });
       expect(first.parts[0]).toMatchObject(primary);
-      await toggleOf(list.locator('.wr-pinned [data-group="done"]')).click();
+      await clickListControl(toggleOf(list.locator('.wr-pinned [data-group="done"]')));
       await expect
         .poll(async () => (await looks()).parts.map((part) => part.checked))
         .toEqual([false, false, true]);
@@ -991,13 +992,13 @@ test.describe('the full list in the card', () => {
       const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
       const area = groupArea(list);
       const rows = area.locator('[data-row-key]');
-      await done.click();
+      await clickListControl(done);
       await expect(rows.first()).toBeVisible();
 
       // A span with nothing done keeps the group open, with its heading and one line.
       // The first month ahead still holds done work, so the student steps two months.
-      await list.getByRole('button', { name: 'Next month' }).click();
-      await list.getByRole('button', { name: 'Next month' }).click();
+      await clickListControl(list.getByRole('button', { name: 'Next month' }));
+      await clickListControl(list.getByRole('button', { name: 'Next month' }));
       await expect(area.getByText('Nothing done in this span.')).toBeVisible();
       await expect(area.getByRole('heading', { name: /^Done/ })).toBeVisible();
       await expect(rows).toHaveCount(0);
@@ -1007,7 +1008,7 @@ test.describe('the full list in the card', () => {
       await expect(area.getByText('Nothing done in this span.')).toBeVisible();
 
       // Today brings back the span with done work, and the group is still open.
-      await list.getByRole('button', { name: 'Today', exact: true }).click();
+      await clickListControl(list.getByRole('button', { name: 'Today', exact: true }));
       await expect(rows.first()).toBeVisible();
       await expect(area.getByText('Nothing done in this span.')).toHaveCount(0);
       await expect(done).toBeChecked();
@@ -1018,7 +1019,7 @@ test.describe('the full list in the card', () => {
       await expect(done).toBeChecked();
       await expect(area).toBeVisible();
       await expect(dayList(list)).toBeHidden();
-      await list.getByRole('button', { name: 'Previous week' }).click();
+      await clickListControl(list.getByRole('button', { name: 'Previous week' }));
       await expect(done).toBeChecked();
       await expect(area).toBeVisible();
     });
@@ -1033,16 +1034,16 @@ test.describe('the full list in the card', () => {
       await openBottomLayout(context, page, background, layout, 800);
       const list = inpageList(page);
       const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
-      await done.click();
+      await clickListControl(done);
       await expect(done).toBeChecked();
-      await list.getByRole('button', { name: 'Minimize list' }).click();
+      await clickListControl(list.getByRole('button', { name: 'Minimize list' }));
       await expect(done).toHaveCount(0);
       // The classic dashboard keeps a tab on the right edge, the widget dashboard a slim bar.
-      await (
+      await clickListControl(
         layout.tabs === true
           ? page.getByRole('button', { name: /^Open weekly list/ })
-          : list.getByRole('button', { name: /^Weekly list/ })
-      ).click();
+          : list.getByRole('button', { name: /^Weekly list/ }),
+      );
       await expect(done).toBeChecked();
       await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
       await expect(dayList(list)).toBeHidden();
@@ -1058,15 +1059,15 @@ test.describe('the full list in the card', () => {
     const list = inpageList(page);
     const undated = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
     const area = groupArea(list);
-    await undated.click();
+    await clickListControl(undated);
     await expect(area.locator('[data-row-key]').first()).toBeVisible();
-    await list.getByRole('button', { name: 'Next month' }).click();
-    await list.getByRole('button', { name: 'Next month' }).click();
+    await clickListControl(list.getByRole('button', { name: 'Next month' }));
+    await clickListControl(list.getByRole('button', { name: 'Next month' }));
     await expect(area.getByText('Nothing without a due date in this span.')).toBeVisible();
     await expect(undated).toBeChecked();
     await settledList(page);
     // To do closes it. The part of the empty group stays, with the count 0.
-    await backOf(list).click();
+    await clickListControl(backOf(list));
     await expect(dayList(list)).toBeVisible();
     await expect(backOf(list)).toBeFocused();
     await expect(area).toBeHidden();
@@ -1074,7 +1075,7 @@ test.describe('the full list in the card', () => {
     await expect(undated.locator('xpath=..').locator('.wr-count')).toHaveText('0');
 
     // A closed empty group opens to show its empty line.
-    await undated.click();
+    await clickListControl(undated);
     await expect(area.getByText('Nothing without a due date in this span.')).toBeVisible();
   });
 
@@ -1091,7 +1092,7 @@ test.describe('the full list in the card', () => {
     });
     const list = inpageList(page);
     const done = list.locator('.wr-pinned [data-group="done"]');
-    await toggleOf(done).click();
+    await clickListControl(toggleOf(done));
     await expect(groupArea(list).locator('[data-row-key]').first()).toBeVisible();
     await settledList(page);
 
@@ -1099,7 +1100,7 @@ test.describe('the full list in the card', () => {
     // The month ahead is in the cache, and so is a week at its far end; the week after it is
     // not, so the span at the edge of the cache has some days and misses the rest.
     const area = groupArea(list);
-    await list.getByRole('button', { name: 'Next month' }).click();
+    await clickListControl(list.getByRole('button', { name: 'Next month' }));
     await expect(list.getByText('November 27 to December 26')).toBeVisible();
     await list.getByRole('combobox').selectOption({ label: 'Week' });
     await list.getByRole('button', { name: 'Next week' }).evaluate((button) => {
@@ -1114,7 +1115,7 @@ test.describe('the full list in the card', () => {
 
     // Retry asks again, and the span fills in when Canvas answers.
     state.plannerReply = null;
-    await area.getByRole('button', { name: 'Retry' }).click();
+    await clickListControl(area.getByRole('button', { name: 'Retry' }));
     await expect(area.getByText("Couldn't load this span.")).toHaveCount(0);
     await expect(area.getByText('Nothing done in this span.')).toBeVisible();
   });
@@ -1132,15 +1133,15 @@ test.describe('the full list in the card', () => {
     });
     const list = inpageList(page);
     const done = list.locator('.wr-pinned [data-group="done"]');
-    await toggleOf(done).click();
+    await clickListControl(toggleOf(done));
     await expect(groupArea(list).locator('[data-row-key]')).toHaveCount(1);
-    await groupArea(list).getByRole('checkbox').click();
+    await clickListControl(groupArea(list).getByRole('checkbox'));
     await expect(groupArea(list).getByText('Nothing done in this span.')).toBeVisible();
     await expect(groupArea(list).getByRole('heading', { name: /^Done/ })).toBeFocused();
     await expect(dayList(list)).toBeHidden();
     await expect(toggleOf(done)).toBeChecked();
     await expect(toggleOf(done).locator('xpath=..').locator('.wr-count')).toHaveText('0');
-    await backOf(list).click();
+    await clickListControl(backOf(list));
     await expect(dayList(list)).toBeVisible();
     await expect(backOf(list)).toBeFocused();
     await expect(groupArea(list)).toBeHidden();
@@ -1158,7 +1159,7 @@ test.describe('the full list in the card', () => {
       await openBottomLayout(context, page, background, layout, 800);
       const list = inpageList(page);
       const done = toggleOf(list.locator('.wr-pinned [data-group="done"]'));
-      await done.click();
+      await clickListControl(done);
       await expect(done).toBeChecked();
 
       await page.reload();
@@ -1176,10 +1177,10 @@ test.describe('the full list in the card', () => {
       if (layout.docked) await dockCard(other);
       const otherDone = toggleOf(otherList.locator('.wr-pinned [data-group="done"]'));
       await expect(otherDone).toBeChecked();
-      await backOf(otherList).click();
+      await clickListControl(backOf(otherList));
       await expect(dayList(list)).toBeVisible();
       await expect(done).not.toBeChecked();
-      await done.click();
+      await clickListControl(done);
       await expect(otherDone).toBeChecked();
 
       // The side panel has no bottom bar. Its Done group stays closed and works on its own.
@@ -1267,7 +1268,7 @@ test.describe('the full list in the card', () => {
     const root = list.locator('.wr');
     const closed = await barState(root);
     const days = dayList(list);
-    await days.getByRole('checkbox').first().click();
+    await clickListControl(days.getByRole('checkbox').first());
     const toast = list.locator('.wr-toast');
     await expect(toast).toBeVisible();
     expectSameBar(await barState(root), closed);
@@ -1281,7 +1282,7 @@ test.describe('the full list in the card', () => {
     });
     const last = (await days.getByRole('checkbox').last().boundingBox())!;
     expect(last.y + last.height).toBeLessThanOrEqual(notice.y);
-    await toast.getByRole('button', { name: 'Close' }).click();
+    await clickListControl(toast.getByRole('button', { name: 'Close' }));
     await expect(toast).toHaveCount(0);
     expectSameBar(await barState(root), closed);
   });
@@ -1306,7 +1307,7 @@ test.describe('the full list in the card', () => {
       element.scrollTop = 150;
     });
     await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
-    await toggleOf(list.locator('.wr-pinned [data-group="done"]')).click();
+    await clickListControl(toggleOf(list.locator('.wr-pinned [data-group="done"]')));
     const area = groupArea(list);
     await area.evaluate((element) => {
       element.scrollTop = 120;
@@ -1322,7 +1323,7 @@ test.describe('the full list in the card', () => {
       .toBe('stack');
     await expect.poll(() => area.evaluate((element) => element.scrollTop)).toBe(120);
     await expect(toggleOf(list.locator('.wr-pinned [data-group="done"]'))).toBeChecked();
-    await backOf(list).click();
+    await clickListControl(backOf(list));
     await expect.poll(() => days.evaluate((element) => element.scrollTop)).toBe(150);
   });
 
@@ -1444,11 +1445,11 @@ test.describe('the full list in the card', () => {
     });
     await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(300);
 
-    await inpageList(page).getByRole('button', { name: 'Settings' }).click();
-    await inpageList(page).getByRole('button', { name: /Back/ }).click();
+    await clickListControl(inpageList(page).getByRole('button', { name: 'Settings' }));
+    await clickListControl(inpageList(page).getByRole('button', { name: /Back/ }));
     await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(300);
 
-    await inpageList(page).getByRole('button', { name: 'Next month' }).click();
+    await clickListControl(inpageList(page).getByRole('button', { name: 'Next month' }));
     await settledList(page);
     await expect.poll(async () => (await cardBox(page)).scroll.top).toBe(0);
   });
@@ -1627,7 +1628,9 @@ test.describe('screenshots of the Month span', () => {
             document.querySelector('.fixture-widget-app')?.setAttribute('data-fixture-dark', ''),
           );
         }
-        await toggleOf(inpageList(page).locator('.wr-pinned [data-group="done"]')).click();
+        await clickListControl(
+          toggleOf(inpageList(page).locator('.wr-pinned [data-group="done"]')),
+        );
         await expect(groupArea(inpageList(page)).locator('[data-row-key]').first()).toBeVisible();
         const card = inpageList(page).locator('.wr');
         // The mouse leaves the header, so no hover style shows in the shot.
@@ -1732,7 +1735,7 @@ test('the dock clears the last row for Undo and a three-line failure at 400 px',
   await open(context, page, background, { width: 400, height: 900, settings: DEFAULT_SETTINGS });
   const list = inpageList(page);
   const toast = list.locator('.wr-toast');
-  await doneBox(list, QUIZ_3).click();
+  await clickListControl(doneBox(list, QUIZ_3));
   await expect(toast).toContainText('Marked done');
   const measure = async () => {
     const scroll = list.locator('.wr-scroll:not([hidden])');
@@ -1759,20 +1762,23 @@ test('the dock clears the last row for Undo and a three-line failure at 400 px',
       };
     });
   };
+  await expect
+    .poll(async () => {
+      const m = await measure();
+      return m.rowBottom - m.toastTop;
+    })
+    .toBeLessThanOrEqual(0);
   const undo = await measure();
   expect(undo.height).toBe(40);
   expect(undo.bottomSpace).toBe(64);
   expect(undo.rowBottom).toBeLessThanOrEqual(undo.toastTop);
-  await toast.getByRole('button', { name: 'Close notice' }).click();
+  await clickListControl(toast.getByRole('button', { name: 'Close notice' }));
   await context.route('**/api/v1/planner/overrides*', async (route) => {
     if (route.request().method() === 'GET') return route.fallback();
     await route.fulfill({ status: 500, body: 'Server error' });
   });
-  await list
-    .getByRole('button', { name: /\d+ older/ })
-    .first()
-    .click();
-  await list.getByRole('button', { name: 'Mark all older done' }).click();
+  await clickListControl(list.getByRole('button', { name: /\d+ older/ }).first());
+  await clickListControl(list.getByRole('button', { name: 'Mark all older done' }));
   await expect(toast).toContainText("Couldn't mark those");
   await expect
     .poll(async () => {

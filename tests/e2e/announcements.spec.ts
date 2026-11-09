@@ -7,7 +7,7 @@ import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import { CANVAS_ERRORS } from '../fixtures/errors';
 import { errorReply } from './support/canvas-state';
-import { CSRF_TOKEN } from './support/weekrow';
+import { clickListControl, CSRF_TOKEN } from './support/weekrow';
 import {
   addCsrfCookie,
   doneBox,
@@ -59,7 +59,7 @@ function tab(list: Locator, name: string | RegExp): Locator {
 
 async function openAnnouncements(page: Page): Promise<Locator> {
   const list = inpageList(page);
-  await tab(list, /^Announcements/).click();
+  await clickListControl(tab(list, /^Announcements/));
   await expect(titleButton(list, LAB_ROOM)).toBeVisible();
   return list;
 }
@@ -153,7 +153,7 @@ test.describe('the Announcements tab', () => {
     await open(context, page);
     const list = await openAnnouncements(page);
     const panel = list.getByRole('tabpanel');
-    await list.getByRole('switch', { name: 'Show read' }).click();
+    await clickListControl(list.getByRole('switch', { name: 'Show read' }));
     await expect(panel.locator('.wr-ann-title')).toHaveText([
       LAB_ROOM,
       OFFICE_HOURS,
@@ -175,7 +175,7 @@ test.describe('the Announcements tab', () => {
     const list = await openAnnouncements(page);
     const toggle = titleButton(list, LAB_ROOM);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await toggle.click();
+    await clickListControl(toggle);
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
     const body = list.locator('.wr-ann-body');
@@ -199,7 +199,7 @@ test.describe('the Announcements tab', () => {
     ).toBe(true);
     // The row is still unread, and Show less closes it.
     await expect(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` })).toBeVisible();
-    await list.getByRole('button', { name: 'Show less' }).click();
+    await clickListControl(list.getByRole('button', { name: 'Show less' }));
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(list.locator('.wr-ann-body')).toHaveCount(0);
   });
@@ -211,7 +211,7 @@ test.describe('the Announcements tab', () => {
   }) => {
     const { canvas, state } = await open(context, page);
     const list = await openAnnouncements(page);
-    await list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }).click();
+    await clickListControl(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }));
 
     await expect.poll(() => writesTo(canvas, 'PUT').length).toBe(1);
     await expect(titleButton(list, LAB_ROOM)).toHaveCount(0);
@@ -233,10 +233,10 @@ test.describe('the Announcements tab', () => {
   test('Undo puts the announcement back, and marks it unread again', async ({ context, page }) => {
     const { canvas, state } = await open(context, page);
     const list = await openAnnouncements(page);
-    await list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }).click();
+    await clickListControl(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }));
     await expect(titleButton(list, LAB_ROOM)).toHaveCount(0);
 
-    await list.locator('.wr-toast').getByRole('button', { name: 'Undo' }).click();
+    await clickListControl(list.locator('.wr-toast').getByRole('button', { name: 'Undo' }));
     await expect(titleButton(list, LAB_ROOM)).toBeVisible();
     await expect.poll(() => writesTo(canvas, 'DELETE').length).toBe(1);
     await settledList(page);
@@ -263,10 +263,10 @@ test.describe('the Announcements tab', () => {
       ],
     });
     const list = await openAnnouncements(page);
-    await list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }).click();
+    await clickListControl(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }));
     await expect(titleButton(list, LAB_ROOM)).toHaveCount(0);
 
-    await list.locator('.wr-toast').getByRole('button', { name: 'Undo' }).click();
+    await clickListControl(list.locator('.wr-toast').getByRole('button', { name: 'Undo' }));
 
     await expect(list.locator('.wr-toast')).toHaveText("Couldn't undo that");
     expect(state.readAnnouncements.has('101:31901')).toBe(true);
@@ -275,8 +275,8 @@ test.describe('the Announcements tab', () => {
   test('keeps a marked row in the list while Show read is on', async ({ context, page }) => {
     await open(context, page);
     const list = await openAnnouncements(page);
-    await list.getByRole('switch', { name: 'Show read' }).click();
-    await list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }).click();
+    await clickListControl(list.getByRole('switch', { name: 'Show read' }));
+    await clickListControl(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` }));
     await expect(list.getByRole('button', { name: `Mark as read: ${LAB_ROOM}` })).toHaveCount(0);
     await expect(titleButton(list, LAB_ROOM)).toBeVisible();
   });
@@ -288,7 +288,7 @@ test.describe('the Announcements tab', () => {
     await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
     await expect(tab(inpageList(page), /^Announcements/)).toHaveAttribute('aria-selected', 'true');
     await expect(titleButton(list, LAB_ROOM)).toBeVisible();
-    await tab(inpageList(page), 'Tasks').click();
+    await clickListControl(tab(inpageList(page), 'Tasks'));
     await expect(doneBox(inpageList(page), QUIZ_3)).toBeVisible();
     await page.reload();
     await page.locator('html[data-fixture-ready="true"]').waitFor({ state: 'attached' });
@@ -328,7 +328,7 @@ test.describe('the Announcements tab', () => {
     await expect.poll(room).toBeGreaterThan(130);
     await scrollTo(120);
     await expect.poll(top).toBe(120);
-    await tab(list, /^Announcements/).click();
+    await clickListControl(tab(list, /^Announcements/));
     await expect(titleButton(list, LAB_ROOM)).toBeVisible();
     // The region has the label of the tab, and the new tab starts at the top.
     await expect(list.getByRole('region', { name: 'Announcements' })).toBeVisible();
@@ -337,10 +337,10 @@ test.describe('the Announcements tab', () => {
     await scrollTo(40);
     await expect.poll(top).toBe(40);
 
-    await tab(list, 'Tasks').click();
+    await clickListControl(tab(list, 'Tasks'));
     await expect(list.getByRole('region', { name: 'Tasks by day' })).toBeVisible();
     await expect.poll(top).toBe(120);
-    await tab(list, /^Announcements/).click();
+    await clickListControl(tab(list, /^Announcements/));
     await expect.poll(top).toBe(40);
   });
 });
@@ -349,7 +349,7 @@ test.describe('the course home page', () => {
   test('shows only the announcements of that course', async ({ context, page }) => {
     const { canvas } = await open(context, page, { page: 'course-home', path: '/courses/101' });
     const list = inpageList(page);
-    await tab(list, /^Announcements/).click();
+    await clickListControl(tab(list, /^Announcements/));
     await expect(list.locator('.wr-ann-title')).toHaveText([LAB_ROOM]);
     await expect(list.getByText(OFFICE_HOURS)).toHaveCount(0);
     await expect(list.getByText(GOGGLES)).toHaveCount(0);
@@ -372,7 +372,7 @@ test.describe('hidden courses', () => {
     await saveSettings(background, { ...DEFAULT_SETTINGS, hiddenCourseIds: ['104'] });
     const { canvas } = await open(context, page);
     const list = inpageList(page);
-    await tab(list, /^Announcements/).click();
+    await clickListControl(tab(list, /^Announcements/));
     await expect(list.locator('.wr-ann-title')).toHaveText([LAB_ROOM, OFFICE_HOURS]);
     for (const request of canvas.requests.filter((r) =>
       r.path.startsWith('/api/v1/announcements'),

@@ -7,6 +7,7 @@ import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { DEFAULT_SETTINGS, type Settings } from '../../src/features/weekly-list/model/types';
 import {
+  clickListControl,
   doneBox,
   expect,
   inpageList,
@@ -85,7 +86,7 @@ test.describe('the minimized list', () => {
     page,
   }) => {
     await open(context, page);
-    await minimize(page).click();
+    await clickListControl(minimize(page));
     await expect(bar(page)).toBeVisible();
     await expect(bar(page)).toHaveAttribute('aria-expanded', 'false');
     await expect(bar(page)).toBeFocused();
@@ -118,10 +119,10 @@ test.describe('the minimized list', () => {
       element.scrollTop = 250;
     });
     await expect.poll(() => region(page).evaluate((element) => element.scrollTop)).toBe(250);
-    await minimize(page).click();
+    await clickListControl(minimize(page));
     await expect(bar(page)).toBeVisible();
 
-    await bar(page).click();
+    await clickListControl(bar(page));
     await expect(minimize(page)).toBeVisible();
     await expect(minimize(page)).toBeFocused();
     await expect(minimize(page)).toHaveAttribute('aria-expanded', 'true');
@@ -129,7 +130,7 @@ test.describe('the minimized list', () => {
     await expect.poll(() => region(page).evaluate((element) => element.scrollTop)).toBe(250);
 
     for (const key of ['Enter', 'Space']) {
-      await minimize(page).click();
+      await clickListControl(minimize(page));
       await expect(bar(page)).toBeFocused();
       await page.keyboard.press(key);
       await expect(minimize(page)).toBeVisible();
@@ -138,7 +139,7 @@ test.describe('the minimized list', () => {
 
   test('holds in every tab, and on the classic dashboard', async ({ context, page }) => {
     const origin = await open(context, page);
-    await minimize(page).click();
+    await clickListControl(minimize(page));
     await expect(bar(page)).toBeVisible();
 
     const other = await context.newPage();
@@ -146,7 +147,7 @@ test.describe('the minimized list', () => {
     await expect(bar(other)).toBeVisible();
 
     // Expanding in the second tab expands the first tab too.
-    await bar(other).click();
+    await clickListControl(bar(other));
     await expect(minimize(page)).toBeVisible();
   });
 
@@ -155,7 +156,7 @@ test.describe('the minimized list', () => {
     page,
   }) => {
     await open(context, page);
-    await inpageList(page).getByRole('button', { name: 'Settings' }).click();
+    await clickListControl(inpageList(page).getByRole('button', { name: 'Settings' }));
     await expect(
       inpageList(page).getByRole('switch', { name: /weekly list on Canvas/ }),
     ).toHaveCount(0);
@@ -192,7 +193,7 @@ test.describe('the minimized list', () => {
           ?.getBoundingClientRect();
         return box ? { top: box.top, left: box.left, width: box.width } : null;
       });
-      await minimize(page).click();
+      await clickListControl(minimize(page));
       await expect(bar(page)).toBeVisible();
       expect(await scrollWidthFits(page)).toBe(true);
       // The bar takes the same place as the card did.

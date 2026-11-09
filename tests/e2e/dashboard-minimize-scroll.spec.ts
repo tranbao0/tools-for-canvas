@@ -7,6 +7,7 @@
 import type { Page } from '@playwright/test';
 import { DEFAULT_SETTINGS } from '../../src/features/weekly-list/model/types';
 import {
+  clickListControl,
   addCsrfCookie,
   expect,
   inpageList,
@@ -58,7 +59,7 @@ async function scrollDown(page: Page): Promise<number> {
 }
 
 async function minimizeByClick(page: Page): Promise<void> {
-  await inpageList(page).getByRole('button', { name: 'Minimize list' }).click();
+  await clickListControl(inpageList(page).getByRole('button', { name: 'Minimize list' }));
   await expect(inpageList(page).getByRole('button', { name: /^Weekly list/ })).toBeVisible();
   await frames(page, 6);
 }

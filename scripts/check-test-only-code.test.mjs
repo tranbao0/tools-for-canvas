@@ -3,7 +3,11 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { findTestOnlyCode, TEST_ONLY_MARKERS } from './check-test-only-code.mjs';
+import {
+  findTestOnlyCode,
+  findMissingTestOnlyMarkers,
+  TEST_ONLY_MARKERS,
+} from './check-test-only-code.mjs';
 
 test('rejects every marker in nested bundles and maps, regardless of the target', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'test-only-code-'));
@@ -24,5 +28,22 @@ test('rejects every marker in nested bundles and maps, regardless of the target'
     }
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('requires every marker in the e2e output', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'test-markers-'));
+  try {
+    const file = path.join(dir, 'test.js');
+    await writeFile(file, TEST_ONLY_MARKERS.join('\n'));
+    assert.deepEqual(await findMissingTestOnlyMarkers(dir), []);
+    for (const marker of TEST_ONLY_MARKERS) {
+      await writeFile(file, TEST_ONLY_MARKERS.filter((value) => value !== marker).join('\n'));
+      assert.deepEqual(await findMissingTestOnlyMarkers(dir), [
+        `Missing test-only marker "${marker}"`,
+      ]);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
