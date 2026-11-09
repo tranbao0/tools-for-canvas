@@ -99,15 +99,75 @@ export async function startViewer(): Promise<void> {
     return { tabs: normalizeTabs(reply), token: typeof token === 'string' ? token : undefined };
   };
   let writes: Promise<unknown> = Promise.resolve();
-  let changedStore = false;
-  const writeTabs = (next: Tabs, token = tabsToken) => {
-    changedStore = true;
-    const run = writes.then(() => {
-      if (!active()) return;
-      return browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs: next, token });
+  const enqueue = <T>(run: () => Promise<T>): Promise<T | undefined> => {
+    const next = writes.then(() => (active() ? run() : undefined));
+    writes = next.catch(() => undefined);
+    return next;
+  };
+  let unseen = {
+    added: new Set<string>(),
+    evicted: new Set<string>(),
+    token: undefined as string | undefined,
+  };
+  const flushOpens = () => {
+    const ids = [...addedTabs];
+    const effects = unseen;
+    const current = attempt;
+    const started = generation;
+    const token = tabsToken;
+    return enqueue(async () => {
+      let credential = token;
+      if (credential === undefined) {
+        const reply = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
+        credential = reply?.token;
+      }
+      for (const fileId of ids) {
+        if (!active() || current.result || started !== generation) return;
+        const reply = await browser.runtime.sendMessage({
+          type: 'viewer:tabs-open',
+          fileId,
+          token: credential,
+        });
+        if (!reply || typeof reply !== 'object') throw new Error('The tabs did not save');
+        effects.token = credential;
+        if (reply.added) effects.added.add(fileId);
+        if (
+          typeof reply.evicted === 'string' &&
+          !effects.added.delete(reply.evicted) &&
+          effects.evicted.size < 8
+        )
+          effects.evicted.add(reply.evicted);
+        const kept = normalizeTabs(reply);
+        for (const id of effects.added) if (!kept.ids.includes(id)) effects.added.delete(id);
+        if (active() && !current.result && started === generation) {
+          tabs = normalizeTabs(reply);
+          tabsToken = credential;
+        }
+      }
     });
-    writes = run.catch(() => undefined);
-    return run;
+  };
+  const undoUnseen = (clear = false) => {
+    const effects = unseen;
+    const token = tabsToken;
+    return enqueue(async () => {
+      let credential = effects.token ?? token;
+      if (credential === undefined) {
+        const reply = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
+        credential = reply?.token;
+      }
+      if (!active()) return;
+      const reply = await browser.runtime.sendMessage({
+        type: clear ? 'viewer:tabs-clear' : 'viewer:tabs-undo',
+        ...(!clear ? { added: [...effects.added], evicted: [...effects.evicted] } : {}),
+        token: credential,
+      });
+      effects.added.clear();
+      effects.evicted.clear();
+      if (active() && unseen === effects && reply && typeof reply === 'object') {
+        tabs = normalizeTabs(reply);
+        tabsToken = credential;
+      }
+    });
   };
   type Attempt = { result?: 'closed' };
   let attempt: Attempt = {};
@@ -130,13 +190,13 @@ export async function startViewer(): Promise<void> {
     if (
       synced &&
       port &&
-      presentedTabs &&
       dock?.shown &&
       dock.host.isConnected &&
       dock.host.getAttribute('data-identity') === 'yes'
     ) {
       sawTabs = true;
-      keptTabs = presentedTabs;
+      unseen.added.clear();
+      unseen.evicted.clear();
     }
   };
   const sendCovered = () => {
@@ -178,29 +238,21 @@ export async function startViewer(): Promise<void> {
   // copy is older than the pane, so it never goes out again, or it would undo what the student
   // did in the pane since.
   let synced = false;
-  let presentedTabs: StoredTabs | undefined;
   let sawTabs = false;
   // The file of an open that has not reached the pane yet.
   let waitingFile: string | null = null;
   const addedTabs = new Set<string>();
-  let keptTabs: StoredTabs | undefined;
   const rememberStored = (stored: StoredTabs) => {
-    if (
-      keptTabs?.token !== undefined &&
-      stored.token !== undefined &&
-      keptTabs.token !== stored.token
-    ) {
+    if (tabsToken !== undefined && stored.token !== undefined && tabsToken !== stored.token) {
       addedTabs.clear();
       waitingFile = null;
       synced = false;
-      presentedTabs = undefined;
       sawTabs = false;
-      changedStore = false;
+      unseen = { added: new Set(), evicted: new Set(), token: stored.token };
       courses.clear();
       names.clear();
       addresses.clear();
     }
-    if (!changedStore || keptTabs?.token !== stored.token) keptTabs = stored;
     tabsToken = stored.token;
   };
   let failureAddress = '';
@@ -211,8 +263,10 @@ export async function startViewer(): Promise<void> {
     return links?.canvas ?? links!.download;
   };
   const removeAddedTabs = () => {
-    tabs = keptTabs?.tabs ?? { ids: [], active: null };
-    tabsToken = keptTabs?.token;
+    tabs = {
+      ids: tabs.ids.filter((id) => !addedTabs.has(id) && !unseen.added.has(id)),
+      active: null,
+    };
     addedTabs.clear();
     waitingFile = null;
   };
@@ -260,7 +314,7 @@ export async function startViewer(): Promise<void> {
     // The pane has connected, so the files of the clicks that waited for it join the stored tabs,
     // and the pane restores them.
     if (port && addedTabs.size > 0) {
-      await writeTabs(tabs).catch(() => undefined);
+      await flushOpens().catch(() => undefined);
       if (
         !active() ||
         generation !== started ||
@@ -275,7 +329,6 @@ export async function startViewer(): Promise<void> {
     sendFullView();
     sendCovered();
     if (tabs.active && port && !synced) {
-      presentedTabs = { tabs: { ids: [...tabs.ids], active: tabs.active }, token: tabsToken };
       synced = true;
       markSeen();
       waitingFile = null;
@@ -316,7 +369,6 @@ export async function startViewer(): Promise<void> {
     port = undefined;
     dock?.close();
     dock = undefined;
-    presentedTabs = undefined;
   };
   const save = async () => {
     const latest = (await browser.runtime.sendMessage({ type: 'weekrow:page-context' })) as {
@@ -330,11 +382,8 @@ export async function startViewer(): Promise<void> {
   };
   const close = () => {
     if (!active()) return;
-    if (!sawTabs) removeAddedTabs();
-    tabs = sawTabs ? { ids: [], active: null } : { ids: [...tabs.ids], active: null };
-    keptTabs = { tabs, token: tabsToken };
     drop('closed');
-    void writeTabs(tabs, keptTabs.token).catch(() => undefined);
+    void undoUnseen(sawTabs).catch(() => undefined);
   };
   // The background cleared the data of a student: a sign-out, another student or a new address.
   // The pane closes, also a pane that another pane covers, and nothing of the earlier student
@@ -353,8 +402,7 @@ export async function startViewer(): Promise<void> {
     tabsToken = undefined;
     synced = false;
     sawTabs = false;
-    keptTabs = undefined;
-    changedStore = false;
+    unseen = { added: new Set(), evicted: new Set(), token: undefined };
     courses.clear();
     names.clear();
     addresses.clear();
@@ -519,9 +567,8 @@ export async function startViewer(): Promise<void> {
   lifetime.signal.addEventListener('abort', stopWatchingPanes, { once: true });
   // Canvas turns its dark mode on and off with no reload, and Automatic follows it.
   lifetime.signal.addEventListener('abort', watchPageTheme(document, applyTheme), { once: true });
-  // The opens run one after another. Each one reads the stored tabs, adds its file and writes them
-  // back, so two that ran side by side would both start from the same tabs and the second write
-  // would drop the file of the first. The tab order is also the order of the clicks.
+  // Requests reach the pane in click order. The background applies each intent to its current
+  // store; callers wait separately for the pane connection.
   let opens: Promise<unknown> = Promise.resolve();
   // The opens that wait or run, and the clicks that the script took. The newest click wins.
   let waitingOpens = 0;
@@ -599,22 +646,15 @@ export async function startViewer(): Promise<void> {
       // request also makes a pane that has not been told yet restore the stored tabs, so the files
       // that waited for the pane join the store first.
       if (!synced && addedTabs.size > 0) {
-        await writeTabs(tabs).catch(() => undefined);
+        await flushOpens().catch(() => undefined);
         if (ended()) return ended()!;
         if (!paneOpen() || (!port && !connection)) {
           removeAddedTabs();
-          if (!sawTabs) tabs = { ids: [...tabs.ids], active: null };
-          addedTabs.delete(file.fileId);
-          if (waitingFile === file.fileId) waitingFile = null;
-          await writeTabs(tabs).catch(() => undefined);
+          await undoUnseen().catch(() => undefined);
           return ended() ?? 'ended';
         }
         if (!port) return { connected: connection! };
       }
-      presentedTabs = {
-        tabs: openFile(synced && presentedTabs ? presentedTabs.tabs : tabs, file.fileId),
-        token: tabsToken,
-      };
       synced = true;
       markSeen();
       waitingFile = null;
@@ -749,6 +789,8 @@ export async function startViewer(): Promise<void> {
     'pageshow',
     (event) => {
       if (!active() || !(event as PageTransitionEvent).persisted) return;
+      if (waitingFile || addedTabs.size || unseen.added.size || unseen.evicted.size)
+        void undoUnseen().catch(() => undefined);
       reset('closed');
       const restored = generation;
       starting = load().catch(() => undefined);

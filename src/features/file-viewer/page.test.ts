@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDock, filePaneOpen, hideFilePane } from './dock';
+import { tabIntentReply } from './tabIntent.fixture';
 import { listenViewerHello, startViewer } from './page';
 
 // The weekly dock needs 768 px beside it; panes reserve 420 px besides global navigation. These tests use a wide window.
@@ -137,12 +138,14 @@ describe('the page script', () => {
         sendMessage.mockImplementation(
           async (message: { type: string; tabs: typeof storedTabs }) => {
             if (message.type === 'viewer:tabs-get') return storedTabs;
-            if (message.type === 'viewer:tabs-set') {
-              if (!releaseWrite)
+            if (/^viewer:tabs-(open|undo|clear)$/.test(message.type)) {
+              if (message.type === 'viewer:tabs-open' && !releaseWrite)
                 await new Promise<void>((resolve) => {
                   releaseWrite = resolve;
                 });
-              storedTabs = message.tabs;
+              const result = tabIntentReply(message, storedTabs);
+              storedTabs = { ids: result.ids, active: result.active };
+              return result;
             }
             return reply(message);
           },
@@ -221,10 +224,12 @@ describe('the page script', () => {
           );
         }
         await new Promise((resolve) => setTimeout(resolve, 0));
-        const writes = sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set');
-        if (synced && !covered && !writing)
-          expect(writes.map(([m]) => m.tabs)).toEqual([{ ids: [], active: null }]);
-        else expect(writes.map(([m]) => m.tabs)).toEqual([{ ids: ['42'], active: null }]);
+        const writes = sendMessage.mock.calls.filter(([m]) =>
+          /^viewer:tabs-(undo|clear)$/.test(m.type),
+        );
+        expect(writes.map(([m]) => m.type)).toEqual([
+          synced && !covered && !writing ? 'viewer:tabs-clear' : 'viewer:tabs-undo',
+        ]);
       } finally {
         vi.unstubAllGlobals();
       }
@@ -310,7 +315,9 @@ describe('the page script', () => {
     };
     const paneHost = () => document.getElementById('tools-file-viewer');
     const writes = () =>
-      sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set').map(([m]) => m);
+      sendMessage.mock.calls
+        .filter(([m]) => /^viewer:tabs-(open|undo|clear)$/.test(m.type))
+        .map(([m]) => m);
     async function openPane() {
       prepare();
       document.body.insertAdjacentHTML(
@@ -362,7 +369,9 @@ describe('the page script', () => {
     const html = document.documentElement;
     const paneHost = () => document.getElementById('tools-file-viewer');
     const writes = () =>
-      sendMessage.mock.calls.filter(([m]) => m.type === 'viewer:tabs-set').map(([m]) => m);
+      sendMessage.mock.calls
+        .filter(([m]) => /^viewer:tabs-(open|undo|clear)$/.test(m.type))
+        .map(([m]) => m);
     const listener = () => broadcast;
     /** Holds the answers of the session reads until the test releases them, in order. */
     function holdSessions() {
@@ -746,7 +755,9 @@ describe('the page script', () => {
         await vi.advanceTimersByTimeAsync(15_000);
         expect(respond).toHaveBeenCalledWith({ opened: true });
         expect(document.getElementById('tools-file-viewer')).not.toBeNull();
-        expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:tabs-set')).toBe(false);
+        expect(
+          sendMessage.mock.calls.some(([m]) => /^viewer:tabs-(open|undo|clear)$/.test(m.type)),
+        ).toBe(false);
       } finally {
         vi.useRealTimers();
       }
@@ -895,7 +906,9 @@ describe('the page script', () => {
       click(true);
       await vi.waitFor(() => expect(seen).toEqual([{ trusted: false, prevented: false }]));
       expect(paneHost()).toBeNull();
-      expect(sendMessage.mock.calls.some(([m]) => m.type === 'viewer:tabs-set')).toBe(false);
+      expect(
+        sendMessage.mock.calls.some(([m]) => /^viewer:tabs-(open|undo|clear)$/.test(m.type)),
+      ).toBe(false);
     });
 
     it('clicks the link again when the module item has no file', async () => {

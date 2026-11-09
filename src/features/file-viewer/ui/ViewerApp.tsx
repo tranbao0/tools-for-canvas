@@ -9,7 +9,7 @@ import type { ComponentChildren } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { t } from '../../../shared/ui/i18n';
-import { closeFile, openFile, type Tabs } from '../model';
+import { closeFile, openFile, type Tabs, type TabIntent } from '../model';
 import { FileCard, type FileState, type PaneFile } from './FileCard';
 import type { CoveredHost } from './covered';
 import type { FullViewHost } from './fullView';
@@ -34,7 +34,7 @@ export interface PaneHost extends PdfHost {
   /** Asks the browser for that access. Call it directly inside a click handler. */
   requestAccess(): Promise<boolean>;
   getTabs(): Promise<Tabs>;
-  setTabs(tabs: Tabs): Promise<void>;
+  changeTabs(intent: TabIntent): Promise<Tabs>;
   /** Asks the Canvas page to close the pane. */
   closePane(): void;
   /** The full view state of the pane, which the Canvas page keeps. */
@@ -106,17 +106,32 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   const loaded = useRef(false);
   const pending = useRef<Promise<unknown>>(Promise.resolve());
   const writes = useRef<Promise<unknown>>(Promise.resolve());
+  const unsaved = useRef<TabIntent[]>([]);
+  const changes = useRef(0);
   const save = useCallback(
-    (next: Tabs) => {
-      writes.current = writes.current.then(() => host.setTabs(next)).catch(() => undefined);
+    (intent?: TabIntent) => {
+      if (intent) unsaved.current.push(intent);
+      if (!loaded.current) return;
+      const batch = unsaved.current.splice(0);
+      const change = ++changes.current;
+      writes.current = writes.current
+        .then(async () => {
+          let latest: Tabs | undefined;
+          for (const action of batch) latest = await host.changeTabs(action);
+          if (latest && change === changes.current) {
+            tabsRef.current = latest;
+            setTabs(latest);
+          }
+        })
+        .catch(() => undefined);
     },
     [host],
   );
   const commit = useCallback(
-    (next: Tabs) => {
+    (next: Tabs, intent: TabIntent) => {
       tabsRef.current = next;
       setTabs(next);
-      save(next);
+      save(intent);
     },
     [save],
   );
@@ -149,7 +164,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             void host.getTabs().then(
               () => {
                 loaded.current = true;
-                save(tabsRef.current);
+                save();
               },
               () => undefined,
             );
@@ -177,13 +192,11 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             // tabs in memory, which already hold every change of the student. A read that fails
             // is not "no tabs": the next request reads again, and tabs that opened meanwhile stay.
             let known = tabsRef.current;
-            let recovered = false;
             if (!loaded.current) {
               try {
                 const stored = await host.getTabs();
                 loaded.current = true;
-                recovered = known.ids.length > 0;
-                if (!recovered) known = stored;
+                if (known.ids.length === 0) known = stored;
               } catch {
                 // The tabs in memory stay, and they are not written.
               }
@@ -191,9 +204,7 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
             const next = openFile(known, request.fileId);
             tabsRef.current = next;
             setTabs(next);
-            if (loaded.current && (recovered || JSON.stringify(next) !== JSON.stringify(known))) {
-              save(next);
-            }
+            save({ action: 'open', fileId: request.fileId });
           })
           .catch(() => undefined);
       }),
@@ -226,12 +237,13 @@ export function ViewerApp(props: { host: PaneHost; opens: OpenSource }) {
   }, [tabs]);
 
   const activate = (fileId: string) => {
-    if (tabsRef.current.active !== fileId) commit({ ids: tabsRef.current.ids, active: fileId });
+    if (tabsRef.current.active !== fileId)
+      commit({ ids: tabsRef.current.ids, active: fileId }, { action: 'activate', fileId });
   };
   const close = (fileId: string) => {
     const wasActive = tabsRef.current.active === fileId;
     const next = closeFile(tabsRef.current, fileId);
-    commit(next);
+    commit(next, { action: 'close', fileId });
     if (next.ids.length === 0) {
       host.closePane();
       return;

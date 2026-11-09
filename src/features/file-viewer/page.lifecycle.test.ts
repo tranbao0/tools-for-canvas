@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tabIntentReply } from './tabIntent.fixture';
 import { startViewer } from './page';
 
 const identity = vi.hoisted(() => ({
@@ -86,11 +87,15 @@ describe('file pane lifetime and unseen changes', () => {
         return { secret: SECRET };
       case 'viewer:tabs-get':
         return answerTabs ? { ...stored, token } : undefined;
-      case 'viewer:tabs-set':
-        writes.push({ tabs: message.tabs!, token: message.token });
+      case 'viewer:tabs-open':
+      case 'viewer:tabs-undo':
+      case 'viewer:tabs-clear': {
         if (message.token !== token) throw new Error('refused');
-        stored = message.tabs!;
-        return { ok: true };
+        const result = tabIntentReply(message, stored);
+        stored = { ids: result.ids, active: result.active };
+        writes.push({ tabs: stored, token: message.token });
+        return result;
+      }
       default:
         return { ok: true };
     }
@@ -219,6 +224,160 @@ describe('file pane lifetime and unseen changes', () => {
         address: expect.stringContaining('/courses/3/files/6?verifier=abc'),
       }),
     );
+  });
+  it('restores a seen pane with a new port for the same student', async () => {
+    capture();
+    setup({ ids: ['4'], active: '4' });
+    await startViewer();
+    await connect();
+    const first = ports.length;
+    pageshow();
+    await settle();
+    await settle();
+    const shown = Boolean(host());
+    await connect();
+    const sent = ports
+      .at(-1)!
+      .postMessage.mock.calls.map(([m]) => m)
+      .filter((m) => m.type === 'open-file');
+    expect(shown).toBe(true);
+    expect(ports.length).toBeGreaterThan(first);
+    expect(sent).toContainEqual(expect.objectContaining({ type: 'open-file', fileId: '4' }));
+  });
+  it('undo retains pane changes between the page open and close', async () => {
+    capture();
+    setup({ ids: ['4'], active: null });
+    await startViewer();
+    click('file');
+    await settle();
+    await connect();
+    // The pane closes tab 4 and saves its own tabs.
+    stored = { ids: ['5'], active: '5' };
+    host()!.remove();
+    let releaseRead: (() => void) | undefined;
+    let releaseWrite: (() => void) | undefined;
+    let gets = 0;
+    let heldWrite = false;
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-get' && ++gets === 2)
+        await new Promise<void>((resolve) => {
+          releaseRead = resolve;
+        });
+      const result = await base(message as never);
+      if (message.type === 'viewer:tabs-open' && !heldWrite) {
+        heldWrite = true;
+        await new Promise<void>((resolve) => {
+          releaseWrite = resolve;
+        });
+      }
+      return result;
+    });
+    const follow = followed();
+    click('other');
+    await settle();
+    click('third');
+    await settle();
+    await connect();
+    releaseRead!();
+    await settle();
+    host()!.remove();
+    releaseWrite!();
+    await settle();
+    await settle();
+    expect(follow.mock.calls).toEqual([['third']]);
+    expect(stored).toEqual({ ids: ['5'], active: null });
+  });
+  it('ignores a restore read ended by reset and opens one pane after two restores', async () => {
+    capture();
+    setup({ ids: ['4'], active: '4' });
+    await startViewer();
+    await connect();
+    let release: (() => void) | undefined;
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-get' && !release) {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return base(message as never);
+    });
+    pageshow();
+    await settle();
+    token = '2:2';
+    stored = { ids: [], active: null };
+    resetPanes();
+    release!();
+    await settle();
+    await settle();
+    const afterReset = { pane: Boolean(host()) };
+    click('file');
+    await settle();
+    close();
+    await settle();
+    // two quick pageshows for the same student
+    stored = { ids: ['9'], active: '9' };
+    pageshow();
+    pageshow();
+    await settle();
+    await settle();
+    const panes = document.querySelectorAll('#tools-file-viewer').length;
+    expect(afterReset.pane).toBe(false);
+    expect(panes).toBe(1);
+  });
+  it('never applies an old student open during restore', async () => {
+    capture();
+    setup({ ids: ['4'], active: null });
+    await startViewer();
+    let releaseWrite: (() => void) | undefined;
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-open' && !releaseWrite)
+        await new Promise<void>((resolve) => {
+          releaseWrite = resolve;
+        });
+      return base(message as never);
+    });
+    click('file');
+    await settle();
+    await connect();
+    token = '2:2';
+    stored = { ids: [], active: null };
+    pageshow();
+    await settle();
+    releaseWrite!();
+    await settle();
+    await settle();
+    click('other');
+    await settle();
+    close();
+    await settle();
+    expect(stored).toEqual({ ids: [], active: null });
+    expect(host()).toBeNull();
+    expect(writes.every((write) => write.token === '2:2')).toBe(true);
+  });
+  it('waits for the Close intent before restoring the page', async () => {
+    capture();
+    setup({ ids: ['4'], active: '4' });
+    await startViewer();
+    await connect();
+    let releaseWrite: (() => void) | undefined;
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'viewer:tabs-clear' && !releaseWrite)
+        await new Promise<void>((resolve) => {
+          releaseWrite = resolve;
+        });
+      return base(message as never);
+    });
+    close();
+    await settle();
+    pageshow();
+    await settle();
+    const paneWhileHeld = Boolean(host());
+    releaseWrite!();
+    await settle();
+    await settle();
+    expect(paneWhileHeld).toBe(false);
+    expect(host()).toBeNull();
+    expect(stored).toEqual({ ids: [], active: null });
   });
 });
 

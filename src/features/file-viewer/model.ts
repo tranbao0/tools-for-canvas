@@ -343,3 +343,24 @@ export function frameFileTarget(
 export function isFileId(value: unknown): value is string {
   return typeof value === 'string' && ID.test(value);
 }
+
+export type TabIntent =
+  | { action: 'open'; fileId: string }
+  | { action: 'close'; fileId: string }
+  | { action: 'activate'; fileId: string }
+  | { action: 'undo'; added: string[]; evicted: string[] }
+  | { action: 'clear' };
+
+/** Applies one document's action to the current tabs. */
+export function applyTabIntent(current: Tabs, intent: TabIntent): Tabs {
+  if (intent.action === 'open') return openFile(current, intent.fileId);
+  if (intent.action === 'close') return closeFile(current, intent.fileId);
+  if (intent.action === 'activate')
+    return current.ids.includes(intent.fileId)
+      ? { ids: current.ids, active: intent.fileId }
+      : current;
+  if (intent.action === 'clear') return { ids: [], active: null };
+  const ids = current.ids.filter((id) => !intent.added.includes(id));
+  const restore = [...new Set(intent.evicted)].filter((id) => !ids.includes(id));
+  return { ids: [...restore.slice(0, 8 - ids.length), ...ids], active: null };
+}

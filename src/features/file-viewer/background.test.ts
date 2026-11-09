@@ -66,8 +66,28 @@ const hasTabs = (store: Map<string, unknown>) =>
 type Reply = { ids: string[]; active: string | null; token: string };
 const tabsGet = async (sender: Sender, host: ViewerHost) =>
   (await routeViewerMessage({ type: 'viewer:tabs-get' }, sender, host)) as Reply;
-const tabsSet = (sender: Sender, host: ViewerHost, tabs: unknown, token: unknown) =>
-  routeViewerMessage({ type: 'viewer:tabs-set', tabs, token }, sender, host);
+const tabsSet = async (
+  sender: Sender,
+  host: ViewerHost,
+  tabs: { ids: string[]; active: string | null },
+  token: unknown,
+) => {
+  await routeViewerMessage({ type: 'viewer:tabs-clear', token }, sender, host);
+  for (const fileId of tabs.ids)
+    await routeViewerMessage({ type: 'viewer:tabs-open', fileId, token }, sender, host);
+  if (tabs.active === null)
+    await routeViewerMessage(
+      { type: 'viewer:tabs-undo', added: [], evicted: [], token },
+      sender,
+      host,
+    );
+  else
+    await routeViewerMessage(
+      { type: 'viewer:tabs-activate', fileId: tabs.active, token },
+      sender,
+      host,
+    );
+};
 
 describe('the student of the viewer data', () => {
   it('clears the viewer data before it names another student', async () => {
@@ -177,7 +197,11 @@ describe('viewer router', () => {
     'viewer:file',
     'viewer:module-item',
     'viewer:tabs-get',
-    'viewer:tabs-set',
+    'viewer:tabs-open',
+    'viewer:tabs-close',
+    'viewer:tabs-activate',
+    'viewer:tabs-undo',
+    'viewer:tabs-clear',
     'viewer:permission',
     'viewer:session',
     'viewer:fetch-allowed',
@@ -316,15 +340,15 @@ describe('viewer router', () => {
     store.set('viewer:session:epoch', 1);
     expect(await ask(token)).toBe(false);
   });
-  it('takes the tab id from the sender and normalizes the stored value', async () => {
+  it('takes the tab id from the sender', async () => {
     const { host, sender } = setup();
     const { token } = await tabsGet(sender, host);
     await routeViewerMessage(
       {
-        type: 'viewer:tabs-set',
+        type: 'viewer:tabs-open',
         tabId: 99,
         token,
-        tabs: { ids: ['1', '../bad'], active: 'bad' },
+        fileId: '1',
       },
       sender,
       host,
@@ -414,13 +438,24 @@ describe('tabs and students', () => {
     let release: (id: string) => void = () => undefined;
     const slow = new Promise<string>((resolve) => (release = resolve));
     vi.mocked(host.userId).mockImplementationOnce(() => slow);
-    const first = tabsSet(sender, host, { ids: ['1'], active: '1' }, token);
-    const second = tabsSet(sender, host, { ids: ['2'], active: '2' }, token);
+    const first = routeViewerMessage(
+      { type: 'viewer:tabs-open', fileId: '1', token },
+      sender,
+      host,
+    );
+    const second = routeViewerMessage(
+      { type: 'viewer:tabs-open', fileId: '2', token },
+      sender,
+      host,
+    );
     // Without the queue, the second write is done by now, and the slow first one comes last.
     await new Promise((resolve) => setTimeout(resolve, 20));
     release('u1');
     await Promise.all([first, second]);
-    expect(store.get('viewer:https://school.edu:7')).toMatchObject({ ids: ['2'], active: '2' });
+    expect(store.get('viewer:https://school.edu:7')).toMatchObject({
+      ids: ['1', '2'],
+      active: '2',
+    });
   });
 });
 
@@ -1379,12 +1414,32 @@ describe('atomic page tab intents', () => {
     expect(await tabsGet(sender, host)).toMatchObject({ ids: [], active: null });
   });
 
+  it('closes a tab against the current store without restoring its peers', async () => {
+    const { sender, host, pane } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['4', '5'], active: '5' }, token);
+    await intent(pane as Sender, host, token, 'close', { fileId: '4' });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['5'], active: '5' });
+  });
+
+  it('activates an existing tab and never recreates a removed tab', async () => {
+    const { sender, host } = setup();
+    const { token } = await tabsGet(sender, host);
+    await tabsSet(sender, host, { ids: ['4', '5'], active: '5' }, token);
+    await intent(sender, host, token, 'activate', { fileId: '4' });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['4', '5'], active: '4' });
+    await intent(sender, host, token, 'close', { fileId: '4' });
+    await intent(sender, host, token, 'activate', { fileId: '4' });
+    expect(await tabsGet(sender, host)).toMatchObject({ ids: ['5'], active: '5' });
+  });
+
   it('retains pane changes between a page open and a page close', async () => {
     const { sender, pane, host } = setup();
     const { token } = await tabsGet(sender, host);
     await tabsSet(sender, host, { ids: ['4'], active: '4' }, token);
     await intent(sender, host, token, 'open', { fileId: '5' });
-    await tabsSet(pane as Sender, host, { ids: ['5', '8'], active: '8' }, token);
+    await intent(pane as Sender, host, token, 'close', { fileId: '4' });
+    await intent(pane as Sender, host, token, 'open', { fileId: '8' });
     await intent(sender, host, token, 'undo', { added: ['5'], evicted: [] });
     expect(await tabsGet(sender, host)).toMatchObject({ ids: ['8'], active: null });
   });
@@ -1396,4 +1451,19 @@ describe('atomic page tab intents', () => {
       intent(sender, host, 'wrong', type, { fileId: '5', added: [], evicted: [] }),
     ).rejects.toThrow();
   });
+});
+
+it('does not accept tab snapshots from any document', async () => {
+  const { sender, pane, host } = setup();
+  const { token } = await tabsGet(sender, host);
+  for (const source of [sender, pane]) {
+    expect(
+      routeViewerMessage(
+        { type: 'viewer:tabs-set', tabs: { ids: ['9'], active: '9' }, token },
+        source,
+        host,
+      ),
+    ).toBeNull();
+  }
+  expect(await tabsGet(sender, host)).toMatchObject({ ids: [], active: null });
 });

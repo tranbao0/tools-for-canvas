@@ -7,7 +7,7 @@ import {
   helloMessage,
   isViewerSecret,
 } from '@/features/file-viewer/channel';
-import { isCommentTab, normalizeTabs, type Tabs } from '@/features/file-viewer/model';
+import { isCommentTab, normalizeTabs } from '@/features/file-viewer/model';
 import { loadCommentFile } from '@/features/file-viewer/ui/commentFile';
 import { createCoveredStore } from '@/features/file-viewer/ui/covered';
 import { createFullViewStore } from '@/features/file-viewer/ui/fullView';
@@ -120,8 +120,15 @@ export default defineUnlistedScript(() => {
       tabsToken = typeof token === 'string' ? token : undefined;
       return normalizeTabs(reply);
     },
-    async setTabs(tabs: Tabs) {
-      await browser.runtime.sendMessage({ type: 'viewer:tabs-set', tabs, token: tabsToken });
+    async changeTabs(intent) {
+      const { action, ...data } = intent;
+      const reply = await browser.runtime.sendMessage({
+        type: 'viewer:tabs-' + action,
+        ...data,
+        token: tabsToken,
+      });
+      if (!reply || typeof reply !== 'object') throw new Error('The tabs did not save');
+      return normalizeTabs(reply);
     },
     closePane: () => port?.postMessage({ type: 'close' }),
     fullView,

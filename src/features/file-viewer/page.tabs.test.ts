@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { tabIntentReply } from './tabIntent.fixture';
 import { startViewer } from './page';
 
 const identity = vi.hoisted(() => ({
@@ -69,8 +70,8 @@ for (const mode of ['refused', 'rejected'] as const) {
           reads += 1;
           // The read at the start and the read of the open are refused, and later reads work.
           return reads <= 2 ? undefined : { ids: [], active: null, token: '1:1' };
-        case 'viewer:tabs-set':
-          writes.push(message.tabs);
+        case 'viewer:tabs-open':
+          writes.push(message);
           if (mode === 'rejected') throw new Error('worker went away');
           return undefined;
         default:
@@ -129,10 +130,14 @@ describe('the stored tabs of a click that waits for the pane', () => {
             return { secret: SECRET };
           case 'viewer:tabs-get':
             return { ...stored, token };
-          case 'viewer:tabs-set':
-            writes.push({ tabs: message.tabs!, token: message.token });
-            stored = message.tabs!;
-            return { ok: true };
+          case 'viewer:tabs-open':
+          case 'viewer:tabs-undo':
+          case 'viewer:tabs-clear': {
+            const result = tabIntentReply(message, stored);
+            writes.push({ tabs: { ids: result.ids, active: result.active }, token: message.token });
+            stored = { ids: result.ids, active: result.active };
+            return result;
+          }
           default:
             return { ok: true };
         }
@@ -196,6 +201,20 @@ describe('the stored tabs of a click that waits for the pane', () => {
     expect(stored).toEqual({ ids, active: null });
   });
 
+  it('undoes an unseen persisted open at the eight-tab cap', async () => {
+    capture();
+    identity.confirmed = false;
+    const ids = Array.from({ length: 8 }, (_, i) => String(i + 11));
+    await start('1:1', { ids, active: '18' });
+    click('file');
+    await settle();
+    await connect();
+    expect(stored.ids).toEqual([...ids.slice(1), '5']);
+    close();
+    await settle();
+    expect(stored).toEqual({ ids, active: null });
+  });
+
   it('reads after the close write when the earlier write has a slow reply', async () => {
     capture();
     await start('1:1', { ids: ['42'], active: '42' });
@@ -203,7 +222,7 @@ describe('the stored tabs of a click that waits for the pane', () => {
     let release: (() => void) | undefined;
     sendMessage.mockImplementation(async (message: { type: string }) => {
       const result = await answer(message);
-      if (message.type === 'viewer:tabs-set' && !release)
+      if (message.type === 'viewer:tabs-open' && !release)
         await new Promise<void>((resolve) => {
           release = resolve;
         });
@@ -235,7 +254,7 @@ describe('the stored tabs of a click that waits for the pane', () => {
           releaseRead = resolve;
         });
       const result = await answer(message);
-      if (message.type === 'viewer:tabs-set' && !releaseWrite)
+      if (message.type === 'viewer:tabs-open' && !releaseWrite)
         await new Promise<void>((resolve) => {
           releaseWrite = resolve;
         });
@@ -271,7 +290,7 @@ describe('the stored tabs of a click that waits for the pane', () => {
           releaseRead = resolve;
         });
       const result = await answer(message);
-      if (message.type === 'viewer:tabs-set' && !releaseWrite)
+      if (message.type === 'viewer:tabs-open' && !releaseWrite)
         await new Promise<void>((resolve) => {
           releaseWrite = resolve;
         });
@@ -404,7 +423,7 @@ describe('the stored tabs of a click that waits for the pane', () => {
         });
       }
       const result = await answer(message);
-      if (message.type === 'viewer:tabs-set' && !heldWrite) {
+      if (message.type === 'viewer:tabs-open' && !heldWrite) {
         heldWrite = true;
         await new Promise<void>((resolve) => {
           releaseWrite = resolve;

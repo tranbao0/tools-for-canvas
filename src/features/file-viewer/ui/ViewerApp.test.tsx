@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { applyTabIntent, type TabIntent } from '../model';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_FILE_BYTES } from '../../../shared/canvas/fileBytes';
@@ -45,8 +46,9 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
     hasAccess: vi.fn(async () => true),
     requestAccess: vi.fn(async () => true),
     getTabs: vi.fn(async () => saved),
-    setTabs: vi.fn(async (tabs: Tabs) => {
-      saved = tabs;
+    changeTabs: vi.fn(async (intent: TabIntent) => {
+      saved = applyTabIntent(saved, intent);
+      return saved;
     }),
     closePane: vi.fn(),
     fullView: createFullViewStore(vi.fn()),
@@ -58,10 +60,7 @@ function setup(overrides: Partial<PaneHost> = {}, stored: Tabs = { ids: [], acti
   const opens = createOpenSource();
   render(<ViewerApp host={host} opens={opens} />);
   const open = async (fileId: string, courseId?: string) => {
-    saved = {
-      ids: saved.ids.includes(fileId) ? saved.ids : [...saved.ids, fileId],
-      active: fileId,
-    };
+    saved = applyTabIntent(saved, { action: 'open', fileId });
     await act(async () => {
       opens.emit({ fileId, ...(courseId ? { courseId } : {}) });
     });
@@ -191,7 +190,9 @@ describe('pane tabs', () => {
       .mockResolvedValue({ ids: [], active: null });
     const { open, host } = setup({ getTabs });
     await open('1');
-    await waitFor(() => expect(host.setTabs).toHaveBeenCalledWith({ ids: ['1'], active: '1' }));
+    await waitFor(() =>
+      expect(host.changeTabs).toHaveBeenCalledWith({ action: 'open', fileId: '1' }),
+    );
     // The refused read, the read before the file loads, and the read after it confirms the student.
     expect(getTabs).toHaveBeenCalledTimes(3);
   });
@@ -292,9 +293,12 @@ describe('pane tabs', () => {
 
   it('keeps both files when two requests come before the stored tabs are read', async () => {
     let release: (tabs: Tabs) => void = () => undefined;
-    const { opens, saved } = setup({
-      getTabs: vi.fn(() => new Promise<Tabs>((resolve) => (release = resolve))),
-    });
+    const { opens, saved } = setup(
+      {
+        getTabs: vi.fn(() => new Promise<Tabs>((resolve) => (release = resolve))),
+      },
+      { ids: ['1'], active: '1' },
+    );
     await act(async () => {
       opens.emit({ fileId: '2' });
       opens.emit({ fileId: '1' });
@@ -329,7 +333,7 @@ describe('tabs that fail to load', () => {
     await open('2');
     await waitFor(() => expect(tabs()).toHaveLength(1));
     // The read failed, so nothing was written, which would have replaced the stored tabs.
-    expect(host.setTabs).not.toHaveBeenCalled();
+    expect(host.changeTabs).not.toHaveBeenCalled();
     refuse = false;
     await open('3');
     await waitFor(() => expect(tabs()).toHaveLength(2));
@@ -390,7 +394,7 @@ describe('the address that the student clicked', () => {
       opens.emit({ fileId: '1', address: CLICKED });
     });
     await waitFor(() => expect(screen.getByText("Couldn't load this file")).toBeTruthy());
-    expect(JSON.stringify(vi.mocked(host.setTabs).mock.calls)).not.toContain('SECRET');
+    expect(JSON.stringify(vi.mocked(host.changeTabs).mock.calls)).not.toContain('SECRET');
     expect(JSON.stringify(vi.mocked(host.loadFile).mock.calls)).not.toContain('SECRET');
   });
 
