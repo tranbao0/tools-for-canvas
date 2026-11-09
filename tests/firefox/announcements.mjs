@@ -24,6 +24,7 @@ import path from 'node:path';
 import { By } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
 import {
+  scrollAndWait,
   waitForExtensionPage,
   installAddon,
   findBrowserTools,
@@ -267,11 +268,15 @@ async function main() {
     // c. A scroll to the end of the scroll area loads 10 more rows, from the offset of the rows
     // that the server holds, so no row repeats and none is missing.
     if (first.articles === 10 && problems.length === 0) {
-      await driver.executeScript(`
+      await scrollAndWait(
+        driver,
+        `
         const host = document.querySelector('[data-testid="widget-announcements-widget"] [data-wr-list]');
         const feed = host.shadowRoot.querySelector('[role="feed"]');
-        feed.scrollTop = feed.scrollHeight;
-      `);
+        return feed;
+      `,
+        'end',
+      );
       const more = await waitFor(state, (value) => value.articles >= 19);
       if (more.articles !== 19) problems.push(`a scroll gave ${more.articles} rows, not 19`);
       else console.log('Scroll: 10 more rows loaded');

@@ -47,6 +47,7 @@ import { By, Key } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
 import { DASHBOARD } from './dashboard-dock.mjs';
 import {
+  scrollAndWait,
   waitForExtensionPage,
   installAddon,
   clickClosingFrame,
@@ -887,9 +888,10 @@ async function main() {
         );
       };
       await waitFor(placeOf, (value) => value.room > 800, `the ${kind.name} file to draw`);
-      await driver.executeScript(
-        `document.querySelector(arguments[0]).scrollTop = 800`,
-        kind.scroller,
+      await scrollAndWait(
+        driver,
+        `return document.querySelector(${JSON.stringify(kind.scroller)});`,
+        800,
       );
       const placed = await waitFor(
         placeOf,

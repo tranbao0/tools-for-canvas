@@ -146,6 +146,57 @@ export async function startFirefox({
     .build();
 }
 
+/** Opens a private window after its start page finishes loading. */
+export async function openPrivateWindow(driver, url) {
+  const before = new Set(await driver.getAllWindowHandles());
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    await driver.executeScript('window.__testPrivateWindow = OpenBrowserWindow({private:true});');
+    await driver.wait(
+      () =>
+        driver.executeScript(`
+        const w = window.__testPrivateWindow;
+        return w.gBrowserInit?.delayedStartupFinished &&
+          w.gBrowser.selectedBrowser.currentURI.spec === 'about:privatebrowsing' &&
+          !w.gBrowser.selectedBrowser.webProgress.isLoadingDocument;
+      `),
+      RENDER_TIMEOUT_MS,
+      'The private window did not finish startup',
+    );
+  } finally {
+    await driver.executeScript('delete window.__testPrivateWindow;');
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+  const handle = await driver.wait(
+    async () => (await driver.getAllWindowHandles()).find((h) => !before.has(h)),
+    RENDER_TIMEOUT_MS,
+  );
+  await driver.switchTo().window(handle);
+  await driver.get(url);
+  if ((await driver.executeScript('return location.href')) !== url) await driver.get(url);
+  return handle;
+}
+
+/** Sets the scroll position and waits for the event that informs page listeners. */
+export async function scrollAndWait(driver, regionScript, top) {
+  await driver.executeAsyncScript(
+    `
+    const done = arguments[arguments.length - 1];
+    const region = (() => { ${regionScript} })();
+    const target = region === document.scrollingElement ? document : region;
+    const before = region.scrollTop;
+    const onScroll = () => done();
+    target.addEventListener('scroll', onScroll, { once: true });
+    region.scrollTop = arguments[0] === 'end' ? region.scrollHeight : arguments[0];
+    if (region.scrollTop === before) {
+      target.removeEventListener('scroll', onScroll);
+      done();
+    }
+  `,
+    top,
+  );
+}
+
 /**
  * Waits until a tab shows the given URL, and leaves the driver on that tab.
  * @param {import('selenium-webdriver').WebDriver} driver

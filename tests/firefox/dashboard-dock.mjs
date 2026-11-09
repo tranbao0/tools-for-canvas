@@ -29,6 +29,7 @@ import { By } from 'selenium-webdriver';
 import { startFileHost } from '../e2e/support/file-host.ts';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
 import {
+  scrollAndWait,
   waitForExtensionPage,
   installAddon,
   clickClosingFrame,
@@ -193,10 +194,11 @@ async function scrollList(driver, top) {
   await waitFor(() => state(driver), listLoaded, 'the loaded list');
   return waitFor(
     async () => {
-      await driver.executeScript(
+      await scrollAndWait(
+        driver,
         `
         const host = document.querySelector('#weekrow-inpage > weekrow-list');
-        host.shadowRoot.querySelector('.wr-scroll').scrollTop = arguments[0];
+        return host.shadowRoot.querySelector('.wr-scroll');
       `,
         top,
       );
@@ -290,7 +292,7 @@ async function checkOpenDock(driver, problems, screenshot) {
     open.scroll,
   );
   if (screenshot !== undefined) writeFileSync(screenshot, await driver.takeScreenshot(), 'base64');
-  await driver.executeScript('window.scrollTo(0, 1500)');
+  await scrollAndWait(driver, 'return document.scrollingElement;', 1500);
   const scrolled = await waitFor(
     () => state(driver),
     (value) => value.scrollY > 1000,
@@ -302,7 +304,7 @@ async function checkOpenDock(driver, problems, screenshot) {
     JSON.stringify(scrolled.dock) === JSON.stringify(dock),
     scrolled.dock,
   );
-  await driver.executeScript('window.scrollTo(0, 0)');
+  await scrollAndWait(driver, 'return document.scrollingElement;', 0);
   console.log(
     `Dock: ${Math.round(dock.width)} px wide at the right edge, full height, room ${open.padding}`,
   );
@@ -481,7 +483,7 @@ async function wheel(driver, deltaY) {
 /** Check d: the wheel over the day list (design decision 4), also with a wheel that counts lines. */
 async function checkWheel(driver, problems) {
   await waitFor(() => state(driver), listLoaded, 'the loaded list');
-  await driver.executeScript('window.scrollTo(0, 0)');
+  await scrollAndWait(driver, 'return document.scrollingElement;', 0);
   await watchPull(driver);
   const listState = () =>
     driver.executeScript(
@@ -498,7 +500,7 @@ async function checkWheel(driver, problems) {
   expect(problems, 'the list makes no pull in the middle', (await pulls(driver)).length === 0);
 
   // At the end of the list the page stays still and the rows pull and spring back.
-  await driver.executeScript(`${LIST} list.scrollTop = list.scrollHeight;`);
+  await scrollAndWait(driver, `${LIST} return list;`, 'end');
   await waitFor(listState, (value) => value.room - value.top < 2, 'the end of the list');
   await wheel(driver, 100);
   await settle();
@@ -560,8 +562,8 @@ async function checkWheel(driver, problems) {
   await driver.executeScript(`
     const host = document.querySelector('#weekrow-inpage > weekrow-list');
     host.shadowRoot.querySelector('[data-group="todo"] input').click();
-    window.scrollTo(0, 0);
   `);
+  await scrollAndWait(driver, 'return document.scrollingElement;', 0);
   console.log(
     `Wheel: the list scrolls in the middle, and the rows pull ${most.toFixed(1)} px at the end (${lines.toFixed(1)} px for a wheel in lines)`,
   );

@@ -5,6 +5,7 @@ import firefox from 'selenium-webdriver/firefox.js';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
 import { startFileHost } from '../e2e/support/file-host.ts';
 import {
+  openPrivateWindow,
   waitForExtensionPage,
   installAddon,
   findBrowserTools,
@@ -83,20 +84,23 @@ try {
   assert.equal(saved?.error, undefined);
   const control = await driver.getWindowHandle();
   for (const mode of ['private', 'container']) {
-    const before = new Set(await driver.getAllWindowHandles());
-    await driver.setContext(firefox.Context.CHROME);
-    await driver.executeScript(
-      mode === 'private'
-        ? 'OpenBrowserWindow({private:true});'
-        : "const tab=gBrowser.addTab('about:blank',{userContextId:1,triggeringPrincipal:Services.scriptSecurityManager.getSystemPrincipal()});gBrowser.selectedTab=tab;",
-    );
-    await driver.setContext(firefox.Context.CONTENT);
-    const handle = await driver.wait(
-      async () => (await driver.getAllWindowHandles()).find((h) => !before.has(h)),
-      10_000,
-    );
-    await driver.switchTo().window(handle);
-    await driver.get(`${origin}${list}`);
+    let handle;
+    if (mode === 'private') {
+      handle = await openPrivateWindow(driver, `${origin}${list}`);
+    } else {
+      const before = new Set(await driver.getAllWindowHandles());
+      await driver.setContext(firefox.Context.CHROME);
+      await driver.executeScript(
+        "const tab=gBrowser.addTab('about:blank',{userContextId:1,triggeringPrincipal:Services.scriptSecurityManager.getSystemPrincipal()});gBrowser.selectedTab=tab;",
+      );
+      await driver.setContext(firefox.Context.CONTENT);
+      handle = await driver.wait(
+        async () => (await driver.getAllWindowHandles()).find((h) => !before.has(h)),
+        10_000,
+      );
+      await driver.switchTo().window(handle);
+      await driver.get(`${origin}${list}`);
+    }
     const button = await driver.wait(
       async () => (await driver.findElements(By.css('[aria-label="Preview Essay"]')))[0],
       15_000,
