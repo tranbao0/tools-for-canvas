@@ -20,7 +20,34 @@ import { animatedGif } from '../e2e/support/gif.mjs';
 import { FIXTURE_PAGE_COUNT } from '../fixtures/pdf/fixture.ts';
 import { Builder, By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
+import { Command } from 'selenium-webdriver/lib/command.js';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
+
+// Install by path to avoid the deleted temporary XPI in Mozilla bug 2045054.
+export function installAddon(driver, directory, { allowPrivateBrowsing = false } = {}) {
+  return driver.execute(
+    new Command('install addon')
+      .setParameter('path', path.resolve(directory))
+      .setParameter('temporary', true)
+      .setParameter('allowPrivateBrowsing', allowPrivateBrowsing),
+  );
+}
+
+// Only the click that removes its own frame may end with a missing context.
+export async function clickClosingFrame(click) {
+  try {
+    await click();
+  } catch (error) {
+    if (
+      error.name !== 'NoSuchWindowError' &&
+      !/BrowsingContext does no longer exist/.test(error.message) &&
+      !/can't access property "getActor", browsingContext\.currentWindowGlobal is null/.test(
+        error.message,
+      )
+    )
+      throw error;
+  }
+}
 
 /** A fixed moz-extension:// host, set through the extensions.webextensions.uuids pref. */
 const EXTENSION_UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
@@ -119,6 +146,57 @@ export async function startFirefox({
     .build();
 }
 
+/** Opens a private window after its start page finishes loading. */
+export async function openPrivateWindow(driver, url) {
+  const before = new Set(await driver.getAllWindowHandles());
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    await driver.executeScript('window.__testPrivateWindow = OpenBrowserWindow({private:true});');
+    await driver.wait(
+      () =>
+        driver.executeScript(`
+        const w = window.__testPrivateWindow;
+        return w.gBrowserInit?.delayedStartupFinished &&
+          w.gBrowser.selectedBrowser.currentURI.spec === 'about:privatebrowsing' &&
+          !w.gBrowser.selectedBrowser.webProgress.isLoadingDocument;
+      `),
+      RENDER_TIMEOUT_MS,
+      'The private window did not finish startup',
+    );
+  } finally {
+    await driver.executeScript('delete window.__testPrivateWindow;');
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+  const handle = await driver.wait(
+    async () => (await driver.getAllWindowHandles()).find((h) => !before.has(h)),
+    RENDER_TIMEOUT_MS,
+  );
+  await driver.switchTo().window(handle);
+  await driver.get(url);
+  if ((await driver.executeScript('return location.href')) !== url) await driver.get(url);
+  return handle;
+}
+
+/** Sets the scroll position and waits for the event that informs page listeners. */
+export async function scrollAndWait(driver, regionScript, top) {
+  await driver.executeAsyncScript(
+    `
+    const done = arguments[arguments.length - 1];
+    const region = (() => { ${regionScript} })();
+    const target = region === document.scrollingElement ? document : region;
+    const before = region.scrollTop;
+    const onScroll = () => done();
+    target.addEventListener('scroll', onScroll, { once: true });
+    region.scrollTop = arguments[0] === 'end' ? region.scrollHeight : arguments[0];
+    if (region.scrollTop === before) {
+      target.removeEventListener('scroll', onScroll);
+      done();
+    }
+  `,
+    top,
+  );
+}
+
 /**
  * Waits until a tab shows the given URL, and leaves the driver on that tab.
  * @param {import('selenium-webdriver').WebDriver} driver
@@ -135,6 +213,20 @@ export async function waitForTab(driver, url) {
     },
     RENDER_TIMEOUT_MS,
     `${url} did not open within ${RENDER_TIMEOUT_MS} ms`,
+  );
+  await waitForExtensionPage(driver, url);
+}
+
+/** Waits for the expected extension document and its APIs in the current tab or frame. */
+export async function waitForExtensionPage(driver, url) {
+  await driver.wait(
+    () =>
+      driver.executeScript(
+        `return document.URL === arguments[0] && document.readyState === 'complete' && typeof browser !== 'undefined';`,
+        url,
+      ),
+    RENDER_TIMEOUT_MS,
+    `${url} did not finish loading with extension APIs`,
   );
 }
 
@@ -303,6 +395,7 @@ async function checkHostilePaneFrame(driver, server) {
     return found[0] ?? null;
   }, 10_000);
   await driver.switchTo().frame(copy);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   await driver.wait(async () => (await driver.findElements(By.css('#app'))).length === 1, 10_000);
   await driver.switchTo().defaultContent();
   await driver.executeScript(`
@@ -322,6 +415,7 @@ async function checkHostilePaneFrame(driver, server) {
   if (server.requests.some((request) => request.includes('/api/v1/files/99')))
     throw new Error('A hostile frame opened another file');
   await driver.switchTo().frame(copy);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   const tabs = await driver.findElements(By.css('.fv-tab'));
   await driver.switchTo().defaultContent();
   if (tabs.length !== 0) throw new Error('A hostile frame opened a tab');
@@ -348,6 +442,7 @@ async function checkImageTab(driver) {
     return (await shadow.findElements(By.css('iframe')))[0] ?? null;
   }, 10_000);
   await driver.switchTo().frame(frame);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   const image = await driver.wait(async () => {
     const images = await driver.findElements(By.css('.fv-media img'));
     return images[0] ?? false;
@@ -377,6 +472,7 @@ async function checkAnimatedGif(driver) {
   const host = await driver.findElement(By.css('#tools-file-viewer'));
   const frame = (await (await host.getShadowRoot()).findElements(By.css('iframe')))[0];
   await driver.switchTo().frame(frame);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   await driver.executeScript(`
     const log = { created: [], revoked: [] };
     window.__blobs = log;
@@ -399,6 +495,7 @@ async function checkAnimatedGif(driver) {
     .click()
     .perform();
   await driver.switchTo().frame(frame);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   const picture = await driver.wait(async () => {
     const found = await driver.findElements(By.css('.fv-media img[alt="spin.gif"]'));
     return found[0] ?? false;
@@ -417,6 +514,18 @@ async function checkAnimatedGif(driver) {
   console.log('Firefox animated GIF: plays in an element after its blob URL is freed.');
 }
 
+/** Closes the only file tab, which removes the pane and its frame. */
+async function closeOnlyFileTab(driver) {
+  const close = await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]'));
+  await clickClosingFrame(() => close.click());
+  await driver.switchTo().defaultContent();
+  await driver.wait(
+    async () => (await driver.findElements(By.css('#tools-file-viewer'))).length === 0,
+    10_000,
+    'The file pane did not close',
+  );
+}
+
 /** The submission route of the comment attachment of the smoke test. */
 const COMMENT_ROUTE = '/courses/101/assignments/7/submissions/5502';
 
@@ -432,8 +541,7 @@ async function checkCommentAttachment(driver, server, prefs) {
   const behavior = prefs['network.cookie.cookieBehavior'] ?? 5;
   const logins = () => server.requests.filter((url) => url === '/login').length;
   const before = logins();
-  await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]')).click();
-  await driver.switchTo().defaultContent();
+  await closeOnlyFileTab(driver);
   const frame = await driver.wait(async () => {
     await driver
       .actions()
@@ -446,6 +554,7 @@ async function checkCommentAttachment(driver, server, prefs) {
     return frames[0] ?? null;
   }, 10_000);
   await driver.switchTo().frame(frame);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   await driver.wait(async () => {
     const names = await driver.findElements(By.css('[data-part="pdf-name"]'));
     return names.length === 1 && (await names[0].getText()) === 'Teacher feedback.pdf';
@@ -511,6 +620,7 @@ async function checkSubmissionFrame(driver, origin) {
     return frames[0] ?? false;
   }, 10_000);
   await driver.switchTo().frame(paneFrame);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   await driver.wait(async () => {
     const texts = await driver.findElements(By.css('.fv-media:not([hidden]) pre'));
     return texts.length > 0 && (await texts[0].getText()) === 'File from the preview frame.';
@@ -535,6 +645,7 @@ async function checkHostileSvg(driver) {
   const host = await driver.findElement(By.css('#tools-file-viewer'));
   const frame = (await (await host.getShadowRoot()).findElements(By.css('iframe')))[0];
   await driver.switchTo().frame(frame);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   // Record the blob URLs the pane makes and frees. The script runs in the pane page itself.
   await driver.executeScript(`
     const log = { created: [], revoked: [] };
@@ -559,6 +670,7 @@ async function checkHostileSvg(driver) {
     .click()
     .perform();
   await driver.switchTo().frame(frame);
+  await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
   const canvas = await driver.wait(async () => {
     const found = await driver.findElements(By.css('.fv-media canvas[aria-label="hostile.svg"]'));
     return found[0] ?? false;
@@ -584,10 +696,25 @@ async function checkHostileSvg(driver) {
     throw new Error('The blob log did not record the read');
   const open = state.blobs.created.filter((url) => !state.blobs.revoked.includes(url));
   if (open.length !== 0) throw new Error(`A blob URL of the file stays open: ${open.join(' ')}`);
+  // A revoked URL must also reject a direct read.
+  try {
+    const readable = await driver.executeAsyncScript(
+      `const done = arguments[arguments.length - 1];
+       fetch(arguments[0]).then(response => response.arrayBuffer()).then(() => done(true), () => done(false));`,
+      state.blobs.created.at(-1),
+    );
+    if (readable) throw new Error('A freed blob URL is still readable');
+  } catch (error) {
+    if (!/Access to ['"]?blob:.*from script denied/s.test(error.message)) throw error;
+  }
   // A freed URL gives nothing, not even as a page of its own.
   const before = await driver.getAllWindowHandles();
   const current = await driver.getWindowHandle();
-  await driver.executeScript('window.open(arguments[0])', state.blobs.created.at(-1));
+  try {
+    await driver.executeScript('window.open(arguments[0])', state.blobs.created.at(-1));
+  } catch (error) {
+    if (!/Access to ['"]?blob:.*from script denied/s.test(error.message)) throw error;
+  }
   await driver.sleep(1500);
   const after = await driver.getAllWindowHandles();
   const fresh = after.find((handle) => !before.includes(handle));
@@ -759,7 +886,7 @@ async function main(prefs = {}, mode = 'release') {
   try {
     const capabilities = await driver.getCapabilities();
     console.log(`Firefox ${capabilities.get('browserVersion')} with ${geckodriverBin}`);
-    await driver.installWebExtension(extensionDir, { permanent: false });
+    await installAddon(driver, extensionDir);
     console.log(`Installed ${addonId} as a temporary add-on`);
     const welcomeUrl = `moz-extension://${EXTENSION_UUID}/${WELCOME_PAGE}`;
     await waitForTab(driver, welcomeUrl);
@@ -769,9 +896,11 @@ async function main(prefs = {}, mode = 'release') {
     await checkBadSettings(driver);
     const url = `moz-extension://${EXTENSION_UUID}/${SIDEBAR_PAGE}`;
     await driver.get(url);
+    await waitForExtensionPage(driver, url);
     await waitForRender(driver);
     console.log(`${url} rendered "${(await driver.getTitle()) || '(no title)'}"`);
     await driver.get(welcomeUrl);
+    await waitForExtensionPage(driver, welcomeUrl);
     const saved = await driver.executeAsyncScript(
       `
       const done = arguments[arguments.length - 1];
@@ -812,6 +941,7 @@ async function main(prefs = {}, mode = 'release') {
     if (!(await frame.getAttribute('src')).endsWith('/viewer.html'))
       throw new Error('Wrong pane page');
     await driver.switchTo().frame(frame);
+    await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
     // A file that opens before the list has loaded shows the error. Retry reads it again.
     await driver.wait(async () => {
       const names = await driver.findElements(By.css('[data-part="pdf-name"]'));
@@ -822,10 +952,14 @@ async function main(prefs = {}, mode = 'release') {
     }, 30_000);
     // The pane reads the PDF through the redirect, runs PDF.js and its worker from the files of
     // the extension, and draws page 1 of the fixture.
-    const drawn = await driver.wait(async () => {
-      const result = await driver.executeScript(PAGE_ONE_INK);
-      return result?.ink > 1000 ? result : false;
-    }, 20_000);
+    const drawn = await driver.wait(
+      async () => {
+        const result = await driver.executeScript(PAGE_ONE_INK);
+        return result?.ink > 1000 ? result : false;
+      },
+      20_000,
+      'Stage: page render',
+    );
     if (prefs['network.cookie.cookieBehavior'] !== undefined) {
       const behavior = prefs['network.cookie.cookieBehavior'];
       const loginCount = server.requests.filter((url) => url === '/login').length;
@@ -873,8 +1007,7 @@ async function main(prefs = {}, mode = 'release') {
         throw new Error('The positions have a copy in storage.local');
       return Object.values(stored).some((value) => value.page === 3);
     }, 10_000);
-    await driver.findElement(By.css('[aria-label="Close Course notes.pdf"]')).click();
-    await driver.switchTo().defaultContent();
+    await closeOnlyFileTab(driver);
     await driver
       .actions()
       .move({ origin: await driver.findElement(By.css('a')) })
@@ -892,6 +1025,7 @@ async function main(prefs = {}, mode = 'release') {
     const restoredShadow = await restoredHost.getShadowRoot();
     const restoredFrame = await restoredShadow.findElement(By.css('iframe'));
     await driver.switchTo().frame(restoredFrame);
+    await waitForExtensionPage(driver, `moz-extension://${EXTENSION_UUID}/viewer.html`);
     await driver.wait(async () => {
       const inputs = await driver.findElements(By.css('[data-part="pdf-page-input"]'));
       return inputs.length && (await inputs[0].getAttribute('value')) === '3';

@@ -203,9 +203,9 @@ function checkLocales(manifest, fileExists) {
  */
 function checkChromium(manifest, fileExists) {
   const problems = [];
-  if (manifest.minimum_chrome_version !== '144') {
+  if (manifest.minimum_chrome_version !== '147') {
     problems.push(
-      `minimum_chrome_version is ${show(manifest.minimum_chrome_version)}, expected "144"`,
+      `minimum_chrome_version is ${show(manifest.minimum_chrome_version)}, expected "147"`,
     );
   }
   const panel = manifest.side_panel?.default_path;
@@ -236,9 +236,15 @@ function checkFirefox(manifest, fileExists) {
       `browser_specific_settings.gecko.id is ${show(gecko?.id)}, expected an add-on id`,
     );
   }
-  if (gecko?.strict_min_version !== '140.0') {
+  if (gecko?.strict_min_version !== '144.0') {
     problems.push(
-      `gecko.strict_min_version is ${show(gecko?.strict_min_version)}, expected "140.0"`,
+      `gecko.strict_min_version is ${show(gecko?.strict_min_version)}, expected "144.0"`,
+    );
+  }
+  const android = manifest.browser_specific_settings?.gecko_android;
+  if (android?.strict_min_version !== '144.0') {
+    problems.push(
+      `gecko_android.strict_min_version is ${show(android?.strict_min_version)}, expected "144.0"`,
     );
   }
   const collection = gecko?.data_collection_permissions;

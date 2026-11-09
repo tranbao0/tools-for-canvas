@@ -17,7 +17,7 @@ A step passes only when the result matches the "Expect" line.
 - For the "Limited Access for Students" step, an account admin who can turn that setting on.
 - For the custom-domain steps in part 2, a Canvas site with its own address, such as `https://canvas.example.edu`.
 - For the "Switch to this Canvas?" step in part 2, a second Canvas site, and a normal web page that is not Canvas.
-- Chrome 144 or later, Edge 144 or later and Firefox 140 or later, each with a new, empty profile.
+- Chrome 147 or later, Edge 147 or later and Firefox 144 or later, each with a new, empty profile.
 - A build from `npm run build`.
 
 ## Part 1: Live gate test
@@ -858,7 +858,7 @@ Run them on the widget dashboard, on the classic dashboard and on a course home 
 
 ## Firefox for Android
 
-1. Install the Firefox build on a phone with Firefox 142 or later, and open the in-page list on a Canvas page.
+1. Install the Firefox build on a phone with Firefox 144 or later, and open the in-page list on a Canvas page.
    Expect: it works, and you write down every control that does not.
 
 - [ ] On the new dashboard, hide a native grade, hide and show a copied grade, reload, and check that plain Canvas agrees.

@@ -23,7 +23,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { By } from 'selenium-webdriver';
 import { ensureBuild, ROOT } from '../../scripts/lib/ensure-build.mjs';
-import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+import {
+  scrollAndWait,
+  waitForExtensionPage,
+  installAddon,
+  findBrowserTools,
+  readAddonId,
+  startFirefox,
+  waitForTab,
+} from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const WAIT_MS = 15000;
@@ -204,7 +212,7 @@ async function main() {
   try {
     console.log(`Firefox ${(await driver.getCapabilities()).get('browserVersion')}`);
     await driver.manage().window().setRect({ width: 1440, height: 1100 });
-    await driver.installWebExtension(extensionDir, { permanent: false });
+    await installAddon(driver, extensionDir);
     await waitForTab(driver, `moz-extension://${UUID}/welcome.html`);
     const saved = await driver.executeAsyncScript(
       `
@@ -260,11 +268,15 @@ async function main() {
     // c. A scroll to the end of the scroll area loads 10 more rows, from the offset of the rows
     // that the server holds, so no row repeats and none is missing.
     if (first.articles === 10 && problems.length === 0) {
-      await driver.executeScript(`
+      await scrollAndWait(
+        driver,
+        `
         const host = document.querySelector('[data-testid="widget-announcements-widget"] [data-wr-list]');
         const feed = host.shadowRoot.querySelector('[role="feed"]');
-        feed.scrollTop = feed.scrollHeight;
-      `);
+        return feed;
+      `,
+        'end',
+      );
       const more = await waitFor(state, (value) => value.articles >= 19);
       if (more.articles !== 19) problems.push(`a scroll gave ${more.articles} rows, not 19`);
       else console.log('Scroll: 10 more rows loaded');
@@ -273,6 +285,7 @@ async function main() {
     if (problems.length > 0) {
       await driver.switchTo().newWindow('tab');
       await driver.get(`moz-extension://${UUID}/welcome.html`);
+      await waitForExtensionPage(driver, `moz-extension://${UUID}/welcome.html`);
       const background = await driver.executeAsyncScript(`
         const done = arguments[arguments.length - 1];
         browser.runtime.sendMessage({ type: 'weekrow:get-state', request: { surface: 'panel', spanOffset: 0, scopeCourseId: null } })

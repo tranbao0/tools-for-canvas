@@ -89,7 +89,7 @@ const CHROME_MANIFEST = {
   permissions: ['storage', 'cookies', 'scripting', 'alarms', 'sidePanel'],
   host_permissions: ['https://*/*'],
   action: { default_title: '__MSG_actionTitle__' },
-  minimum_chrome_version: '144',
+  minimum_chrome_version: '147',
   background: { service_worker: 'background.js' },
   side_panel: { default_path: 'sidepanel.html' },
   content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_idle' }],
@@ -106,9 +106,10 @@ const FIREFOX_MANIFEST = {
   browser_specific_settings: {
     gecko: {
       id: 'tools-for-canvas@tranbao0.github.io',
-      strict_min_version: '140.0',
+      strict_min_version: '144.0',
       data_collection_permissions: { required: ['none'] },
     },
+    gecko_android: { strict_min_version: '144.0' },
   },
   background: { scripts: ['background.js'] },
   sidebar_action: { default_panel: 'sidepanel.html', open_at_install: false },
@@ -442,7 +443,7 @@ describe('check-manifest', () => {
       /optional_host_permissions/,
     ],
     ['a popup', (m) => (m.action.default_popup = 'popup.html'), /default_popup/],
-    ['an old minimum version', (m) => (m.minimum_chrome_version = '116'), /minimum_chrome_version/],
+    ['an old minimum version', (m) => (m.minimum_chrome_version = '144'), /minimum_chrome_version/],
     ['no side panel', (m) => delete m.side_panel, /side_panel\.default_path is missing/],
     [
       'a missing locale file',
@@ -465,8 +466,18 @@ describe('check-manifest', () => {
     ['no add-on id', (m) => delete m.browser_specific_settings.gecko.id, /gecko\.id/],
     [
       'an old minimum version',
-      (m) => (m.browser_specific_settings.gecko.strict_min_version = '128.0'),
-      /strict_min_version/,
+      (m) => (m.browser_specific_settings.gecko.strict_min_version = '140.0'),
+      /^gecko\.strict_min_version/,
+    ],
+    [
+      'an old Android minimum version',
+      (m) => (m.browser_specific_settings.gecko_android.strict_min_version = '142.0'),
+      /^gecko_android\.strict_min_version/,
+    ],
+    [
+      'no Android minimum version',
+      (m) => delete m.browser_specific_settings.gecko_android,
+      /^gecko_android\.strict_min_version/,
     ],
     [
       'data collection',

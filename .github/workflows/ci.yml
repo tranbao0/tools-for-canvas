@@ -173,10 +173,14 @@ jobs:
           retention-days: 7
 
   firefox:
-    name: Firefox tests
+    name: Firefox tests (${{ matrix.firefox }})
     # Every Firefox suite runs here, beside the Chromium tests, so neither job waits for the other.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        firefox: [runner, minimum]
     steps:
       - name: Check out the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -190,34 +194,66 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Read the declared minimum Firefox version
+        if: matrix.firefox == 'minimum'
+        id: minimum
+        run: |
+          npm run build:firefox
+          node -e "console.log('version=' + JSON.parse(require('fs').readFileSync('.output/firefox-mv3/manifest.json')).browser_specific_settings.gecko.strict_min_version)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Firefox and geckodriver archives
+        if: matrix.firefox == 'minimum'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/weekrow-test/archives
+          key: firefox-archives-${{ steps.minimum.outputs.version }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/firefox/install-firefox.sh') }}
+
+      - name: Install the minimum Firefox version
+        if: matrix.firefox == 'minimum'
+        env:
+          WEEKROW_FIREFOX: ${{ steps.minimum.outputs.version }}
+        run: |
+          install_output="$(bash tests/firefox/install-firefox.sh)"
+          printf '%s\n' "$install_output"
+          printf '%s\n' "$install_output" | grep -E '^(FIREFOX_BIN|GECKODRIVER_BIN)=' >> "$GITHUB_ENV"
+
       - name: Find Firefox and geckodriver
+        if: matrix.firefox == 'runner'
         # The runner image ships Firefox and geckodriver; GECKOWEBDRIVER points to the driver folder.
         run: |
           echo "FIREFOX_BIN=$(command -v firefox)" >> "$GITHUB_ENV"
           echo "GECKODRIVER_BIN=$GECKOWEBDRIVER/geckodriver" >> "$GITHUB_ENV"
 
       - name: Firefox smoke test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox
 
       - name: Firefox file check test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:file-check
 
       - name: Firefox submission pages test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:submission-pages
 
       - name: Firefox assignments preview test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:assignments-preview
 
       - name: Firefox announcements test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:announcements
 
       - name: Firefox People test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:people
 
       - name: Firefox dashboard dock test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:dashboard-dock
 
       - name: Firefox private and container tabs test
+        if: ${{ !cancelled() }}
         run: npm run test:firefox:private-tabs
 
   platforms:

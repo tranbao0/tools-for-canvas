@@ -4,7 +4,14 @@ import { By } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
 import { ensureBuild } from '../../scripts/lib/ensure-build.mjs';
 import { startFileHost } from '../e2e/support/file-host.ts';
-import { findBrowserTools, readAddonId, startFirefox } from './smoke.mjs';
+import {
+  openPrivateWindow,
+  waitForExtensionPage,
+  installAddon,
+  findBrowserTools,
+  readAddonId,
+  startFirefox,
+} from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const extension = `moz-extension://${UUID}`;
@@ -66,9 +73,10 @@ async function message(request) {
 }
 
 try {
-  await driver.installWebExtension(extensionDir, { permanent: false, allowPrivateBrowsing: true });
+  await installAddon(driver, extensionDir, { allowPrivateBrowsing: true });
   await driver.get(`${extension}/welcome.html`);
-  await driver.wait(() => driver.executeScript('return typeof browser !== "undefined"'), 10_000);
+  await waitForExtensionPage(driver, `${extension}/welcome.html`);
+
   const saved = await driver.executeAsyncScript(
     `const done=arguments[arguments.length-1];const origin=arguments[0];(async()=>{await browser.storage.session.set({offer:{origin}});return browser.runtime.sendMessage({type:'weekrow:accept-offer',origin});})().then(done,e=>done({error:String(e)}));`,
     origin,
@@ -76,20 +84,23 @@ try {
   assert.equal(saved?.error, undefined);
   const control = await driver.getWindowHandle();
   for (const mode of ['private', 'container']) {
-    const before = new Set(await driver.getAllWindowHandles());
-    await driver.setContext(firefox.Context.CHROME);
-    await driver.executeScript(
-      mode === 'private'
-        ? 'OpenBrowserWindow({private:true});'
-        : "const tab=gBrowser.addTab('about:blank',{userContextId:1,triggeringPrincipal:Services.scriptSecurityManager.getSystemPrincipal()});gBrowser.selectedTab=tab;",
-    );
-    await driver.setContext(firefox.Context.CONTENT);
-    const handle = await driver.wait(
-      async () => (await driver.getAllWindowHandles()).find((h) => !before.has(h)),
-      10_000,
-    );
-    await driver.switchTo().window(handle);
-    await driver.get(`${origin}${list}`);
+    let handle;
+    if (mode === 'private') {
+      handle = await openPrivateWindow(driver, `${origin}${list}`);
+    } else {
+      const before = new Set(await driver.getAllWindowHandles());
+      await driver.setContext(firefox.Context.CHROME);
+      await driver.executeScript(
+        "const tab=gBrowser.addTab('about:blank',{userContextId:1,triggeringPrincipal:Services.scriptSecurityManager.getSystemPrincipal()});gBrowser.selectedTab=tab;",
+      );
+      await driver.setContext(firefox.Context.CONTENT);
+      handle = await driver.wait(
+        async () => (await driver.getAllWindowHandles()).find((h) => !before.has(h)),
+        10_000,
+      );
+      await driver.switchTo().window(handle);
+      await driver.get(`${origin}${list}`);
+    }
     const button = await driver.wait(
       async () => (await driver.findElements(By.css('[aria-label="Preview Essay"]')))[0],
       15_000,
@@ -113,6 +124,7 @@ try {
     const link = await driver.findElement(By.linkText('notes.txt'));
     await driver.actions().move({ origin: link }).click().perform();
     await driver.switchTo().frame(await frameOf('tools-file-viewer'));
+    await waitForExtensionPage(driver, `${extension}/viewer.html`);
     assert.deepEqual(await message({ type: 'viewer:origin' }), { value: { canvasOrigin: origin } });
     assert.ok(
       (await message({ type: 'trusted-vault', operation: 'keys' })).error,
@@ -127,6 +139,7 @@ try {
     assert.match(text, /Open in Canvas/);
     await driver.switchTo().defaultContent();
     await driver.switchTo().window(control);
+    await waitForExtensionPage(driver, `${extension}/welcome.html`);
     const probe = await driver.executeAsyncScript(
       `const done=arguments[arguments.length-1];(async()=>{const tabs=await browser.tabs.query({});const tab=tabs.find(t=>t.cookieStoreId===arguments[1]);if(!tab)throw new Error('Missing cookie store: '+JSON.stringify(tabs.map(t=>({store:t.cookieStoreId,url:t.url}))));return browser.scripting.executeScript({target:{tabId:tab.id},func:async()=>{const ask=async message=>{try{return await browser.runtime.sendMessage(message)??null;}catch{return null;}};return {session:typeof browser.storage.session,vault:await ask({type:'trusted-vault',operation:'keys'}),pane:await ask({type:'viewer:origin'})};}});})().then(done,e=>done({error:String(e)}));`,
       origin,
@@ -136,11 +149,13 @@ try {
     assert.deepEqual(probe[0].result, { session: 'undefined', vault: null, pane: null });
     await driver.switchTo().window(handle);
     await driver.get(`${extension}/sidepanel.html`);
+    await waitForExtensionPage(driver, `${extension}/sidepanel.html`);
     await driver.wait(async () => {
       const text = await driver.findElement(By.css('body')).getText();
       return text.length > 0 && !text.includes('Loading your list');
     }, 15_000);
     await driver.switchTo().window(control);
+    await waitForExtensionPage(driver, `${extension}/welcome.html`);
     console.log(
       `${mode}: Preview stays open, file error card renders, sidebar settles, both APIs refuse Canvas content scripts.`,
     );

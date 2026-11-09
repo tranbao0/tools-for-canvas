@@ -191,16 +191,18 @@ export default defineConfig({
           browser_specific_settings: {
             gecko: {
               id: 'tools-for-canvas@tranbao0.github.io',
-              strict_min_version: '140.0',
+              // The PDF viewer needs Firefox 144 (decision 14).
+              strict_min_version: '144.0',
               data_collection_permissions: { required: ['none'] },
               // Only test channel builds name an update address. A listed store build must not.
               ...(TEST_UPDATE_URL ? { update_url: TEST_UPDATE_URL } : {}),
             },
             // Firefox for Android is allowed (decision 14). This states the minimum version there,
-            // where the data collection setting needs Firefox 142.
-            gecko_android: { strict_min_version: '142.0' },
+            // which the PDF viewer sets, as on desktop.
+            gecko_android: { strict_min_version: '144.0' },
           },
         }
-      : { minimum_chrome_version: '144' }),
+      : // The PDF viewer needs Chrome and Edge 147 (decision 14).
+        { minimum_chrome_version: '147' }),
   }),
 });

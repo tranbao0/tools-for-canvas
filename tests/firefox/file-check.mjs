@@ -3,7 +3,14 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { By } from 'selenium-webdriver';
 import { startFileHost } from '../e2e/support/file-host.ts';
-import { findBrowserTools, readAddonId, startFirefox, waitForTab } from './smoke.mjs';
+import {
+  waitForExtensionPage,
+  installAddon,
+  findBrowserTools,
+  readAddonId,
+  startFirefox,
+  waitForTab,
+} from './smoke.mjs';
 
 const UUID = '5eecb0a7-3f2c-4b8e-9d41-7a6c2e0f1b93';
 const PDF = '%PDF-1.4\n%%EOF\n';
@@ -44,7 +51,7 @@ try {
     acceptInsecureCerts: true,
     localDomains: 'school.instructure.com',
   });
-  await driver.installWebExtension(extensionDir, { permanent: false });
+  await installAddon(driver, extensionDir);
   await waitForTab(driver, `moz-extension://${UUID}/welcome.html`);
   const saved = await driver.executeAsyncScript(
     `
@@ -62,7 +69,14 @@ try {
   const canvasTab = await driver.getWindowHandle();
   await driver.switchTo().newWindow('tab');
   await driver.get(`moz-extension://${UUID}/file-check.html`);
-  await driver.findElement(By.xpath('//button[normalize-space()="Run check"]')).click();
+  await waitForExtensionPage(driver, `moz-extension://${UUID}/file-check.html`);
+  const runCheck = await driver.wait(
+    async () =>
+      (await driver.findElements(By.xpath('//button[normalize-space()="Run check"]')))[0] ?? false,
+    10_000,
+    'The file check button did not render',
+  );
+  await runCheck.click();
   await driver.wait(
     async () => (await driver.findElements(By.css('[data-part="report"]'))).length > 0,
     20_000,
