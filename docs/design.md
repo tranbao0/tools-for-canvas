@@ -1538,6 +1538,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 **Refresh triggers:**
 
 - A full round reloads the session data at most once an hour, and Retry requests a reload.
+  With no courses, a round after a failed course load or a pending Retry also reloads the session, light or full, until it loads.
   A new profile id drops all cached data.
   The cached work of a course that left is dropped, but assignment details and planner items stay.
   A failed reload keeps the old session data unless Canvas refuses access or the user changes.

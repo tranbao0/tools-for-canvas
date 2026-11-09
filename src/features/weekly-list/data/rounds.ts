@@ -395,11 +395,14 @@ export async function runRound(context: RoundContext): Promise<RoundUpdate> {
     session = await loadSession(api, context.now);
     context.onSession?.(session);
   } else if (
-    kind === 'full' &&
-    (context.reloadSession ||
-      session.loadedAt === undefined ||
-      session.loadedAt > context.now ||
-      context.now - session.loadedAt >= SESSION_MAX_AGE_MS)
+    // With no courses, the course list is all a round can show, so after a failed load every
+    // round tries it again until it loads. The saved failure outlives a worker restart.
+    (session.courses.length === 0 && (context.reloadSession || cache.failure !== null)) ||
+    (kind === 'full' &&
+      (context.reloadSession ||
+        session.loadedAt === undefined ||
+        session.loadedAt > context.now ||
+        context.now - session.loadedAt >= SESSION_MAX_AGE_MS))
   ) {
     try {
       const fresh = await loadSession(api, context.now);

@@ -238,6 +238,68 @@ describe('a clock that went back', () => {
 });
 
 describe('Retry on No active courses', () => {
+  it('reloads the course list on focus while a failed Retry is pending', async () => {
+    const scenario = buildScenario(new Date(Date.now()).toISOString());
+    const courses = scenario.courses;
+    scenario.courses = [];
+    const h = await createHarness({ scenario });
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'no_courses' });
+
+    h.canvas.fail('listCourses', canvasError('server'), { times: 2 });
+    await h.owner.refresh('retry');
+    await h.owner.settled();
+    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load' });
+
+    await advance(h, 61_000);
+    await h.owner.trigger('focus');
+    await h.owner.settled();
+    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load' });
+
+    h.canvas.scenario.courses = courses;
+    await advance(h, 61_000);
+    await h.owner.trigger('focus');
+    await h.owner.settled();
+    expect((await loadReady(h)).kind).toBe('ready');
+    expect(h.canvas.callsOf('listCourses')).toHaveLength(4);
+  });
+
+  it('keeps trying the course list after a worker restart lost the Retry', async () => {
+    const scenario = buildScenario(new Date(Date.now()).toISOString());
+    const courses = scenario.courses;
+    scenario.courses = [];
+    const h = await createHarness({ scenario });
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    h.canvas.fail('listCourses', canvasError('server'), { times: 1 });
+    await h.owner.refresh('retry');
+    await h.owner.settled();
+    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'cant_load' });
+
+    const restarted = h.restart();
+    h.canvas.scenario.courses = courses;
+    await advance(h, 61_000);
+    await restarted.trigger('focus');
+    await restarted.settled();
+    expect(await restarted.getState(PANEL)).not.toMatchObject({ kind: 'no_courses' });
+    expect(h.canvas.callsOf('listCourses')).toHaveLength(3);
+  });
+
+  it('sends no session request in a light round with no courses and nothing to retry', async () => {
+    const scenario = buildScenario(new Date(Date.now()).toISOString());
+    scenario.courses = [];
+    const h = await createHarness({ scenario });
+    await h.owner.getState(PANEL);
+    await h.owner.settled();
+    h.canvas.resetCalls();
+    await advance(h, 61_000);
+    await h.owner.trigger('focus');
+    await h.owner.settled();
+    expect(h.canvas.callsOf('listCourses')).toHaveLength(0);
+    expect(await h.owner.getState(PANEL)).toMatchObject({ kind: 'no_courses' });
+  });
+
   it('shows that the list could not load when the course list fails, and the courses once it loads', async () => {
     const scenario = buildScenario(new Date(Date.now()).toISOString());
     const courses = scenario.courses;
