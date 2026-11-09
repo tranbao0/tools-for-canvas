@@ -1,4 +1,4 @@
-import { findPaneIdentitySetting } from './scripts/check-pane-identity-setting.mjs';
+import { findTestOnlyCode } from './scripts/check-test-only-code.mjs';
 import path from 'node:path';
 import { defineConfig } from 'wxt';
 import type { Plugin } from 'vite';
@@ -84,10 +84,10 @@ export default defineConfig({
   publicDir: 'src/public',
   manifestVersion: 3,
   hooks: {
-    // All release routes, including AMO and the Firefox test channel, reject the test setting.
+    // All release routes, including AMO and the Firefox test channel, reject all test-only markers.
     'build:done': async (wxt) => {
       if (process.env['WXT_E2E'] === '1') return;
-      const problems = await findPaneIdentitySetting(wxt.config.outDir);
+      const problems = await findTestOnlyCode(wxt.config.outDir);
       if (problems.length > 0) throw new Error(problems.join('\n'));
     },
     'build:publicAssets': (_wxt, files) => {

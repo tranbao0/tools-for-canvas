@@ -156,6 +156,7 @@ export async function settledList(page: Page): Promise<void> {
   await page.getByRole('progressbar', { name: 'Refreshing' }).waitFor({ state: 'detached' });
   // The marker can be missing before the first refresh draws it, so the data must also be in.
   await expect(page.getByText('Loading past due…')).toHaveCount(0);
+  await settleSlotCard(page);
 }
 
 /**
@@ -171,4 +172,27 @@ export async function refreshedSince(page: Page, canvas: FakeCanvas, from: numbe
     )
     .toBe(true);
   await settledList(page);
+}
+
+/** Scrolls the slot card into view and waits for its scroll listener to catch up. */
+export async function settleSlotCard(page: Page): Promise<void> {
+  const card = inpageList(page).locator('weekrow-list[data-panel="slot"] .wr');
+  if (!(await card.count())) return;
+  await card.scrollIntoViewIfNeeded();
+  await expect
+    .poll(() =>
+      card.evaluate(async (node) => {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        const container = document.querySelector('#weekrow-inpage')!;
+        return (
+          Math.abs(
+            parseFloat((node as HTMLElement).style.getPropertyValue('--wr-slot-top')) -
+              (12 - container.getBoundingClientRect().top),
+          ) < 0.5
+        );
+      }),
+    )
+    .toBe(true);
 }

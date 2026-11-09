@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+// Rejects test-only markers in every non-e2e build.
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { listFiles, runForTargets } from './lib/build-output.mjs';
+
+export const TEST_ONLY_MARKERS = Object.freeze([
+  'e2ePaneIdentityTimeoutMs',
+  'e2ePaneHandshakeMs',
+  'e2eOpenPanelButton',
+  'e2e-open-side-panel',
+  'Open the side panel (end-to-end test build)',
+  'data-av-started',
+]);
+
+/** Return every bundle that contains a test-only marker, including source maps. */
+export async function findTestOnlyCode(dir) {
+  const problems = [];
+  for (const file of await listFiles(dir)) {
+    const bytes = await readFile(path.join(dir, file));
+    for (const marker of TEST_ONLY_MARKERS) {
+      if (bytes.includes(marker)) problems.push(`${file} holds "${marker}"`);
+    }
+  }
+  return problems;
+}
+
+if (import.meta.main) {
+  await runForTargets('Test-only code absence check', async (dir, target) => {
+    const problems = await findTestOnlyCode(dir);
+    if (problems.length === 0) console.log(`  ok   ${target}: no test-only code`);
+    return problems;
+  });
+}
