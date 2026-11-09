@@ -14,7 +14,7 @@
     "dev:firefox": "wxt -b firefox",
     "build": "npm run build:chrome && npm run build:edge && npm run build:firefox",
     "build:chrome": "wxt build -b chrome",
-    "build:e2e": "WXT_E2E=1 wxt build -b chrome",
+    "build:e2e": "node scripts/build-e2e.mjs",
     "build:edge": "wxt build -b edge",
     "build:firefox": "wxt build -b firefox",
     "build-for-amo": "wxt build -b firefox",

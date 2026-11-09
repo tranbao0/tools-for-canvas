@@ -62,18 +62,29 @@ export function isBuildFresh(browser, mode = 'release') {
  * @returns {string} the build directory
  */
 export function ensureBuild(browser, mode = 'release') {
-  if (!isBuildFresh(browser, mode)) {
-    console.log(`Building the ${browser} extension (${mode})...`);
-    // A release build never takes a test switch from the shell, so it always writes the release
-    // output and holds no test-only code, such as the file access check.
-    const {
-      WXT_E2E: _e2e,
-      FIREFOX_TEST_VERSION: _version,
-      FIREFOX_TEST_UPDATE_URL: _updateUrl,
-      ...releaseEnv
-    } = process.env;
-    const env = mode === 'e2e' ? { ...releaseEnv, WXT_E2E: '1' } : releaseEnv;
-    execSync(`npm run build:${browser}`, { cwd: ROOT, stdio: 'inherit', env });
-  }
+  if (!isBuildFresh(browser, mode)) build(browser, mode);
+  return targetDir(browser, mode);
+}
+
+/**
+ * Builds a browser target with `npm run build:<browser>`, also when its build is fresh. The switch
+ * is set here in Node, not in a shell, so the build runs the same on every platform.
+ * The `e2e` mode builds with `WXT_E2E=1`, which adds the test-only code.
+ * @param {'chrome' | 'edge' | 'firefox'} browser
+ * @param {BuildMode} [mode]
+ * @returns {string} the build directory
+ */
+export function build(browser, mode = 'release') {
+  console.log(`Building the ${browser} extension (${mode})...`);
+  // A release build never takes a test switch from the shell, so it always writes the release
+  // output and holds no test-only code, such as the file access check.
+  const {
+    WXT_E2E: _e2e,
+    FIREFOX_TEST_VERSION: _version,
+    FIREFOX_TEST_UPDATE_URL: _updateUrl,
+    ...releaseEnv
+  } = process.env;
+  const env = mode === 'e2e' ? { ...releaseEnv, WXT_E2E: '1' } : releaseEnv;
+  execSync(`npm run build:${browser}`, { cwd: ROOT, stdio: 'inherit', env });
   return targetDir(browser, mode);
 }
