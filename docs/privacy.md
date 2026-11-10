@@ -5,10 +5,10 @@ Last updated: 2026-11-07.
 
 ## Summary
 
-Tools for Canvas has no account, no server of its own and no telemetry.
+Tools for Canvas runs in your browser with your own Canvas sign-in and has no server of its own.
 It reads your Canvas data in your browser and shows it to you.
 It writes only done marks, custom tasks, announcement read and unread marks, the read mark of your rubric comments and your grade visibility preference, and only to your own Canvas.
-Nothing goes to the developer.
+Nothing goes to me.
 Canvas can send a file, View Feedback or Preview to its own storage and DocViewer hosts, and images and profile pictures can load from other hosts that a teacher or Canvas chose (see "What the extension sends elsewhere").
 
 ## What the extension reads
@@ -100,7 +100,7 @@ The extension writes only to your own Canvas, and only for something that you do
 - the flags that an item had before, when you press Undo on a done mark;
 - a custom task when you create, edit or delete one;
 - a read mark on an announcement when you press "Mark as read" in the Announcements tab, or an unread mark when you press Undo;
-- a grade visibility preference when you click the eye on a copied course grade card, through the GraphQL `updateWidgetDashboardConfig` mutation (added 2026-11-07);
+- a grade visibility preference when you click the eye on a copied course grade card, through the GraphQL `updateWidgetDashboardConfig` mutation;
 - a read mark or an unread mark on an announcement when you click the read control in the Announcements widget of the new dashboard;
 - a read mark on the rubric comments of your own submission (`PUT /api/v1/courses/:id/assignments/:id/submissions/:id/rubric_assessments/read`), when you open the Submission Details page of your own work and its rubric, with unread comments, is in view;
 - nothing of its own when you open View Feedback, but the session address that it loads makes Canvas mark the notes on that file as read, as Canvas's own dialog does;
@@ -207,7 +207,7 @@ All Firefox measurements described here use Firefox 159.
 
 ## What the extension sends elsewhere
 
-The extension sends no data to the developer.
+The extension sends no data to me.
 It has no analytics, no error reporting, no advertising and no remote configuration.
 It opens no web page on install or uninstall.
 Every request to Canvas starts at the one Canvas address that you saved.
@@ -236,7 +236,7 @@ A lint rule forbids network calls anywhere else in the code, and a CI check scan
 
 ## Sharing and sale
 
-The developer does not receive your data, so the developer cannot sell, share or transfer it.
+I do not receive your data, so I cannot sell, share or transfer it.
 No person reads your data, except you.
 
 ## Chrome Web Store Limited Use
@@ -255,7 +255,7 @@ In particular:
 
 In Firefox, the extension declares that it collects no data (`data_collection_permissions` is `none`).
 The extension sends your Canvas requests only to your own Canvas and to the hosts that Canvas redirects to.
-It sends nothing to the developer.
+It sends nothing to me.
 Images and profile pictures load as "What the extension sends elsewhere" says.
 
 ## Remove your data
@@ -274,7 +274,7 @@ The project's change history shows every earlier version.
 
 Open an issue in the [project repository](https://github.com/tranbao0/tools-for-canvas).
 
-The settings and the welcome page end with a link to the owner's Ko-fi page (https://ko-fi.com/baowows).
+The settings and the welcome page end with a link to my Ko-fi page (https://ko-fi.com/baowows).
 It is a plain link that opens in a new tab only when you click it.
 The extension sends no request to Ko-fi and shares no data with it.
 

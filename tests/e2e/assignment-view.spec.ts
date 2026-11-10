@@ -425,7 +425,7 @@ test('each row has a Preview button at the end of its layout, and no row opens i
   await expect(page).toHaveURL(`${canvas.origin}${ASSIGNMENT}`);
 });
 
-test('the Preview button has the size and the look of the mockup, and the colors of the states', async ({
+test('the Preview button has a fixed size and look, and the colors of the states', async ({
   context,
   page,
   background,

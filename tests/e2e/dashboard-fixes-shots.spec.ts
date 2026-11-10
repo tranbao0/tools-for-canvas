@@ -10,7 +10,7 @@ import { courseJson } from '../fixtures/canvas-json';
 import { addCsrfCookie, expect, openCanvasPage, serveScenario, test } from './support/weekrow';
 
 const DIR = path.join(process.cwd(), 'screenshots', 'dashboard-fixes');
-/** The four states of the announcements list at 1920 px are also saved here, for the owner to compare with the mockup. */
+/** The four states of the announcements list at 1920 px are also saved in a second folder. */
 const TICKET_DIR = '/tmp/ticket-a';
 const LIST = '[data-testid="widget-announcements-widget"] [data-wr-list]';
 const WIDGETS = {

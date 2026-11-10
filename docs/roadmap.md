@@ -1,9 +1,8 @@
 # Roadmap
 
 Tools for Canvas is a set of small fixes for the parts of Canvas that students find unfinished.
-The owner chose this list on 2026-10-30, after a research round on the new Canvas dashboard, the file viewer and common student complaints.
 Each tool has its own on and off switch in the settings.
-No tool needs an account, uses AI or sends data anywhere but the student's own Canvas.
+Each tool works with the student's own Canvas sign-in and keeps the student's data in the browser and on that Canvas.
 
 The order below is the build order.
 Each tool gets its own design decision in `docs/design.md` before it is built.
@@ -16,35 +15,33 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 
 ## 2. New dashboard fixes (built, see decision 22)
 
-The owner removed two fixes from this list on 2026-11-04: course colors on the Course work icons and the Course work extras.
-The weekly card covers the Course work widget.
-
 - Announcements: one steady list with infinite scroll, a message that opens in its row, a read control, a course filter, a search by topic and a search by date.
-- Course grades for every course, not only six.
+- Course grades for every course.
+  Canvas shows only six.
 - People: the same steady list as the announcements, with the Course filter and the Role filter of Canvas, a search by name and course, each course and role of a person on its own line, and a message button.
 - Steady page buttons: the page navigator of each paged widget keeps one width and one place for each button.
 
-The owner asked on 2026-11-05 that fixes like the announcements list apply Canvas wide where that is possible.
-The scroll list is now one shared module, and the Announcements and People widgets use it.
+Fixes like the announcements list apply Canvas wide where that is possible.
+The scroll list is one shared module, and the Announcements and People widgets use it.
 The paged widgets that stay on the steady pager are Recent Grades and To-do.
 Each of them needs only an adapter for the shared list: a function that loads a page, a row and its filters.
 
 ## 3. File viewer
 
-- Files open in a resizable pane docked beside Canvas, not in a full-window overlay.
+- Files open in a resizable pane docked beside Canvas.
 - Tabs hold several files at once.
 - PDFs render with a bundled PDF.js, with search, and each file remembers its page and zoom.
 - Images, text, audio and video use the browser's own players in the pane.
 - Word, PowerPoint and other documents use Canvas's own document viewer inside the pane.
 - "Open in new tab" is the fallback when a file cannot load in the pane.
-- Files the student submitted open in the pane from the assignment page and the submission details, with a download button, instead of only downloading.
+- Files the student submitted open in the pane from the assignment page and the submission details, with a download button.
 - A test on a live Canvas comes first, to confirm that the extension can fetch file data on real schools.
 - File access check (built, see decision 23):
   - Only Firefox test channel builds include it.
     The settings have a "Developer" group with a "File access check" link.
   - The student opens a Canvas page with a file link and clicks "Run check".
     The check reads the file API, fetches the file bytes from the background and from an extension page through the redirects, tries a hidden iframe of an extension page in the Canvas page, and lists the file links and DOM hooks it finds.
-  - It makes a plain-text report with no names, tokens or query strings, and the owner pastes it into the next planning round.
+  - It makes a plain-text report with no names, tokens or query strings.
   - The viewer waits for that report.
 
 ## 4. One assignment view

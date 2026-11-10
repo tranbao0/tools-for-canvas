@@ -1661,7 +1661,7 @@ describe('writes across a sign-out, another user or another Canvas', () => {
     expect(((await sessionCacheItem.getValue()) as SessionCache).pendingDeletes).toEqual({});
   });
 
-  it('sends a DELETE again that failed after an abandoned queue, instead of leaving the task stuck', async () => {
+  it('sends a DELETE again that failed after an abandoned queue', async () => {
     const h = await loaded();
     await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday });
     const releaseDelete = h.canvas.hold('deleteNote');

@@ -122,7 +122,7 @@ Before each release, a person runs the [live checklist](docs/live-checklist.md) 
 - Use TypeScript in strict mode.
 - Tests must be deterministic: no real clock, no network and no retries.
   A flaky test is a bug, so fix its cause.
-  A test that fails only under heavy load may be removed by the owner's choice, but a test that is the only cover of a security or data rule stays.
+  A test that fails only under heavy load may be removed, but a test that is the only cover of a security or data rule stays.
 - All UI text goes in `src/public/_locales/en/messages.json`.
 - In Markdown files, put each sentence on its own line.
 - The design decisions are in [docs/design.md](docs/design.md).

@@ -310,12 +310,12 @@ describe('messages', () => {
       false,
     );
     expect(isDataMessage({ type: 'weekrow:get-state' })).toBe(false);
-    // The typed-address messages no longer exist.
+    // The typed-address messages are not data messages.
     expect(
       isDataMessage({ type: 'weekrow:setup', origin: 'https://a.edu', fromOffer: false }),
     ).toBe(false);
     expect(isDataMessage({ type: 'weekrow:change-address' })).toBe(false);
-    // The in-page confirmation no longer exists: only extension pages answer an offer.
+    // The in-page confirmation is not a data message: only extension pages answer an offer.
     expect(isDataMessage({ type: 'weekrow:confirm-canvas' })).toBe(false);
     expect(isDataMessage('weekrow:get-state')).toBe(false);
   });

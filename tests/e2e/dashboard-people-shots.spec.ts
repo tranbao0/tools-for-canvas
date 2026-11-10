@@ -2,7 +2,7 @@
  * Screenshots of the People card, light and dark, in `screenshots/dashboard-people`. They are for
  * the eye: the test checks only that the list draws. Dark uses the data-fixture-dark attribute of
  * the widget fixture, which stands for the dark theme of the widget package. A copy goes to
- * `/tmp/ticket-n` for the owner to compare with the mockup.
+ * `/tmp/ticket-n`.
  */
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';

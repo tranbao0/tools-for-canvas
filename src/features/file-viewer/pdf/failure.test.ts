@@ -118,7 +118,7 @@ it('keeps response facts free of hosts, tokens and custom content types', () => 
   expect(pdfDetails(error, 'fetch', 0, '1', 'test').report).toContain('Content type: other');
 });
 
-it('drops invalid diagnostic values rather than reporting addresses', () => {
+it('drops invalid diagnostic values and reports no address', () => {
   const error = new FileBytesError('not_a_file', 'The answer is a web page');
   error.facts = Object.assign(
     {
