@@ -58,13 +58,12 @@ async function widgetHeight(page: Page): Promise<number> {
 }
 
 /**
- * The card is as tall as the widget it replaced, at least 420 px, and never taller than the card
- * in the band.
+ * The card fits the widget, the band height limit, and the window with equal 12 px gaps.
  */
 function expectSlotHeight(card: number, widget: number, windowHeight: number): void {
-  expect(Math.abs(card - Math.min(Math.max(420, widget), limit(windowHeight)))).toBeLessThanOrEqual(
-    1,
-  );
+  expect(
+    Math.abs(card - Math.min(Math.max(420, widget), limit(windowHeight), windowHeight - 24)),
+  ).toBeLessThanOrEqual(1);
 }
 
 async function open(
