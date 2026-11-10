@@ -91,6 +91,8 @@ export class PdfEngine {
   private revealPage = -1;
   private searchToken = 0;
   private active = true;
+  private waitingForSize = true;
+  private scrollExtent = 0;
   private destroyed = false;
   private waiting: PageView[] = [];
   private running = 0;
@@ -264,7 +266,6 @@ export class PdfEngine {
       this.observer.observe(view.el);
     }
     this.resizer.observe(this.options.scroller);
-    this.layout();
     this.emit();
     void this.loadSizes();
   }
@@ -331,19 +332,24 @@ export class PdfEngine {
 
   /** Lays out the pages again and keeps the position in the document. */
   private relayout(): void {
-    const anchor = this.captureAnchor();
+    if (!this.active || this.waitingForSize) return;
     this.layout();
-    this.restoreAnchor(anchor);
+    this.restoreAnchor(this.anchor);
+    this.finishReveal();
     this.queueStale();
     this.emit();
   }
 
   private captureAnchor(): { index: number; fraction: number } {
-    const { scroller } = this.options;
-    const index = this.pageAt(scroller.scrollTop);
+    return this.anchorAt(this.options.scroller.scrollTop);
+  }
+
+  /** The place in the document at a scroll offset: a page and how far down that page. */
+  private anchorAt(y: number): { index: number; fraction: number } {
+    const index = this.pageAt(y);
     const top = this.tops[index] ?? PAD;
     const height = this.heights[index] ?? 1;
-    return { index, fraction: (scroller.scrollTop - (top - PAD)) / (height + PAD) };
+    return { index, fraction: (y - (top - PAD)) / (height + PAD) };
   }
 
   private restoreAnchor(anchor: { index: number; fraction: number }): void {
@@ -366,19 +372,43 @@ export class PdfEngine {
     return Math.max(0, low);
   }
 
+  /**
+   * Scrolls to a place in code. The place becomes the saved place in the document, so a later
+   * layout, such as a zoom or a new size, keeps it. It is the wanted place: a browser that clamps
+   * the offset in a layout that is too small does not change it.
+   */
   private setScrollTop(top: number): void {
     const { scroller } = this.options;
-    scroller.scrollTop = Math.max(0, top);
-    this.programmaticTop = scroller.scrollTop;
+    const wanted = Math.max(0, top);
+    scroller.scrollTop = wanted;
+    this.programmaticTop = wanted;
+    this.scrollExtent = scroller.scrollHeight;
+    this.anchor = this.anchorAt(wanted);
   }
 
   private trackScroll(): void {
-    if (this.destroyed || !this.active) return;
+    if (this.destroyed || !this.active || this.waitingForSize) return;
     const { scroller } = this.options;
-    if (this.programmaticTop !== null && Math.abs(scroller.scrollTop - this.programmaticTop) < 2) {
+    const area = this.area();
+    const maximum = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    // A new size before the next layout, or a new scroll height, can clamp the offset. That
+    // scroll is not the student's, and the next layout restores the saved place. Any other
+    // scroll is the student's, also while the size changes.
+    const resized =
+      area.width !== this.lastArea.width ||
+      area.height !== this.lastArea.height ||
+      scroller.scrollHeight !== this.scrollExtent;
+    if (resized && scroller.scrollTop >= maximum - 1) return;
+    this.scrollExtent = scroller.scrollHeight;
+    if (
+      this.programmaticTop !== null &&
+      Math.abs(scroller.scrollTop - Math.min(this.programmaticTop, maximum)) < 2
+    ) {
       return;
     }
     this.programmaticTop = null;
+    // The student moved on, so a match that has not drawn yet must not pull the view back later.
+    this.revealPage = -1;
     const probe = scroller.scrollTop + scroller.clientHeight / 3;
     const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
     const index = atEnd && scroller.scrollTop > 0 ? this.views.length - 1 : this.pageAt(probe);
@@ -399,8 +429,11 @@ export class PdfEngine {
     if (this.destroyed || !this.active) return;
     const { scroller } = this.options;
     if (scroller.clientWidth === 0 || scroller.clientHeight === 0) return;
+    const waiting = this.waitingForSize;
+    this.waitingForSize = false;
     const area = this.area();
-    if (area.width === this.lastArea.width && area.height === this.lastArea.height) return;
+    if (!waiting && area.width === this.lastArea.width && area.height === this.lastArea.height)
+      return;
     this.relayout();
   }
 
@@ -413,10 +446,9 @@ export class PdfEngine {
       return;
     }
     this.active = true;
-    this.layout();
-    this.restoreAnchor(this.anchor);
-    this.queueStale();
-    this.emit();
+    this.waitingForSize = true;
+    this.resizer.unobserve(this.options.scroller);
+    this.resizer.observe(this.options.scroller);
   }
 
   // Drawing
@@ -453,6 +485,7 @@ export class PdfEngine {
     if (this.destroyed) return;
     const target = Math.min(this.doc.numPages, Math.max(1, Math.trunc(page)));
     const top = (this.tops[target - 1] ?? PAD) - PAD;
+    this.revealPage = -1;
     this.setScrollTop(top);
     this.page = target;
     this.scale = this.views[target - 1]?.zoom ?? this.scale;
@@ -559,6 +592,7 @@ export class PdfEngine {
 
   clearSearch(): void {
     this.searchToken += 1;
+    this.revealPage = -1;
     const previous = this.byPage;
     this.matches = [];
     this.byPage = new Map();
@@ -584,10 +618,7 @@ export class PdfEngine {
     // The layer holds the text that it shows; the search text has the same items in the same order.
     const page: PageText = text ?? { items: view.textItems, eol: [] };
     const mark = highlightPage(document, view.textDivs, page, matches, selected);
-    if (mark && this.revealPage === pageIndex) {
-      this.revealPage = -1;
-      this.centerOn(mark);
-    }
+    if (mark && this.revealPage === pageIndex && this.centerOn(mark)) this.revealPage = -1;
   }
 
   /** Brings the selected match into view. */
@@ -599,17 +630,28 @@ export class PdfEngine {
     this.revealPage = match.page;
     const mark = view.el.querySelector<HTMLElement>('.highlight.selected');
     if (mark) {
-      this.revealPage = -1;
-      this.centerOn(mark);
+      if (this.centerOn(mark)) this.revealPage = -1;
     } else {
       // The page is not drawn yet. It marks the match when its text layer is ready.
       this.setScrollTop((this.tops[match.page] ?? PAD) - PAD);
     }
-    this.anchor = this.captureAnchor();
     this.setPage(match.page + 1);
   }
 
-  private centerOn(mark: HTMLElement): void {
+  /** Centers a match whose page drew while the view could not measure it. */
+  private finishReveal(): void {
+    if (this.revealPage < 0) return;
+    const view = this.views[this.revealPage];
+    const mark = view?.el.querySelector<HTMLElement>('.highlight.selected');
+    if (mark && this.centerOn(mark)) this.revealPage = -1;
+  }
+
+  /**
+   * Centers a match and saves that place. A hidden view, or one that waits for its size, reads
+   * every size as 0, so it does not center: the next layout finishes the reveal.
+   */
+  private centerOn(mark: HTMLElement): boolean {
+    if (!this.active || this.waitingForSize) return false;
     const { scroller } = this.options;
     const area = scroller.getBoundingClientRect();
     const box = mark.getBoundingClientRect();
@@ -619,6 +661,7 @@ export class PdfEngine {
     if (box.left < area.left || box.right > area.right) {
       scroller.scrollLeft += box.left - area.left - scroller.clientWidth / 2;
     }
+    return true;
   }
 
   /** Ends the worker and frees the document, the pages and the observers. */

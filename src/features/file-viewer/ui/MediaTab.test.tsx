@@ -260,6 +260,17 @@ it('asks the reader to stop a text file after 2 MB and a few bytes', async () =>
 });
 
 it('puts the scroll offset of a text file back when its tab shows again', async () => {
+  let report = () => {};
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        report = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
   canPlay('maybe');
   const host = { readFile: vi.fn(async () => new Uint8Array([104, 105])), loadPdfjs: vi.fn() };
   const text = (active: boolean) => (
@@ -274,12 +285,15 @@ it('puts the scroll offset of a text file back when its tab shows again', async 
   const view = render(text(true));
   await waitFor(() => expect(document.querySelector('pre')?.textContent).toBe('hi'));
   const scroller = document.querySelector('.fv-media')!;
+  Object.defineProperties(scroller, { clientWidth: { value: 472 }, clientHeight: { value: 655 } });
+  report();
   scroller.scrollTop = 300;
   scroller.dispatchEvent(new Event('scroll'));
   view.rerender(text(false));
   // Firefox resets the offset of a hidden scroller and fires no scroll event.
   scroller.scrollTop = 0;
   view.rerender(text(true));
+  report();
   expect(scroller.scrollTop).toBe(300);
 });
 
@@ -522,4 +536,164 @@ it('keeps the picture of a small image while its tab is hidden', async () => {
   await new Promise((resolve) => setTimeout(resolve, 30));
   expect(document.querySelector('img')).not.toBeNull();
   expect(host.readFile).toHaveBeenCalledTimes(1);
+});
+
+it('restores a text offset after an active tab gets its size', async () => {
+  let report = () => {};
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        report = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const host = { readFile: vi.fn(async () => new Uint8Array([104, 105])), loadPdfjs: vi.fn() };
+  const text = (active: boolean) => (
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="n.txt"
+      contentType="text/plain"
+      active={active}
+    />
+  );
+  const view = render(text(true));
+  await waitFor(() => expect(document.querySelector('pre')).not.toBeNull());
+  const scroller = document.querySelector('.fv-media')!;
+  let height = 655;
+  let top = 800;
+  Object.defineProperties(scroller, {
+    clientWidth: { get: () => (height ? 472 : 0) },
+    clientHeight: { get: () => height },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = height ? value : 0;
+      },
+    },
+  });
+  report();
+  scroller.dispatchEvent(new Event('scroll'));
+  view.rerender(text(false));
+  height = 0;
+  top = 0;
+  view.rerender(text(true));
+  report();
+  height = 655;
+  report();
+  expect(top).toBe(800);
+});
+
+it('keeps a text offset at the end after the text got shorter, through a hide and a show', async () => {
+  let report = () => {};
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        report = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const host = { readFile: vi.fn(async () => new Uint8Array([104, 105])), loadPdfjs: vi.fn() };
+  const text = (active: boolean) => (
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="n.txt"
+      contentType="text/plain"
+      active={active}
+    />
+  );
+  const view = render(text(true));
+  await waitFor(() => expect(document.querySelector('pre')).not.toBeNull());
+  const scroller = document.querySelector('.fv-media')!;
+  let height = 655;
+  let length = 43682;
+  let top = 800;
+  Object.defineProperties(scroller, {
+    clientWidth: { get: () => (height ? 472 : 0) },
+    clientHeight: { get: () => height },
+    scrollHeight: { get: () => length },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = height ? Math.min(value, Math.max(0, length - height)) : 0;
+      },
+    },
+  });
+  report();
+  scroller.dispatchEvent(new Event('scroll'));
+  // Full view makes the lines wider, so the text gets shorter, and the student reads its end.
+  length = 14595;
+  top = length - height;
+  scroller.dispatchEvent(new Event('scroll'));
+  const end = top;
+  view.rerender(text(false));
+  height = 0;
+  top = 0;
+  view.rerender(text(true));
+  height = 655;
+  report();
+  expect(top).toBe(end);
+});
+
+it('keeps a saved text offset when a too small layout clamps it to a fractional offset', async () => {
+  let report = () => {};
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        report = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const host = { readFile: vi.fn(async () => new Uint8Array([104, 105])), loadPdfjs: vi.fn() };
+  const text = (active: boolean) => (
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="n.txt"
+      contentType="text/plain"
+      active={active}
+    />
+  );
+  const view = render(text(true));
+  await waitFor(() => expect(document.querySelector('pre')).not.toBeNull());
+  const scroller = document.querySelector('.fv-media')!;
+  let height = 655;
+  let length = 43682;
+  let top = 20000;
+  Object.defineProperties(scroller, {
+    clientWidth: { get: () => (height ? 472 : 0) },
+    clientHeight: { get: () => height },
+    scrollHeight: { get: () => Math.round(length) },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = height ? Math.min(value, Math.max(0, length - height)) : 0;
+      },
+    },
+  });
+  report();
+  scroller.dispatchEvent(new Event('scroll'));
+  view.rerender(text(false));
+  height = 0;
+  top = 0;
+  view.rerender(text(true));
+  // A stale, narrower layout: the text is shorter, and Firefox clamps to a fractional offset.
+  height = 655;
+  length = 14594.4;
+  report();
+  expect(top).toBeCloseTo(13939.4);
+  scroller.dispatchEvent(new Event('scroll'));
+  length = 43682;
+  report();
+  expect(top).toBe(20000);
 });

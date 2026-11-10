@@ -248,14 +248,43 @@ export function MediaTab(props: {
   // Firefox resets the offset of a scroller that `display: none` hides, and no scroll event
   // follows. The tab keeps the offsets it had while it showed and puts them back when it shows.
   const places = useRef(new Map<Element, number>());
+  const restoring = useRef(false);
   const keepPlace = (event: Event) => {
-    if (shown.current && event.target instanceof Element)
-      places.current.set(event.target, event.target.scrollTop);
+    const target = event.target;
+    if (!shown.current || restoring.current || !(target instanceof Element)) return;
+    if (!target.clientWidth || !target.clientHeight) return;
+    // A scroller that is still too small clamps a restored offset. That scroll keeps the saved one.
+    // Firefox clamps to a fractional offset, up to 1 px away from the rounded maximum.
+    const maximum = Math.max(0, target.scrollHeight - target.clientHeight);
+    const saved = places.current.get(target);
+    if (saved !== undefined && Math.abs(target.scrollTop - Math.min(saved, maximum)) < 1) return;
+    if (saved !== undefined && saved > maximum && target.scrollTop >= maximum - 1) return;
+    places.current.set(target, target.scrollTop);
   };
   useLayoutEffect(() => {
     if (!props.active) return;
-    for (const [scroller, top] of places.current)
-      if (scroller.isConnected && scroller.scrollTop !== top) scroller.scrollTop = top;
+    restoring.current = true;
+    for (const scroller of places.current.keys())
+      if (!scroller.isConnected) places.current.delete(scroller);
+    const restore = () => {
+      let ready = true;
+      for (const [scroller, top] of places.current) {
+        if (!scroller.isConnected) continue;
+        if (!scroller.clientWidth || !scroller.clientHeight) {
+          ready = false;
+          continue;
+        }
+        scroller.scrollTop = top;
+      }
+      restoring.current = !ready;
+    };
+    if (places.current.size === 0) restore();
+    const observer = new ResizeObserver(restore);
+    for (const scroller of places.current.keys()) observer.observe(scroller);
+    return () => {
+      observer.disconnect();
+      restoring.current = true;
+    };
   }, [props.active]);
   // A tab that is not shown must not keep playing.
   useEffect(() => {

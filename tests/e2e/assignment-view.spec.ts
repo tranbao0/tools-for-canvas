@@ -1,4 +1,4 @@
-import { pageQuiet, requestsQuiet, stableValue } from './support/settle';
+import { frameQuiet, pageQuiet, requestsQuiet, stableValue } from './support/settle';
 import { contentScriptWorld } from './support/content-script';
 import { moveTabsToAnotherStore } from './support/pane-identity';
 /**
@@ -2531,6 +2531,80 @@ test.describe('with the scroll bars of the page', () => {
 
 test.describe('a file pane that the assignment pane covers', () => {
   test.use({ browserArgs: [TRUST_TEST_CERTIFICATE] });
+
+  for (const kind of ['pdf', 'text'] as const) {
+    test(`keeps the ${kind} place after a delayed host reveal`, async ({
+      context,
+      page,
+      background,
+    }) => {
+      const bytes =
+        kind === 'pdf'
+          ? readFileSync('tests/fixtures/pdf/fixture.pdf')
+          : Buffer.from('A line of notes\n'.repeat(2000));
+      const contentType = kind === 'pdf' ? 'application/pdf' : 'text/plain';
+      const host = await startFileHost({ '/file': { body: bytes, contentType } });
+      try {
+        const { canvas } = await open(context, page, background, {
+          extra: [
+            {
+              path: '/api/v1/files/501',
+              body: {
+                id: '501',
+                display_name: `notes.${kind === 'pdf' ? 'pdf' : 'txt'}`,
+                filename: `notes.${kind === 'pdf' ? 'pdf' : 'txt'}`,
+                'content-type': contentType,
+                size: bytes.length,
+                url: '/files/501/download',
+                context_type: 'Course',
+                context_id: '12',
+              },
+            },
+            {
+              path: '/files/501/download',
+              status: 302,
+              headers: { location: `${host.origin}/file` },
+              body: '',
+            },
+          ],
+        });
+        await ready(page, canvas, background);
+        await addFileLinkToList(page);
+        await expect(async () => {
+          if (!(await page.locator(FILE_PANE).isVisible()))
+            await page.locator('#list-file').click({ timeout: 2000 });
+          await expect(page.locator(FILE_PANE)).toBeVisible({ timeout: 1500 });
+        }).toPass({ timeout: 20_000 });
+        const frame = await pane(page);
+        const scroll = frame.locator(kind === 'pdf' ? '[data-part="pdf-scroll"]' : '.fv-media');
+        await expect(scroll).toBeVisible();
+        await expect.poll(() => scroll.evaluate((el) => el.scrollHeight)).toBeGreaterThan(1500);
+        await scroll.evaluate((el) => {
+          el.scrollTop = 800;
+        });
+        await frameQuiet(frame, page);
+        const place = () =>
+          scroll.evaluate((el) => ({
+            top: el.scrollTop,
+            page: document.querySelector<HTMLInputElement>('[data-part="pdf-page-input"]')?.value,
+            zoom: document.querySelector('.pv-page')?.getBoundingClientRect().width,
+          }));
+        const before = await place();
+        expect(before.top).toBe(800);
+        await openPane(page, 'Essay');
+        const style = await page.addStyleTag({
+          content: '#tools-file-viewer { display: none !important; }',
+        });
+        await closeAssignment(page);
+        await frameQuiet(frame, page);
+        await style.evaluate((el) => el.parentNode?.removeChild(el));
+        await frameQuiet(frame, page);
+        expect(await place()).toEqual(before);
+      } finally {
+        await host.close();
+      }
+    });
+  }
 
   test('stops the sound of an audio file', async ({ context, page, background }) => {
     const bytes = readFileSync('tests/fixtures/files/tone.wav');
