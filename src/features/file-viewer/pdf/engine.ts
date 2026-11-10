@@ -407,6 +407,8 @@ export class PdfEngine {
       return;
     }
     this.programmaticTop = null;
+    // The student moved on, so a match that has not drawn yet must not pull the view back later.
+    this.revealPage = -1;
     const probe = scroller.scrollTop + scroller.clientHeight / 3;
     const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
     const index = atEnd && scroller.scrollTop > 0 ? this.views.length - 1 : this.pageAt(probe);
@@ -483,6 +485,7 @@ export class PdfEngine {
     if (this.destroyed) return;
     const target = Math.min(this.doc.numPages, Math.max(1, Math.trunc(page)));
     const top = (this.tops[target - 1] ?? PAD) - PAD;
+    this.revealPage = -1;
     this.setScrollTop(top);
     this.page = target;
     this.scale = this.views[target - 1]?.zoom ?? this.scale;
@@ -589,6 +592,7 @@ export class PdfEngine {
 
   clearSearch(): void {
     this.searchToken += 1;
+    this.revealPage = -1;
     const previous = this.byPage;
     this.matches = [];
     this.byPage = new Map();

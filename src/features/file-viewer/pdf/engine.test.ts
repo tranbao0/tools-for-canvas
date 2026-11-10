@@ -200,6 +200,37 @@ describe('PdfEngine in a frame that shows again', () => {
     engine.destroy();
   });
 
+  it('does not pull the student back to a match that drew after they scrolled away', async () => {
+    const engine = await openShown();
+    const internals = engine as unknown as {
+      tops: number[];
+      views: { el: HTMLElement }[];
+      revealPage: number;
+      finishReveal(): void;
+    };
+    // A search jumped toward page 3, whose text layer is not ready yet.
+    engine.goToPage(3);
+    internals.revealPage = 2;
+    // The student scrolls back up before the match draws.
+    scroller.scrollTop = 100;
+    scroller.dispatchEvent(new Event('scroll'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const mark = document.createElement('span');
+    mark.className = 'highlight selected';
+    mark.getBoundingClientRect = () =>
+      ({
+        top: internals.tops[2]! - scroller.scrollTop,
+        height: 10,
+        left: 10,
+        right: 20,
+      }) as DOMRect;
+    internals.views[2]!.el.append(mark);
+    internals.finishReveal();
+    expect(scroller.scrollTop).toBe(100);
+    expect(internals.revealPage).toBe(-1);
+    engine.destroy();
+  });
+
   it('keeps its anchor through a stale non-zero report and a clamped scroll', async () => {
     const engine = await openShown();
     engine.goToPage(2);
