@@ -2,6 +2,9 @@ import { test, expect } from './support/weekrow';
 import { openCoursePage, pane } from './support/file-viewer';
 import { frameQuiet } from './support/settle';
 
+// The pane must not cover itself for a slow identity reply while the test checks its tabs.
+test.use({ longPaneIdentityTimeout: true });
+
 test('a refused pane open stays in the strip after an activate', async ({
   context,
   page,

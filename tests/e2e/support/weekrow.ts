@@ -173,11 +173,8 @@ export async function refreshedSince(page: Page, canvas: FakeCanvas, from: numbe
   await settledList(page);
 }
 
-/** Scrolls a slot control or the card into view and waits for the scroll listener to catch up. */
-export async function settleSlotCard(page: Page, control?: Locator): Promise<void> {
-  const card = inpageList(page).locator('weekrow-list[data-panel="slot"] .wr');
-  if (!(await card.count())) return;
-  await (control ?? card).scrollIntoViewIfNeeded();
+/** Waits until the slot card has caught up with the page scroll. */
+async function slotCaughtUp(card: Locator): Promise<void> {
   await expect
     .poll(() =>
       card.evaluate(async (node) => {
@@ -194,6 +191,30 @@ export async function settleSlotCard(page: Page, control?: Locator): Promise<voi
       }),
     )
     .toBe(true);
+}
+
+/**
+ * Scrolls a slot control or the card into view and waits for the scroll listener to catch up.
+ * The card follows the page 12 px below the top of the window until the bottom of its slot. A card
+ * that is taller than a low window therefore keeps its bottom below the window while it follows,
+ * and a page scroll toward a control there only moves the card along. The page then scrolls on, as
+ * a student does, until the card stops at the bottom of its slot and the control shows.
+ */
+export async function settleSlotCard(page: Page, control?: Locator): Promise<void> {
+  const card = inpageList(page).locator('weekrow-list[data-panel="slot"] .wr');
+  if (!(await card.count())) return;
+  await (control ?? card).scrollIntoViewIfNeeded();
+  await slotCaughtUp(card);
+  if (!control) return;
+  const below = () => control.evaluate((node) => node.getBoundingClientRect().bottom > innerHeight);
+  if (!(await below())) return;
+  await page.evaluate(() => {
+    const slot = document.querySelector('#weekrow-inpage')!.getBoundingClientRect();
+    window.scrollBy({ top: slot.bottom - innerHeight, behavior: 'instant' });
+  });
+  await slotCaughtUp(card);
+  if (await below())
+    throw new Error('The slot control stays below the window at the end of its slot');
 }
 
 /** Prepares a slot control before Playwright presses and releases at its position. */
