@@ -195,10 +195,8 @@ async function slotCaughtUp(card: Locator): Promise<void> {
 
 /**
  * Scrolls a slot control or the card into view and waits for the scroll listener to catch up.
- * The card follows the page 12 px below the top of the window until the bottom of its slot. A card
- * that is taller than a low window therefore keeps its bottom below the window while it follows,
- * and a page scroll toward a control there only moves the card along. The page then scrolls on, as
- * a student does, until the card stops at the bottom of its slot and the control shows.
+ * The card follows the page inside the window, and its content scrolls inside it.
+ * A control below the window after the card catches up is a product error.
  */
 export async function settleSlotCard(page: Page, control?: Locator): Promise<void> {
   const card = inpageList(page).locator('weekrow-list[data-panel="slot"] .wr');
@@ -208,13 +206,7 @@ export async function settleSlotCard(page: Page, control?: Locator): Promise<voi
   if (!control) return;
   const below = () => control.evaluate((node) => node.getBoundingClientRect().bottom > innerHeight);
   if (!(await below())) return;
-  await page.evaluate(() => {
-    const slot = document.querySelector('#weekrow-inpage')!.getBoundingClientRect();
-    window.scrollBy({ top: slot.bottom - innerHeight, behavior: 'instant' });
-  });
-  await slotCaughtUp(card);
-  if (await below())
-    throw new Error('The slot control stays below the window at the end of its slot');
+  throw new Error('The slot control stays below the window while its card follows the page');
 }
 
 /** Prepares a slot control before Playwright presses and releases at its position. */

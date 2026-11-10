@@ -466,11 +466,12 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The wrapper gets `position: relative`.
     The card is as tall as the section's box through CSS, with no measurement: it follows the box of the widget when Canvas changes it, for example when the summary counts arrive or a web font loads.
     The card follows the page scroll with a 12 px top offset, bounded by the bottom of its slot.
+    A card that follows the window is never taller than the window minus equal top and bottom gaps, and its content then scrolls inside it.
     Canvas's boxes stay unchanged; the extension sets the card offset because Canvas's overflow ancestors prevent CSS sticky positioning from following the page.
-    It is never taller than the card in the band (the window height minus 48 px, at most 760 px and at least 420 px): a widget that is much taller, such as one that a narrow window stacks (about 5,997 px at 1000 px), would make a card as tall as the page, and its day list would not scroll inside it.
+    It is never taller than the card in the band (the window height minus 48 px, at most 760 px and at least 420 px where the window permits): a widget that is much taller, such as one that a narrow window stacks (about 5,997 px at 1000 px), would make a card as tall as the page, and its day list would not scroll inside it.
     The card sits at the top of the box, and its day list scrolls inside it.
     It never changes its box because of its own content.
-    The card is 420 px high at least: a section that is lower gets a wrapper `min-height` of 420 px plus the two vertical margins, so the column makes room.
+    The slot reserves at least 420 px: a section that is lower gets a wrapper `min-height` of 420 px plus the two vertical margins, so the column makes room.
     The hidden widget is out of the tab order and the accessibility tree, and takes no pointer events.
     Wait for the status filter or retry button before the card shows for the first time, so it does not appear over a box that changes with the first data.
     After ten seconds without settled data, the card shows over whatever box the widget has.
@@ -584,7 +585,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - Every group and every item shows: Past due in full, Today, Tomorrow, the later days, No due date and Done.
     "N older" and "Mark all older done" work as in the side panel.
     Done has its own "N older" line, with no action (decision 6).
-  - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
+  - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px where the window permits.
+    A card that follows the window is never taller than the window minus its equal top and bottom gaps, and its content then scrolls inside it.
     In the Course work slot it has this height as its most, and it is lower only over a widget that is lower than this.
     A short list leaves empty room at the bottom, so the card keeps its size from span to span.
   - A view switch and the footer stay in a bottom bar outside the day scroll region, with a thin border in the card line color.

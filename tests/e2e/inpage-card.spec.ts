@@ -58,13 +58,12 @@ async function widgetHeight(page: Page): Promise<number> {
 }
 
 /**
- * The card is as tall as the widget it replaced, at least 420 px, and never taller than the card
- * in the band.
+ * The card fits the widget, the band height limit, and the window with equal 12 px gaps.
  */
 function expectSlotHeight(card: number, widget: number, windowHeight: number): void {
-  expect(Math.abs(card - Math.min(Math.max(420, widget), limit(windowHeight)))).toBeLessThanOrEqual(
-    1,
-  );
+  expect(
+    Math.abs(card - Math.min(Math.max(420, widget), limit(windowHeight), windowHeight - 24)),
+  ).toBeLessThanOrEqual(1);
 }
 
 async function open(
@@ -1801,3 +1800,53 @@ test('the dock clears the last row for Undo and a three-line failure at 400 px',
     font: undo.font,
   });
 });
+
+for (const layout of BAR_LAYOUTS.filter((item) => item.page !== 'course-home' || item.docked)) {
+  test(`low window keeps the following card in view: ${layout.name}`, async ({
+    context,
+    page,
+    background,
+  }) => {
+    await openBottomLayout(context, page, background, layout, 400);
+    const slot = layout.page === 'dashboard-widgets';
+    if (slot) {
+      await page.evaluate(() => {
+        const box = document.querySelector('#weekrow-inpage')!.getBoundingClientRect();
+        window.scrollBy(0, box.top + 40);
+      });
+    }
+    const list = inpageList(page);
+    const card = list.locator('.wr');
+    const gap = slot ? 12 : layout.docked ? 24 : 0;
+    await expect
+      .poll(async () => {
+        const box = await card.boundingBox();
+        return box ? Math.abs(box.y - gap) + Math.abs(box.y + box.height - (400 - gap)) : Infinity;
+      })
+      .toBeLessThanOrEqual(1);
+    const shot = async (position: string) => {
+      if (layout === BAR_LAYOUTS[0] || layout.docked)
+        await page.screenshot({ path: `/tmp/r7/${slot ? 'slot' : 'dock'}-${position}.png` });
+    };
+    await shot('top');
+    await card.evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+    for (const selector of ['.wr-pinned', '.wr-pinned .wr-foot']) {
+      const box = await list.locator(selector).boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(400);
+    }
+    await shot('end');
+    const toggle = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
+    await toggle.focus();
+    await expect(toggle).toBeFocused();
+    await expect
+      .poll(async () => {
+        const box = await toggle.boundingBox();
+        return !!box && box.y >= 0 && box.y + box.height <= 400;
+      })
+      .toBe(true);
+  });
+}

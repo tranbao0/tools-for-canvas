@@ -338,9 +338,10 @@ export function claimDashboardLayout(
   /** Canvas has overflow ancestors, so the card follows page scroll within its own slot. */
   function stick(): void {
     if (container.firstElementChild?.getAttribute('data-panel') !== 'slot') return;
-    cardRoot()
-      ?.querySelector<HTMLElement>('.wr')
-      ?.style.setProperty('--wr-slot-top', `${12 - container.getBoundingClientRect().top}px`);
+    const card = cardRoot()?.querySelector<HTMLElement>('.wr');
+    const gap = 12;
+    card?.style.setProperty('--wr-slot-gap', `${gap}px`);
+    card?.style.setProperty('--wr-slot-top', `${gap - container.getBoundingClientRect().top}px`);
   }
 
   function startWait(): void {
