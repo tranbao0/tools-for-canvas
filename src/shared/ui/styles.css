@@ -159,7 +159,11 @@
  * make a card as tall as the page, and its day list would not scroll inside it.
  */
 :host([data-panel='slot']) .wr[data-surface='inpage'] {
-  --wr-card-height: min(max(420px, min(100vh - 48px, 760px)), calc(100vh - 2 * var(--wr-slot-gap)));
+  /* The gap is the top offset that stick() in layout.ts sets; 12 px holds until the card first follows. */
+  --wr-card-height: min(
+    max(420px, min(100vh - 48px, 760px)),
+    calc(100vh - 2 * var(--wr-slot-gap, 12px))
+  );
   top: clamp(0px, var(--wr-slot-top, 0px), calc(100% - var(--wr-card-height)));
   height: 100%;
   max-height: var(--wr-card-height);
