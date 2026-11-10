@@ -1824,11 +1824,6 @@ for (const layout of BAR_LAYOUTS.filter((item) => item.page !== 'course-home' ||
         return box ? Math.abs(box.y - gap) + Math.abs(box.y + box.height - (400 - gap)) : Infinity;
       })
       .toBeLessThanOrEqual(1);
-    const shot = async (position: string) => {
-      if (layout === BAR_LAYOUTS[0] || layout.docked)
-        await page.screenshot({ path: `/tmp/r7/${slot ? 'slot' : 'dock'}-${position}.png` });
-    };
-    await shot('top');
     await card.evaluate((node) => {
       node.scrollTop = node.scrollHeight;
     });
@@ -1838,8 +1833,17 @@ for (const layout of BAR_LAYOUTS.filter((item) => item.page !== 'course-home' ||
       expect(box!.y).toBeGreaterThanOrEqual(0);
       expect(box!.y + box!.height).toBeLessThanOrEqual(400);
     }
-    await shot('end');
+    // A keyboard student starts at the top of the card, and focus scrolls the toggle into view.
+    await card.evaluate((node) => {
+      node.scrollTop = 0;
+    });
     const toggle = toggleOf(list.locator('.wr-pinned [data-group="no_due_date"]'));
+    await expect
+      .poll(async () => {
+        const box = await toggle.boundingBox();
+        return !!box && box.y + box.height <= 400;
+      })
+      .toBe(false);
     await toggle.focus();
     await expect(toggle).toBeFocused();
     await expect

@@ -126,7 +126,7 @@
 
 /*
  * The list has a fixed height, in a card and in the right column of the classic dashboard: the
- * window height minus 48px, at most 760px and at least 420px where the window permits, so
+ * window height minus 48px, at most 760px and at least 420px, whatever the length of the list, so
  * the card keeps its size from span to span. The header and the rings stay at the top, and
  * the groups scroll in .wr-scroll, or in .wr-group-area while No due date or Done is open. A view
  * without those regions, such as the settings, scrolls the whole card.

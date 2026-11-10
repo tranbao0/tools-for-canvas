@@ -468,7 +468,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The card follows the page scroll with a 12 px top offset, bounded by the bottom of its slot.
     A card that follows the window is never taller than the window minus equal top and bottom gaps, and its content then scrolls inside it.
     Canvas's boxes stay unchanged; the extension sets the card offset because Canvas's overflow ancestors prevent CSS sticky positioning from following the page.
-    It is never taller than the card in the band (the window height minus 48 px, at most 760 px and at least 420 px where the window permits): a widget that is much taller, such as one that a narrow window stacks (about 5,997 px at 1000 px), would make a card as tall as the page, and its day list would not scroll inside it.
+    It is never taller than the card in the band (the window height minus 48 px, at most 760 px and at least 420 px): a widget that is much taller, such as one that a narrow window stacks (about 5,997 px at 1000 px), would make a card as tall as the page, and its day list would not scroll inside it.
     The card sits at the top of the box, and its day list scrolls inside it.
     It never changes its box because of its own content.
     The slot reserves at least 420 px: a section that is lower gets a wrapper `min-height` of 420 px plus the two vertical margins, so the column makes room.
@@ -585,7 +585,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - Every group and every item shows: Past due in full, Today, Tomorrow, the later days, No due date and Done.
     "N older" and "Mark all older done" work as in the side panel.
     Done has its own "N older" line, with no action (decision 6).
-  - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px where the window permits.
+  - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
     A card that follows the window is never taller than the window minus its equal top and bottom gaps, and its content then scrolls inside it.
     In the Course work slot it has this height as its most, and it is lower only over a widget that is lower than this.
     A short list leaves empty room at the bottom, so the card keeps its size from span to span.
@@ -683,7 +683,8 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - The scroll position stays over a redraw, a data refresh, the settings, the task form, a change of tab and a minimize, while the page stays open.
     A new span starts at the top.
   - The card scrolls with the page, and it is not sticky.
-    The docked card of a course home page keeps its sticky 24 px gap, with the same height limit and scroll region.
+    The docked card of a course home page keeps its sticky 24 px gap and the same scroll region.
+    In a window under 468 px it is shorter than the card that is not docked: the window height minus its two 24 px gaps.
   - The scroll region keeps at least 128 px in every card, so with the tab strip (decision 24) a low window still shows a row.
     The whole card then scrolls, and the header does not stay in view.
   - The side panel scrolls as one page, and it has no such region and no minimize button.
