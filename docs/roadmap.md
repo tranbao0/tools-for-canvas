@@ -21,7 +21,6 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 - People: the same steady list as the announcements, with the Course filter and the Role filter of Canvas, a search by name and course, each course and role of a person on its own line, and a message button.
 - Steady page buttons: the page navigator of each paged widget keeps one width and one place for each button.
 
-Fixes like the announcements list are meant to apply Canvas wide where that is possible.
 The scroll list is one shared module, and the Announcements and People widgets use it.
 The paged widgets that stay on the steady pager are Recent Grades and To-do.
 Each of them needs only an adapter for the shared list: a function that loads a page, a row and its filters.
