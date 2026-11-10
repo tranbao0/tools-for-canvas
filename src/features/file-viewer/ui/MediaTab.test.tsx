@@ -641,3 +641,59 @@ it('keeps a text offset at the end after the text got shorter, through a hide an
   report();
   expect(top).toBe(end);
 });
+
+it('keeps a saved text offset when a too small layout clamps it to a fractional offset', async () => {
+  let report = () => {};
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        report = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const host = { readFile: vi.fn(async () => new Uint8Array([104, 105])), loadPdfjs: vi.fn() };
+  const text = (active: boolean) => (
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="n.txt"
+      contentType="text/plain"
+      active={active}
+    />
+  );
+  const view = render(text(true));
+  await waitFor(() => expect(document.querySelector('pre')).not.toBeNull());
+  const scroller = document.querySelector('.fv-media')!;
+  let height = 655;
+  let length = 43682;
+  let top = 20000;
+  Object.defineProperties(scroller, {
+    clientWidth: { get: () => (height ? 472 : 0) },
+    clientHeight: { get: () => height },
+    scrollHeight: { get: () => Math.round(length) },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = height ? Math.min(value, Math.max(0, length - height)) : 0;
+      },
+    },
+  });
+  report();
+  scroller.dispatchEvent(new Event('scroll'));
+  view.rerender(text(false));
+  height = 0;
+  top = 0;
+  view.rerender(text(true));
+  // A stale, narrower layout: the text is shorter, and Firefox clamps to a fractional offset.
+  height = 655;
+  length = 14594.4;
+  report();
+  expect(top).toBeCloseTo(13939.4);
+  scroller.dispatchEvent(new Event('scroll'));
+  length = 43682;
+  report();
+  expect(top).toBe(20000);
+});

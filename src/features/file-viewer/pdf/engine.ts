@@ -335,6 +335,7 @@ export class PdfEngine {
     if (!this.active || this.waitingForSize) return;
     this.layout();
     this.restoreAnchor(this.anchor);
+    this.finishReveal();
     this.queueStale();
     this.emit();
   }
@@ -613,10 +614,7 @@ export class PdfEngine {
     // The layer holds the text that it shows; the search text has the same items in the same order.
     const page: PageText = text ?? { items: view.textItems, eol: [] };
     const mark = highlightPage(document, view.textDivs, page, matches, selected);
-    if (mark && this.revealPage === pageIndex) {
-      this.revealPage = -1;
-      this.centerOn(mark);
-    }
+    if (mark && this.revealPage === pageIndex && this.centerOn(mark)) this.revealPage = -1;
   }
 
   /** Brings the selected match into view. */
@@ -628,8 +626,7 @@ export class PdfEngine {
     this.revealPage = match.page;
     const mark = view.el.querySelector<HTMLElement>('.highlight.selected');
     if (mark) {
-      this.revealPage = -1;
-      this.centerOn(mark);
+      if (this.centerOn(mark)) this.revealPage = -1;
     } else {
       // The page is not drawn yet. It marks the match when its text layer is ready.
       this.setScrollTop((this.tops[match.page] ?? PAD) - PAD);
@@ -637,7 +634,20 @@ export class PdfEngine {
     this.setPage(match.page + 1);
   }
 
-  private centerOn(mark: HTMLElement): void {
+  /** Centers a match whose page drew while the view could not measure it. */
+  private finishReveal(): void {
+    if (this.revealPage < 0) return;
+    const view = this.views[this.revealPage];
+    const mark = view?.el.querySelector<HTMLElement>('.highlight.selected');
+    if (mark && this.centerOn(mark)) this.revealPage = -1;
+  }
+
+  /**
+   * Centers a match and saves that place. A hidden view, or one that waits for its size, reads
+   * every size as 0, so it does not center: the next layout finishes the reveal.
+   */
+  private centerOn(mark: HTMLElement): boolean {
+    if (!this.active || this.waitingForSize) return false;
     const { scroller } = this.options;
     const area = scroller.getBoundingClientRect();
     const box = mark.getBoundingClientRect();
@@ -647,6 +657,7 @@ export class PdfEngine {
     if (box.left < area.left || box.right > area.right) {
       scroller.scrollLeft += box.left - area.left - scroller.clientWidth / 2;
     }
+    return true;
   }
 
   /** Ends the worker and frees the document, the pages and the observers. */

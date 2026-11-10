@@ -254,9 +254,11 @@ export function MediaTab(props: {
     if (!shown.current || restoring.current || !(target instanceof Element)) return;
     if (!target.clientWidth || !target.clientHeight) return;
     // A scroller that is still too small clamps a restored offset. That scroll keeps the saved one.
+    // Firefox clamps to a fractional offset, up to 1 px away from the rounded maximum.
     const maximum = Math.max(0, target.scrollHeight - target.clientHeight);
     const saved = places.current.get(target);
-    if (saved !== undefined && target.scrollTop === Math.min(saved, maximum)) return;
+    if (saved !== undefined && Math.abs(target.scrollTop - Math.min(saved, maximum)) < 1) return;
+    if (saved !== undefined && saved > maximum && target.scrollTop >= maximum - 1) return;
     places.current.set(target, target.scrollTop);
   };
   useLayoutEffect(() => {

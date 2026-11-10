@@ -163,6 +163,43 @@ describe('PdfEngine in a frame that shows again', () => {
     engine.destroy();
   });
 
+  it('centers a match that drew while the view was hidden only after it shows again', async () => {
+    const engine = await openShown();
+    const internals = engine as unknown as {
+      tops: number[];
+      views: { el: HTMLElement }[];
+      revealPage: number;
+      centerOn(mark: HTMLElement): boolean;
+    };
+    let shown = true;
+    const box = (top: number, height: number): DOMRect =>
+      (shown
+        ? { top, height, bottom: top + height, left: 10, right: 20, width: 10, x: 10, y: top }
+        : { top: 0, height: 0, bottom: 0, left: 0, right: 0, width: 0, x: 0, y: 0 }) as DOMRect;
+    scroller.getBoundingClientRect = () => box(0, 655);
+    engine.goToPage(2);
+    const place = scroller.scrollTop;
+    engine.setActive(false);
+    shown = false;
+    size = { width: 0, height: 0 };
+    // The text layer of page 3 is ready while the view is hidden, and every size reads 0.
+    const mark = document.createElement('span');
+    mark.className = 'highlight selected';
+    internals.views[2]!.el.append(mark);
+    internals.revealPage = 2;
+    expect(internals.centerOn(mark)).toBe(false);
+    shown = true;
+    size = { width: 472, height: 655 };
+    const match = () => internals.tops[2]! + 20;
+    mark.getBoundingClientRect = () => box(match() - scroller.scrollTop, 10);
+    engine.setActive(true);
+    flushFrame();
+    expect(scroller.scrollTop).not.toBe(place);
+    expect(scroller.scrollTop).toBeGreaterThan(internals.tops[1]!);
+    expect(internals.revealPage).toBe(-1);
+    engine.destroy();
+  });
+
   it('keeps its anchor through a stale non-zero report and a clamped scroll', async () => {
     const engine = await openShown();
     engine.goToPage(2);
