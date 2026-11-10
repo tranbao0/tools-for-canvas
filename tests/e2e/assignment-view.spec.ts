@@ -40,7 +40,6 @@ const PANE_HOST = '#tools-turn-in';
 const FILE_PANE = '#tools-file-viewer';
 const OTHER_STUDENT = '9001';
 const DIR = path.join(process.cwd(), 'screenshots', 'assignment-view');
-const SHOTS = path.join(process.cwd(), 'screenshots', 'assignment-view');
 
 function details(change: (copy: typeof ASSIGNMENT_DETAILS) => void = () => undefined) {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
@@ -891,7 +890,6 @@ test('the pane is a card with a gap, and its header has a title, a second line a
     await saveSetting(background, { theme });
     await expect(page.locator(PANE_HOST)).toHaveAttribute('data-theme', theme);
     await page.screenshot({ path: path.join(DIR, `pane-${theme}-1615.png`) });
-    await page.screenshot({ path: path.join(SHOTS, `pane-${theme}-1615x1053.png`) });
   }
 });
 
@@ -1101,7 +1099,7 @@ test('screenshots of the pane and of its full view at 1400 by 930, in light and 
       await expect(page.locator(PANE_HOST)).toHaveAttribute('data-theme', theme);
       await page.mouse.move(700, 600);
       await page.screenshot({
-        path: path.join(SHOTS, `assignment${full ? '-full' : ''}-${theme}-1400x930.png`),
+        path: path.join(DIR, `assignment${full ? '-full' : ''}-${theme}-1400x930.png`),
       });
     }
   }
@@ -1607,7 +1605,6 @@ test('on a small window the button stays in the row, beside the title', async ({
     await saveSetting(background, { theme });
     await expect(page.locator(PANE_HOST)).toHaveAttribute('data-theme', theme);
     await page.screenshot({ path: path.join(DIR, `list-open-${theme}-1280.png`) });
-    await page.screenshot({ path: path.join(SHOTS, `list-open-${theme}-1280x800.png`) });
   }
   await closeAssignment(page);
   await expect(page.locator(PANE_HOST)).toBeHidden();
@@ -1615,7 +1612,6 @@ test('on a small window the button stays in the row, beside the title', async ({
   for (const theme of ['light', 'dark'] as const) {
     await saveSetting(background, { theme });
     await page.screenshot({ path: path.join(DIR, `list-closed-${theme}-1280.png`) });
-    await page.screenshot({ path: path.join(SHOTS, `list-closed-${theme}-1280x800.png`) });
   }
 });
 
@@ -1632,7 +1628,7 @@ test('the list with the pane open at 1615 by 1053, in light and dark', async ({
   for (const theme of ['light', 'dark'] as const) {
     await saveSetting(background, { theme });
     await expect(page.locator(PANE_HOST)).toHaveAttribute('data-theme', theme);
-    await page.screenshot({ path: path.join(SHOTS, `list-open-${theme}-1615x1053.png`) });
+    await page.screenshot({ path: path.join(DIR, `list-open-${theme}-1615x1053.png`) });
   }
 });
 

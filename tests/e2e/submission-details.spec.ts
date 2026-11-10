@@ -443,7 +443,7 @@ test("the files area and the comments column give way to the instructions and th
   await expect(box(page)).toBeVisible();
 });
 
-const GO_TO_ASSIGNMENT = '/tmp/go-to-assignment.png';
+const GO_TO_ASSIGNMENT = 'screenshots/submission-details/go-to-assignment.png';
 
 test('the button of the title row says "Go to assignment" and opens the assignment page without the upload form, and the switch gives Canvas\'s button back', async ({
   context,
@@ -2027,7 +2027,7 @@ for (const { width, theme, menu } of SHOT_CASES) {
 }
 
 const RUBRIC = '#rubric_holder';
-const RUBRIC_SHOTS = '/tmp/rb1shots';
+const RUBRIC_SHOTS = 'screenshots/submission-rubric';
 
 /** The facts about the rubric holder that the tests read. */
 async function rubricState(page: Page) {

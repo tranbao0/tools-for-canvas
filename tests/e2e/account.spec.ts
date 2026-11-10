@@ -293,7 +293,7 @@ test('a changed session with a failed check never exposes cached work', async ({
   await expect(doneBox(page, QUIZ_3)).toHaveCount(0);
   await expect(page.locator('.wr-toast')).toContainText('Task deleted');
   expect(deletes(first.canvas)).toEqual([]);
-  await page.screenshot({ path: '/tmp/a3-account-failed-check.png' });
+  await page.screenshot({ path: 'screenshots/account/failed-check.png' });
 });
 
 for (const renew of [false, true]) {
@@ -667,7 +667,7 @@ test('a refused Undo shows its notice again beside the error, and the next tap r
   await expect(toast).toContainText('Marked done');
   await expect(toast.getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
   expect(writes()).toBe(before);
-  await page.screenshot({ path: '/tmp/a7-refused-undo.png' });
+  await page.screenshot({ path: 'screenshots/account/refused-undo.png' });
 
   // Canvas answers again. The Undo is a tap of the student, so it checks at once.
   await context.unroute(`${first.canvas.origin}/api/v1/users/self`);
