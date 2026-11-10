@@ -1,6 +1,6 @@
 /**
  * The data owner as the background runs it: the real Canvas client, storage, clock and browser
- * events. See docs/design.md, decision 11, option A.
+ * events. See docs/design.md, decision 11.
  */
 import { isDataAction } from './protocol';
 import { browserRouterHost, extensionOrigin } from './router';

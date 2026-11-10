@@ -65,16 +65,9 @@ The weekly to-do list is the first fix, and version 1 ships only it.
 Each later fix must stay small and separate, so the extension stays small and focused.
 The name (decision 17) must therefore describe Canvas fixes in general.
 
-
 **Question:** What should version 1 include?
 
-**Options:**
-
-- A. The core of the original, plus fixes for work Canvas hides.
-- B. Everything the original had, including streaks, confetti, announcements, Gradescope data, Blackboard and D2L.
-- C. A plain list with no rings and no week arrows.
-
-**Decision:** A.
+**Decision:** Version 1 includes the core of the original, plus fixes for work Canvas hides.
 
 Version 1 has a weekly list with arrows to change the week.
 It has a progress ring for each course in the course color.
@@ -85,7 +78,8 @@ This also covers work with no due date and work handed in outside Canvas, such a
 **Why:**
 
 - Reviewers of the original praised the weekly view, the rings, the clean design, the confetti and the streaks [2].
-- Each feature in option B adds a data source, a screen or stored data.
+- Version 1 leaves out streaks, confetti, Gradescope data, Blackboard and D2L, because each one adds a data source, a screen or stored data.
+  Announcements have their own tab (decision 24).
   - Streaks need a stored history of daily activity, which conflicts with decision 2.
     Streak resets also caused many of the original's one-star reviews [2].
   - Confetti is left out to keep version 1 small.
@@ -97,7 +91,7 @@ This also covers work with no due date and work handed in outside Canvas, such a
   - undated work in the same list;
   - a span with arrows and course rings;
   - a Done list;
-  - done marks that sync through Canvas;
+  - done marks that sync through Canvas (Simple Canvas Tasks keeps them on one device only [9]);
   - Firefox and Edge builds;
   - a clear status on work handed in outside Canvas, such as Gradescope or paper.
 
@@ -105,18 +99,12 @@ This also covers work with no due date and work handed in outside Canvas, such a
 
 **Question:** Where should done marks and custom tasks live?
 
-**Options:**
-
-- A. In Canvas: a done mark is a planner override, and a custom task is a planner note.
-- B. In browser storage.
-
-**Decision:** A.
+**Decision:** Done marks and custom tasks live in Canvas: a done mark is a planner override, and a custom task is a planner note.
 
 **Why:**
 
 - Canvas's own To Do sidebar and the Canvas mobile apps read the same overrides, so done marks stay in sync everywhere [10].
 - The extension keeps no personal data of its own, and an uninstall loses nothing.
-- Simple Canvas Tasks keeps done marks on one device only [9].
 - The original also used planner overrides and planner notes [9].
 
 **Rules that follow from the facts:**
@@ -148,13 +136,7 @@ This also covers work with no due date and work handed in outside Canvas, such a
 
 **Question:** Which items count as tasks in the weekly list and the rings?
 
-**Options:**
-
-- A. All work the student must do: assignments, quizzes, discussions, pages with a to-do date, peer reviews and custom tasks.
-- B. Graded work and custom tasks only.
-- C. Everything in the Canvas planner, including calendar events and announcements.
-
-**Decision:** A.
+**Decision:** All work the student must do counts as a task: assignments, quizzes, discussions, pages with a to-do date, peer reviews and custom tasks.
 
 The extension keeps these planner item types: `assignment`, `quiz`, `discussion_topic`, `wiki_page`, `planner_note`, `assessment_request`, `sub_assignment` and `peer_review_sub_assignment` [10].
 It drops `calendar_event` and `announcement`.
@@ -175,14 +157,7 @@ If the course lookup fails, the item uses the course or group name that the plan
 
 **Question:** Where should the list appear?
 
-**Options:**
-
-- A. A browser side panel only.
-- B. Inside the Canvas dashboard sidebar only, like the original.
-- C. Both, with one shared UI, and the side panel as the main surface.
-- D. Both, with one shared UI, and the Canvas page as the main home.
-
-**Decision:** D.
+**Decision:** The list lives in the Canvas page and in a browser side panel, with one shared UI, and the Canvas page is its main home.
 The list belongs in the Canvas page, and it shows in the page on every dashboard view.
 The side panel is the second surface, and on Firefox it opens on the left.
 On the new widget dashboard, the widgets fill about 1,100 px on the left, and a wide empty area stays on the right.
@@ -713,13 +688,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 
 **Question:** How does the extension get access to each school's Canvas site?
 
-**Options:**
-
-- A. Required access to all sites (`https://*/*`), as the original and Simple Canvas Tasks do.
-- B. Required access to `https://*.instructure.com/*`, plus optional access to `https://*/*` that the student grants for one custom domain.
-- C. Optional access only.
-
-**Decision:** A.
+**Decision:** The extension requires access to all sites (`https://*/*`), as the original and Simple Canvas Tasks do.
 The extension links to Canvas by itself and works right after install, with no setup step.
 
 **Manifest:**
@@ -841,13 +810,7 @@ The extension links to Canvas by itself and works right after install, with no s
 
 **Question:** How is the list grouped, and where does each item appear?
 
-**Options:**
-
-- A. Place every item by its date and its state only.
-  Facts about how Canvas tracks an item show as a status on the item (decision 7).
-- B. Give special kinds of work their own sections, such as work that Canvas cannot confirm.
-
-**Decision:** A.
+**Decision:** The list places every item by its date and its state only, and facts about how Canvas tracks an item show as a status on the item (decision 7).
 
 **Why:**
 
@@ -983,12 +946,7 @@ A student has one way to clear work: Done.
 
 **Question:** How does each item show what Canvas knows about it?
 
-**Options:**
-
-- A. One set of status chips, computed the same way for every item, in every group and every week.
-- B. Different labels for each group or each data source.
-
-**Decision:** A.
+**Decision:** Every item uses one set of status chips, computed the same way for every item, in every group and every week.
 
 **How the work is handed in:**
 
@@ -1088,13 +1046,7 @@ Availability is a separate small marker next to the status chip, because it answ
 
 **Question:** When is an item done?
 
-**Options:**
-
-- A. Copy the Canvas planner rule exactly.
-- B. Use the Canvas rule, and also count excused work and graded work as done.
-- C. Use the original's rule, which also checks for a zero score with GraphQL.
-
-**Decision:** B, with one extra rule for redo requests.
+**Decision:** An item is done by the Canvas rule, and excused work and graded work also count as done, with one extra rule for redo requests.
 
 1. Work handed in on Canvas with a redo request is not done, even if the student checked it off.
    Its checkbox is disabled, with the tip "Resubmit in Canvas to finish this."
@@ -1121,8 +1073,8 @@ Availability is a separate small marker next to the status chip, because it answ
 - Canvas's rule leaves excused work and on-paper work that a teacher graded as not done.
   The student has nothing left to do for such work.
 - "Not missing" keeps work with an automatic zero for a missing submission in the list.
-- Option C needs GraphQL.
-  Canvas rejects queries with more than 20 aliases, and the original's batch fails silently when a view has more than 20 graded items [9].
+- The done rule makes no GraphQL check for a zero score.
+  Canvas rejects GraphQL queries with more than 20 aliases, and the original's batch fails silently when a view has more than 20 graded items [9].
 - Request planner items with no completion filter, and compute done on the client.
   Canvas's server filters ignore done marks on some item types [10].
 
@@ -1166,13 +1118,7 @@ Availability is a separate small marker next to the status chip, because it answ
 
 **Question:** Which days does the list show, and how does past-due work show?
 
-**Options:**
-
-- A. A calendar week in the student's Canvas time zone, with the start day taken from the Canvas language.
-- B. The original's default: Monday 3:00 pm to Monday 3:00 pm in the browser's time zone.
-- C. A span of days that starts today, in the student's Canvas time zone.
-
-**Decision:** C.
+**Decision:** The list shows a span of days that starts today, in the student's Canvas time zone.
 
 **The shown span:**
 
@@ -1264,8 +1210,7 @@ Availability is a separate small marker next to the status chip, because it answ
 
 **Why:**
 
-- The original's 3:00 pm start puts work due on Monday morning into the previous week [9].
-- The original uses the browser's time zone with no label, so a student who travels sees wrong days [9].
+- The Canvas time zone keeps the days right for a student who travels.
 - A student asks what is due from now on.
   A span that starts today answers it.
 - The look-ahead keeps deadlines that are hours away in view when the span is one day.
@@ -1274,12 +1219,7 @@ Availability is a separate small marker next to the status chip, because it answ
 
 **Question:** What can the student do with custom tasks?
 
-**Options:**
-
-- A. Create, edit and delete them.
-- B. Create them only, as the original did.
-
-**Decision:** A.
+**Decision:** The student can create, edit and delete custom tasks.
 
 - The form has a title (required), a "Do on" date, an optional time, an optional course and optional details.
   - The date field says "Do on", because for a personal task the date means when the student plans to do it.
@@ -1307,8 +1247,7 @@ Availability is a separate small marker next to the status chip, because it answ
 **Why:**
 
 - Edit and delete give a fix for typos and wrong dates.
-- Simple Canvas Tasks deletes a task when it is marked done, and the original allowed deletion only after completion [9].
-  Option A keeps done marks and deletion separate.
+- A done mark and a delete are separate actions, so the student can delete a task that is not done.
 - A Canvas planner note needs a date [10], so a custom task cannot be undated.
   The date also puts the note on that day in Canvas's own planner.
   Storing undated tasks somewhere else would break decision 2.
@@ -1317,18 +1256,13 @@ Availability is a separate small marker next to the status chip, because it answ
 
 **Question:** How does the extension load data, keep it fresh and handle errors?
 
-**Options:**
-
-- A. One data owner in the background, which every surface asks for data.
-- B. Each surface fetches its own data.
-
-**Decision:** A.
+**Decision:** One data owner in the background holds the data, and every surface asks that owner for data.
 A span loads progressively, so that a first fetch feels seamless (see "The planner cache").
 
 **Why:**
 
 - Each window can have its own panel, and each Canvas tab its own in-page list [12].
-  With option B, a refresh round can reach more than 100 requests.
+  One owner makes one set of requests for all surfaces, so more open surfaces add no requests to a refresh round.
   All of them share one rate limit with the student's own Canvas tabs, and about 12 parallel requests fill it [10].
 - One owner gives one request queue and one cache.
 
@@ -1684,19 +1618,6 @@ Notes on these states:
 
 **Question:** Which build tool and UI framework should the extension use?
 
-**Options for the build tool:**
-
-- A. WXT.
-- B. CRXJS.
-- C. Plasmo.
-
-**Options for the UI framework:**
-
-- A. Preact.
-- B. Plain TypeScript with no framework.
-- C. Svelte 5.
-- D. Lit.
-
 **Decision:** WXT 0.21 with the exact version pinned, TypeScript in strict mode, and Preact 11.
 
 **Why WXT:**
@@ -1706,27 +1627,15 @@ Notes on these states:
 - It makes the source zip that Firefox Add-ons requires [19].
 - It has helpers for Vitest [19].
 - WXT is still before version 1.0, and each 0.x release has breaking changes, so the version is pinned [19].
-- Plasmo has had no release since May 2025 [19].
-  Firefox Add-ons does not accept build tools that appear unmaintained [20].
-- CRXJS does not map the side panel for Firefox and does not make zips [19].
+- WXT has frequent releases, and Firefox Add-ons does not accept build tools that appear unmaintained [20].
 
 **Why Preact:**
 
-| Framework | Small to-do app, gzip |
-|---|---|
-| Plain TypeScript | 0.4 KB |
-| Preact 11 | 5.7 KB |
-| Solid | 5.7 KB |
-| Lit | 6.7 KB |
-| Svelte 5 | 12.9 KB |
-| React 19 | 67.6 KB |
-
-These sizes come from one test build of the same small app [19].
-
-- Preact keeps the UI code short and readable for a small runtime cost.
-- Plain TypeScript would need hand-written DOM updates for the rings, the list and the forms.
-- Lit cannot register custom elements in a Chrome content script [19].
-- Solid sends its events through the document, which can conflict with WXT's event isolation [19].
+- One test build of a small to-do app with Preact 11 was about 5.7 KB gzip [19].
+- Preact keeps the UI code short and readable for that small runtime cost.
+- Preact updates the DOM for the rings, the list and the forms, so the code needs no hand-written DOM updates.
+- Preact renders plain DOM elements, so it needs no custom elements, which a Chrome content script cannot register [19].
+- Preact adds its event listeners on each element, so the event isolation of WXT content scripts does not affect it [19].
 
 **Other rules:**
 
@@ -1904,12 +1813,6 @@ These sizes come from one test build of the same small app [19].
 
 **Question:** Which license should the project use?
 
-**Options:**
-
-- A. MIT.
-- B. MPL-2.0.
-- C. GPL-3.0.
-
 **Decision:** GPL-3.0-only.
 Contributions need a DCO sign-off and come in under the same license.
 
@@ -1917,7 +1820,6 @@ Contributions need a DCO sign-off and come in under the same license.
 
 - The original was MIT, and its later store builds were never published as source [9] [20].
 - GPL-3.0 requires anyone who ships a build to offer the full source [20].
-- MPL-2.0 lets a fork keep new files closed [20].
 - Firefox Add-ons offers GPL-3.0 as a built-in license choice [20].
 - No store rule conflicts with GPL-3.0 [20].
 - I can relicense my own code.
@@ -1938,13 +1840,7 @@ Contributions need a DCO sign-off and come in under the same license.
 - The name is plain and clear: it describes the product and matches what students search for.
 - The scope covers Canvas fixes in general (decision 1), so the name is not about a week.
 
-**Options:**
-
-- A. Tools for Canvas.
-- B. Student Tools for Canvas.
-- C. Tweaks for Canvas.
-
-**Decision:** A, Tools for Canvas.
+**Decision:** The extension is called Tools for Canvas.
 
 **Why:**
 
@@ -2137,12 +2033,7 @@ They show in the same three places, below Row size, and they are stored apart fr
 
 **Question:** What should the list look like?
 
-**Options:**
-
-- A. Look like a native part of Canvas: Canvas's font, colors, headings, rows and pills.
-- B. Keep a separate, app-like look of its own.
-
-**Decision:** A.
+**Decision:** The list looks like a native part of Canvas, with Canvas's font, colors, headings, rows and pills.
 The list feels like part of Canvas.
 
 **Rules:**
