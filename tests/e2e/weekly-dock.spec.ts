@@ -372,15 +372,17 @@ test.describe('the dock on the classic dashboard', () => {
     await expect.poll(() => padding(page)).toBe('38px');
     const tabBox = await boxOf(page, TAB);
     expect(tabBox.x).toBe(1330);
-    const textRight = await page.evaluate(() => {
-      let right = 0;
-      for (const element of document.querySelectorAll('#right-side *')) {
-        const box = element.getBoundingClientRect();
-        if (box.width > 0 && box.height > 0) right = Math.max(right, box.right);
-      }
-      return right;
-    });
-    expect(textRight).toBeLessThanOrEqual(tabBox.x);
+    // Canvas lays out the right column again after the padding changes, so the edge is polled.
+    const textRight = () =>
+      page.evaluate(() => {
+        let right = 0;
+        for (const element of document.querySelectorAll('#right-side *')) {
+          const box = element.getBoundingClientRect();
+          if (box.width > 0 && box.height > 0) right = Math.max(right, box.right);
+        }
+        return right;
+      });
+    await expect.poll(textRight).toBeLessThanOrEqual(tabBox.x);
     await page.screenshot({ path: '/tmp/ticket-d/e2e-tab-1368.png' });
   });
 
