@@ -38,7 +38,7 @@ test.beforeEach(() => {
   test.slow();
 });
 
-const SHOTS = '/tmp/ticket-t';
+const SHOTS = 'screenshots/full-view';
 const WIDE = { width: 1400, height: 930 };
 /** The right padding that the course page has by itself. */
 const OWN_PADDING = 13;

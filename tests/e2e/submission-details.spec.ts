@@ -1504,7 +1504,7 @@ const SIDEBAR_FILE = 'ENGR195A - Reflection Paper #2-1.pdf';
 const SIDEBAR_HREF = `${ASSIGNMENT}/submissions/42?download=501`;
 const SECOND_FILE = 'Appendix.pdf';
 const SECOND_HREF = `${ASSIGNMENT}/submissions/42?download=502`;
-const SIDEBAR_SHOTS = '/tmp/sb1shots';
+const SIDEBAR_SHOTS = 'screenshots/submission-sidebar';
 
 /** The assignment page with Canvas's Submission box, for the student of the saved Canvas. */
 async function openSidebar(

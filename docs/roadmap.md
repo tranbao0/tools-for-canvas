@@ -16,12 +16,12 @@ Each tool gets its own design decision in `docs/design.md` before it is built.
 ## 2. New dashboard fixes (built, see decision 22)
 
 - Announcements: one steady list with infinite scroll, a message that opens in its row, a read control, a course filter, a search by topic and a search by date.
-- Course grades for every course.
-  Canvas shows only six.
+- Course grades for every course on one page.
+  Canvas shows six cards a page.
 - People: the same steady list as the announcements, with the Course filter and the Role filter of Canvas, a search by name and course, each course and role of a person on its own line, and a message button.
 - Steady page buttons: the page navigator of each paged widget keeps one width and one place for each button.
 
-Fixes like the announcements list apply Canvas wide where that is possible.
+Fixes like the announcements list are meant to apply Canvas wide where that is possible.
 The scroll list is one shared module, and the Announcements and People widgets use it.
 The paged widgets that stay on the steady pager are Recent Grades and To-do.
 Each of them needs only an adapter for the shared list: a function that loads a page, a row and its filters.

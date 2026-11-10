@@ -1,7 +1,7 @@
 /**
  * The pull of the rows at the end of a list (design decision 4, "In-page rules") on the lists
  * outside the in-page card: the side panel and the Announcements widget. The wheel over a list in
- * the file pane is in pdf-viewer.spec.ts. The screenshots go to /tmp/x32-pull for the eye, and a
+ * the file pane is in pdf-viewer.spec.ts. The screenshots go to screenshots/pull for the eye, and a
  * test takes each one while the rows are away from their place.
  */
 import type { Locator, Page } from '@playwright/test';

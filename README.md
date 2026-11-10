@@ -14,7 +14,7 @@ Tools for Canvas is not in the browser stores yet.
 
 What this build adds:
 
-- A new course shows in the list: the list loads your courses again after an hour, or when you click Retry.
+- A new course shows in the list: the list loads your courses again when they are an hour old, or when you click Retry.
 - On the new dashboard in a wide window, a minimized list leaves the page where it is when the window changes size.
 - In the file pane, Close on "Couldn't open this file" keeps your saved file tabs.
 - A click on a file inside a frame always opens it.
@@ -86,8 +86,8 @@ These are four small fixes for the widgets of the new Canvas dashboard.
 
 - **Announcements in place:** one steady list with infinite scroll.
   A message opens in its row, and you can filter by course, search by topic and search by date.
-- **All course grades:** a grade card for every course.
-  Canvas shows only six.
+- **All course grades:** a grade card for every course on one page.
+  Canvas shows six cards a page.
 - **Steady page buttons:** each paged widget keeps one width and one place for each page button.
 - **People list:** the same steady list for your teachers and teaching assistants, with each course and role of a person and a message button.
 

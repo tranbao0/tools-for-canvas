@@ -1,14 +1,14 @@
 # Privacy policy
 
 This policy covers the Tools for Canvas browser extension for Chrome, Microsoft Edge and Firefox.
-Last updated: 2026-11-07.
+Last updated: 2026-11-09.
 
 ## Summary
 
 Tools for Canvas runs in your browser with your own Canvas sign-in and has no server of its own.
 It reads your Canvas data in your browser and shows it to you.
 It writes only done marks, custom tasks, announcement read and unread marks, the read mark of your rubric comments and your grade visibility preference, and only to your own Canvas.
-Nothing goes to me.
+Nothing goes to me or to any analytics, error report or advertising service.
 Canvas can send a file, View Feedback or Preview to its own storage and DocViewer hosts, and images and profile pictures can load from other hosts that a teacher or Canvas chose (see "What the extension sends elsewhere").
 
 ## What the extension reads

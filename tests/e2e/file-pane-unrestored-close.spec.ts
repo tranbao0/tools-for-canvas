@@ -206,7 +206,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await openCoursePage(context, page, background);
     const cdp = await openThenReloadBlocked(page, () => context.newCDPSession(page));
     await failurePanelShown(cdp);
-    await page.screenshot({ path: '/tmp/t3-file-pane-failure.png' });
+    await page.screenshot({ path: 'screenshots/file-pane-unrestored-close/failure.png' });
     const close = await buttonCenter(cdp, 'Close');
     await page.mouse.click(close.x, close.y);
     await expect(page.locator(HOST)).toHaveCount(0);
@@ -231,7 +231,7 @@ test.describe('a close of a pane that did not restore the stored tabs', () => {
     await openCoursePage(context, page, background);
     const cdp = await openThenReloadBlocked(page, () => context.newCDPSession(page));
     await failurePanelShown(cdp);
-    await page.screenshot({ path: '/tmp/t3-file-pane-failure.png' });
+    await page.screenshot({ path: 'screenshots/file-pane-unrestored-close/failure.png' });
     const close = await buttonCenter(cdp, 'Close');
     await cdp.send('DOM.focus', { backendNodeId: close.id });
     await page.keyboard.press('Escape');

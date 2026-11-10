@@ -3,28 +3,21 @@
  * They are for the eye: the test checks only that each widget draws. Dark uses the data-fixture-dark
  * attribute of the widget fixture, which stands for the dark theme of the widget package.
  */
-import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Locator, Page } from '@playwright/test';
 import { courseJson } from '../fixtures/canvas-json';
 import { addCsrfCookie, expect, openCanvasPage, serveScenario, test } from './support/weekrow';
 
 const DIR = path.join(process.cwd(), 'screenshots', 'dashboard-fixes');
-/** The four states of the announcements list at 1920 px are also saved in a second folder. */
-const TICKET_DIR = '/tmp/ticket-a';
 const LIST = '[data-testid="widget-announcements-widget"] [data-wr-list]';
 const WIDGETS = {
   announcements: 'widget-container-announcements-widget',
   grades: 'widget-container-course-grades-widget',
 } as const;
 
-async function shoot(page: Page, name: string, locator: Locator, copy?: string): Promise<void> {
+async function shoot(page: Page, name: string, locator: Locator): Promise<void> {
   await locator.scrollIntoViewIfNeeded();
   await locator.screenshot({ path: path.join(DIR, `${name}.png`) });
-  if (copy !== undefined) {
-    await mkdir(TICKET_DIR, { recursive: true });
-    await locator.screenshot({ path: path.join(TICKET_DIR, `${copy}.png`) });
-  }
 }
 
 for (const width of [1920, 1280]) {
@@ -63,19 +56,17 @@ for (const width of [1920, 1280]) {
       // The four states of the list: the list, an open message, a search by topic, a search by date.
       const card = widget(WIDGETS.announcements);
       const articles = page.locator(`${LIST} article`);
-      const copy = (state: string): string | undefined =>
-        width === 1920 ? `${state}-${theme}` : undefined;
       await expect(articles).toHaveCount(10);
-      await shoot(page, `announcements-${tag}`, card, copy('1-list'));
+      await shoot(page, `announcements-${tag}`, card);
 
       await page.locator(LIST).getByRole('button', { name: 'Read more' }).first().click();
       await expect(page.locator(`${LIST} .wr-body`)).toContainText('Science Hall 214');
-      await shoot(page, `announcement-open-${tag}`, card, copy('2-open'));
+      await shoot(page, `announcement-open-${tag}`, card);
       await page.locator(LIST).getByRole('button', { name: 'Show less' }).click();
 
       await page.locator(`${LIST} input[type="search"]`).fill('lockdown');
       await expect(articles).toHaveCount(2);
-      await shoot(page, `announcements-search-${tag}`, card, copy('3-search'));
+      await shoot(page, `announcements-search-${tag}`, card);
       await page.locator(LIST).getByRole('button', { name: 'Clear search' }).click();
 
       await card.getByLabel('Course filter:').selectOption({ label: 'MATH 221: Calculus II' });
@@ -83,7 +74,7 @@ for (const width of [1920, 1280]) {
       await page.locator(LIST).getByLabel('From', { exact: true }).fill('2026-10-01');
       await page.locator(LIST).getByLabel('To', { exact: true }).fill('2026-10-31');
       await expect(page.locator(`${LIST} .wr-a-res`)).toContainText('result');
-      await shoot(page, `announcements-dates-${tag}`, card, copy('4-dates'));
+      await shoot(page, `announcements-dates-${tag}`, card);
 
       await shoot(page, `course-grades-${tag}`, widget(WIDGETS.grades));
     });

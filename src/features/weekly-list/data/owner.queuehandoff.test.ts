@@ -42,7 +42,7 @@ async function loaded() {
   return h;
 }
 for (const depth of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
-  it(`A6 sendDelete, abandon in the handoff ${depth}`, async () => {
+  it(`sendDelete, abandon in the handoff ${depth}`, async () => {
     const h = await loaded();
     await h.owner.act({ kind: 'deleteTask', noteId: N.libraryBooksToday }, undefined, ORIGIN);
     await vi.advanceTimersByTimeAsync(0);
@@ -78,7 +78,7 @@ for (const depth of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
 }
 
 for (const depth of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
-  it(`A7 markAnnouncement, abandon in the handoff ${depth}`, async () => {
+  it(`markAnnouncement, abandon in the handoff ${depth}`, async () => {
     const h = await loaded();
     h.canvas.setAnnouncements(IDS.courses.biology, [
       {

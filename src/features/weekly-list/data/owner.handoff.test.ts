@@ -36,7 +36,7 @@ function deferred<T>() {
 }
 
 for (const depth of [1, 2, 3]) {
-  it(`G4 updateTask, student switch at hop ${depth}, then the new student reads`, async () => {
+  it(`updateTask, student switch at hop ${depth}, then the new student reads`, async () => {
     const h = await createHarness();
     await loadReady(h);
     h.canvas.resetCalls();

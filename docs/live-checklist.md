@@ -592,7 +592,7 @@ A store build or a build from `npm run build` does not.
    Expect: a plain-text report shows in about 10 seconds.
 5. Click "Copy report" and paste the text into a file.
    The report holds hosts and counts, and no names, file names, tokens or query strings.
-   Read it once before you paste it.
+   Read it once before you share it.
 6. Repeat steps 2 to 5 for each kind of page: a rich content file link, a module file item, the assignment page of a submitted file, and the submission details page.
    To test one file, paste its id or its link in the field above "Run check".
 

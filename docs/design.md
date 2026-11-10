@@ -13,7 +13,7 @@ The extension shows a student's Canvas coursework for the week as a simple to-do
 It replaces the original Tasks for Canvas sidebar.
 On Canvas, that extension now shows only a banner that sends users to BetterCampus [1].
 Its listing description says it collects no data, but the current build sends PostHog events and passes synced settings to BetterCampus through a hidden iframe [1].
-This extension works with the student's own Canvas sign-in and keeps the student's data in the browser and on that Canvas.
+This extension sends no analytics or error reports, and it keeps the student's data in the browser and on the student's own Canvas.
 
 ## Why Canvas alone is not enough
 
@@ -189,8 +189,8 @@ On the new widget dashboard, the widgets fill about 1,100 px on the left, and a 
 Canvas's own right column (the `with-right-side` body class) squeezes the widget grid into narrow columns and leaves about 170 px of content width, so the list stays out of that column on the widget dashboard.
 The card is like the card of the original Tasks for Canvas, but larger, with the look of the widgets, and the widgets keep their own width.
 The card needs an update when Canvas changes the markup of its widget grid.
-In a wide window the grid ends at about 1,130 px, and the dashboard clips anything past the grid.
-So the card sits in the wide white area to the right of the grid, where the old dashboard has its right column.
+In a wide window the grid ends at about 1,130 px, and the dashboard clips a grid column past that edge.
+So the card sits outside the grid, in the wide white area to its right, where the old dashboard has its right column.
 The card has the look of a widget card: no border, the shadow of a widget, 8 px corners in both themes.
 Source check on 2026-10-30: `@instructure/platform-widget-dashboard@16.2.0`, `dist/index.js` (`TemplateWidget`), uses an InstUI View with `shadow="above"`, `borderRadius="large"`, `background="primary"` and `padding="medium"`.
 `@instructure/ui-view@11.7.4`, `src/View/v1/theme.ts` and `src/View/v1/styles.ts`, maps those properties to the theme tokens.
@@ -456,11 +456,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - **In the Course work slot**, replace the first single or combined Course work widget in document order.
     Keep every other Course work widget, including summary widgets.
     The widget keeps its place in the page layout, invisible: its wrapper gets `visibility: hidden` and never `display: none` while the card is in the slot.
+    Canvas then lays out its columns as if the widget showed, and the widgets below stay where Canvas puts them.
     Its section is also `inert` and transparent (`opacity: 0`), and the card sits above it (`z-index: 2`), so a control of the widget that makes itself visible still draws nothing and takes no focus, clicks or screen reader attention; a release takes back only the `inert` that the card set.
     Canvas's form controls, such as the widget's filters and its summary toggle, make themselves visible inside the hidden wrapper, and the transparency stops them from drawing over the card.
     The card has the height of the widget it covers, and it does not follow the widgets beside it.
     Canvas lays out each column on its own, so the card's bottom can differ by a few pixels from the bottom of the Announcements widget beside it, and that widget grows while a message is open in place.
-    So Canvas lays out its columns as if the widget showed, and the widgets below stay where Canvas puts them.
     The card container is the first child of the wrapper, with `position: absolute` over the section.
     Its inset is the section's computed margin, copied and not fixed, and its own `visibility` is visible.
     The wrapper gets `position: relative`.
@@ -580,7 +580,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   An adapter that finds no anchor does nothing.
 - K-5 course home pages have no right column, so the adapter does nothing there [13].
 - The in-page list shows the full list, as the side panel does.
-  The full list is about 1,380 px high, so the card has a fixed height and a long list never pushes the page.
+  A full list can be about 1,380 px high, so the card has a fixed height and a long list never pushes the page.
   - Every group and every item shows: Past due in full, Today, Tomorrow, the later days, No due date and Done.
     "N older" and "Mark all older done" work as in the side panel.
     Done has its own "N older" line, with no action (decision 6).
@@ -1737,7 +1737,7 @@ These sizes come from one test build of the same small app [19].
 - Each entry point must stay under 45 KB after gzip, except `inpage.js`, which may reach 52 KB, and `background.js`, which may reach 48 KB, and the detector must stay under 2 KB, because the detector runs on every https page.
   Every entry point loads from the extension's own files.
   The limit of `inpage.js` alone is 52 KB, because the page script holds the weekly dock, its tab, the Announcements tab and the shared room lease.
-  The limit of `background.js` alone is 48 KB, because the background checks the Canvas and the student of every page request, answers the student check of every open pane, and on Firefox alone opens the trusted vault.
+  The limit of `background.js` alone is 48 KB, because the background checks the Canvas and the student of every page request, answers the student check of every open pane, and on Firefox it is the only context that opens the trusted vault.
   The other entry points keep 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
   `inpage.js` carries no code that only other surfaces use.
   The extension pages pass the offer view to the list (`offerView`), because only they show the offer, and its rules are in `pages.css`.
@@ -1817,7 +1817,7 @@ These sizes come from one test build of the same small app [19].
 - So CI uses fixtures, and a person runs the live checks.
 - Tests run with no retries.
   A flaky test is a bug to fix.
-  A test that fails only under heavy load may be removed, but a test that is the only cover of a security or data rule stays.
+  I may remove a test that fails only under heavy load, but a test that is the only cover of a security or data rule stays.
 
 ### 14. Browsers and versions
 
@@ -1864,7 +1864,7 @@ These sizes come from one test build of the same small app [19].
   - It says that View Feedback and Preview load the DocViewer session of Canvas, and that Canvas then marks the notes of that file as read.
   - It says that a read of a file in the pane counts as opening that file, so Canvas can mark the view requirement of a module as done and record the access.
   - It says the extension stores on the device only the settings, the Canvas address, a change time stamp, the one-time notes that were seen, a fingerprint salt, and the page and zoom of up to 200 PDFs with the student id and the file ids, or the address in Canvas of a file attached to a comment.
-  - It says that the extension sends data only to Canvas and to the storage, DocViewer and image hosts that Canvas or a teacher chooses, and it names those hosts.
+  - It says that nothing goes to me, and it names the storage, DocViewer and image hosts that Canvas or a teacher chooses.
   - It includes the Chrome Web Store Limited Use statement [20].
 - Chrome Web Store [20]:
   - Single purpose: "Make the Canvas site easier for students to use: see coursework as a to-do list, and open files, assignments, announcements and teachers in place on your own Canvas."
@@ -1968,7 +1968,7 @@ Contributions need a DCO sign-off and come in under the same license.
 1. Rename the product in the code: the extension name and the description in the messages, the package name, the README, the privacy policy, the store texts and the UI texts that name the product.
 2. Change the Firefox add-on id before the first Firefox release, for example to `tools-for-canvas@tranbao0.github.io`.
    An add-on id cannot change after the first release.
-3. Done on 2026-10-29: the GitHub repository is `tranbao0/tools-for-canvas`, and the URL allowlist uses the new repository and privacy policy links.
+3. The GitHub repository is `tranbao0/tools-for-canvas`, and the URL allowlist uses the new repository and privacy policy links.
 4. Run a final store check for the exact name, including Edge, just before the first release.
 
 ### 18. Settings
@@ -2179,7 +2179,7 @@ The list feels like part of Canvas.
 
 **Decision:** Four fixes, each with its own switch in one setting group, "New dashboard fixes".
 All four are on by default.
-A fix like the announcements list applies Canvas wide where that is possible.
+A fix like the announcements list is meant to apply Canvas wide where that is possible.
 So the scroll list is one shared module, and a widget needs only an adapter for it.
 The weekly card covers the Course work widget, so the group has no fix for its icons or its extras.
 With the card off, the student sees the plain widget of Canvas.
@@ -2195,7 +2195,7 @@ The cache writes of the weekly list follow the cookie rule of decision 11, and t
 | Switch | Fix |
 |---|---|
 | Announcements in place | One steady list with infinite scroll replaces the list of the widget: a message opens in its row, the card keeps its height, and a course filter, a search by topic and a search by date join the read filter |
-| All course grades | A grade card for every course, not only six |
+| All course grades | A grade card for every course on one page; Canvas shows six a page |
 | Steady page buttons | One page navigator with nine fixed places for the paged widgets |
 | People list | The same steady list with infinite scroll replaces the list and the pager of the People widget: the card keeps its height, the Course filter and the Role filter stay Canvas's own, a search by name and course joins them, and each person shows every course and role on its own line |
 
@@ -2494,7 +2494,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      The title is bold 0.75rem cut at 75 characters (lines 206 and 207), the snippet 0.75rem cut at 120 characters with the tags taken out (lines 256 and 257), the avatar is medium (line 195) and "Read more" is 0.875rem (line 264).
    **The rule about read marks.**
    Only an explicit student action marks an announcement as read.
-   The dashboard fixes have one explicit write: the read mark above, on a trusted click of the read control.
+   The Announcements fix has one explicit write: the read mark above, on a trusted click of the read control.
    Opening or closing a message, a search, a date search and a scroll send no write.
    The only other write of the extension for an announcement is "Mark as read" of the weekly list (decision 24).
    The extension never loads the Canvas page of an announcement itself, because it marks the topic as read.
@@ -2982,9 +2982,9 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 **Problem:** Canvas opens a PDF in a full-window overlay that hides the page, shows one file at a time, and offers the student's own submitted files only as downloads.
 The file viewer is the main reason for the "Tools" in the name.
 
-**F3 investigation:**
+**Waterfox PDF failure:**
 
-The failure shows in Waterfox 6.7.7 (Gecko 153.6.0, 64-bit), test channel 0.1.0.23.
+A PDF fails to open in the pane in Waterfox 6.7.7 (Gecko 153.6.0, 64-bit), test channel 0.1.0.23.
 Stock Firefox 159 renders the three-page fixture padded to about 1.7 MB with each of four separate profile settings: `privacy.resistFingerprinting=true`, `privacy.fingerprintingProtection=true` with `privacy.fingerprintingProtection.overrides="+AllTargets"`, `javascript.options.wasm=false`, and `webgl.disabled=true`.
 All four pass fetch, worker start, document load, and page render, and restore page 3.
 The stock browser does not reproduce this failure.
@@ -3039,7 +3039,7 @@ A complete one would need limits inside the vendored PDF.js, which the vendor ha
 The risk stays Low: it costs availability only, it needs a real click of the student on the file, and the student recovers by closing the tab or the browser.
 Real PDFs pass: the fixtures, and a file padded with a run of 1.7 MB.
 
-**F1 investigation (incomplete):**
+**Files link PDF failure in Firefox (incomplete):**
 
 The Firefox 159 Selenium test renders the existing three-page PDF through the fake Canvas redirect.
 The same test also passes with a PDF comment appended to make the response about 1.7 MB, using `.output-e2e/firefox-mv3`.
@@ -3050,10 +3050,10 @@ At Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, `ui/features/files/
 Its legacy handler calls `previewItem`, and `FilesApp.jsx` calls the page router with a preview query.
 `ui/shared/files/react/components/FilePreview.jsx` reads `props.query.preview` to select the file.
 `app/views/gradebooks/grade_summary.html.erb` links comment attachments with both `download` and `comment_id` on a submission address.
-Ticket F2 accepts that comment attachment form with strict numeric ids, including shard ids.
+The pane accepts that comment attachment form with strict numeric ids, including shard ids.
 The exact Files link address from the failing page and the original PDF are still needed to establish a reproduction.
 
-**F4 investigation:**
+**Sign-in page in place of the file:**
 
 A "Copy details" report for a 1.7 MB PDF from the classic Files page showed `not_a_file` at the fetch stage with no HTTP status and zero bytes.
 So the pane got a web page, most likely the sign-in page, in place of the file.
@@ -3065,7 +3065,7 @@ The test does not prove which rule applies in Waterfox 6.7.7, but the report sho
 The Firefox smoke test covers settings 1, 4 and 5, for a file and for a comment attachment.
 With the pane read alone, the default run of the test failed before the fix.
 
-**Live facts (decision 23, sjsu.instructure.com, Firefox):**
+**Live facts (decision 23, sjsu.instructure.com, Firefox, 2026-10-30):**
 
 - `GET /api/v1/files/:id` answers with the content type, the size and a same-origin `url` (`/files/:id/download`).
 - That URL redirects to `cdn.inst-fs-iad-prod.inscloudgate.net`, which serves the PDF bytes.
@@ -3251,7 +3251,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The pane takes only the file id from the address, for every read and for every link of the card.
      No `verifier` and no `location` of the address goes to a read, a stored value or a link that the student can click, except the one case in "The address of the clicked link" below.
    - A link without a `download` attribute opens the pane by its address alone.
-     The address of a comment attachment carries numeric `comment_id` and `download` query parameters, and the pane takes it on the top frame of Grades and submission details pages (Ticket F2b).
+     The address of a comment attachment carries numeric `comment_id` and `download` query parameters, and the pane takes it on the top frame of Grades and submission details pages (see "Clicks, comment attachments and folder views").
      An explicit HTML `download` attribute keeps its download action.
    - When the viewer is off, no click is rerouted.
      The script takes a click at once, before the settings have loaded, and if the setting turns out to be off, it clicks the same link again from script.
@@ -3269,8 +3269,6 @@ With the pane read alone, the default run of the test failed before the fix.
      Each position has its own key, `viewerPosition:` followed by the JSON of the origin, the user and the file id, so a save writes one small entry and a change event carries that key only.
      A save that takes the store over 200 drops the oldest positions.
      A read of a position removes the keys of other students, other Canvas addresses and bad keys, without reading their values.
-     The first build keeps the page, the zoom and the document of each tab only while the pane stays open.
-     Saving them across reloads is build step 3.
    - Image: a raster image shows in an image element, and an SVG is drawn on a canvas (item 10).
    - Audio and video: the browser's own elements, from a blob URL of the fetched bytes.
    - Plain text and code: shown as text, never rendered as HTML.
@@ -3640,7 +3638,7 @@ With the pane read alone, the default run of the test failed before the fix.
   The pane page makes blob URLs of file bytes in the extension origin.
   A blob URL that stays in an element can be opened as a page of its own: "Open image in new tab" on an `img` navigates a top-level tab to it.
   A teacher's SVG would then be a document of the extension origin, and a student would see it with the pane page's rights.
-  - **A blob URL that stays in the page, measured with `tests/fixtures/files/hostile.svg`.**
+  - **Measured on 2026-11-02, before the fix, with `tests/fixtures/files/hostile.svg`.**
     The file has an inline script, an `onload` handler, a `javascript:` link, and a `foreignObject` with a script, an error handler and a `javascript:` link.
     Each vector writes a `hostile-` key into `localStorage`.
     - Chromium 156 (the Playwright build): `window.open(blobUrl)` from the pane opened the SVG as a top-level document, `blob:chrome-extension://<id>/<uuid>`.
@@ -4135,7 +4133,7 @@ So a student switches pages to read the instructions next to the feedback on a f
   - A comment attachment opens in the pane through its submission route, from the comments of the Submission Details page.
   - The error card of every file keeps a Download button, so a file that fails in the pane can still be saved.
     The button links to the file id alone.
-  - A comment attachment has no "Open in Canvas" there, because it has no Canvas page (Ticket F2b).
+  - A comment attachment has no "Open in Canvas" there, because it has no Canvas page (see "Clicks, comment attachments and folder views").
     Its error card shows one only when the clicked link carried a `verifier` or a `location`, and then it is that address.
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
 
@@ -4731,7 +4729,7 @@ The pane therefore uses content_only=1.
 `app/views/layouts/application.html.erb` calls that helper and omits the global header, breadcrumbs and course navigation for content-only pages.
 The parameter does not disable the assignment student view or its submission code.
 
-### Ticket F2: Files routes and comment attachments
+### Files routes and comment attachments
 
 Verified against Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 `ui/features/files/react/components/FolderChild.jsx` renders the name anchor with the model `url`, class `ef-name-col__link`, role `button`, and `preventDefault(this.handleFileLinkClick)`.
@@ -4743,10 +4741,10 @@ Verified against Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 The fixture name link uses the preview address and pushes it through its click handler, as the router does.
 The exact live model URL is still unknown.
 Trusted plain clicks stop before the router, while explicit download links keep their action.
-A direct load of a preview address, and a move through the history to one, keep Canvas's own overlay and open no pane (F2b, item 1).
+A direct load of a preview address, and a move through the history to one, keep Canvas's own overlay and open no pane (see "Clicks, comment attachments and folder views", item 1).
 No verified public close API is available for that overlay, so the extension does not remove React-owned nodes or alter Canvas router state.
 
-### Ticket F2b: Clicks, comment attachments and folder views
+### Clicks, comment attachments and folder views
 
 1. **Only a trusted click opens the pane.**
    The pane does not read `?preview=` from a direct load, a `popstate` event, a `hashchange` event or the history.
@@ -4782,7 +4780,7 @@ No verified public close API is available for that overlay, so the extension doe
    Tests prove that `replaceState` with a synthetic `popstate`, `pushState` with `history.back()`, a fragment change and a direct load open no pane, and that a history move leaves the pane open or closed as it was.
    A comment attachment test serves the file only through the submission route and checks that the PDF shows in the pane.
 
-### Ticket F2c: Follow-up to Ticket F2b
+### Comment attachment names, positions and cookie checks
 
 1. The name of a comment attachment is cut to 200 characters before the last trim, so a space at the cut goes and the channel takes the name.
 2. A PDF of a comment attachment saves its page and zoom under its route id, with the same strict pattern as the tabs.
