@@ -1,0 +1,181 @@
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PdfEngine } from './engine';
+import type { PdfjsLib } from './types';
+
+/** An observer that follows the rule of the specification: it reports a new observation, and a
+ * change of size, at the end of a frame, and never a size that equals the last one it reported. */
+class FakeResizeObserver {
+  static all = new Set<FakeResizeObserver>();
+  private readonly seen = new Map<Element, string>();
+  constructor(private readonly callback: () => void) {
+    FakeResizeObserver.all.add(this);
+  }
+  observe(target: Element): void {
+    this.seen.set(target, '0x0');
+  }
+  unobserve(target: Element): void {
+    this.seen.delete(target);
+  }
+  disconnect(): void {
+    this.seen.clear();
+  }
+  /** The end of a frame. */
+  flush(): void {
+    let changed = false;
+    for (const [target, last] of this.seen) {
+      const now = `${target.clientWidth}x${target.clientHeight}`;
+      if (now === last || (target.clientWidth === 0 && target.clientHeight === 0)) continue;
+      this.seen.set(target, now);
+      changed = true;
+    }
+    if (changed) this.callback();
+  }
+}
+
+class FakeIntersectionObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+function flushFrame(): void {
+  for (const observer of FakeResizeObserver.all) observer.flush();
+}
+
+const lib = {
+  PDFWorker: class {
+    promise = Promise.resolve();
+    destroy(): void {}
+  },
+  getDocument: () => ({
+    promise: Promise.resolve({
+      numPages: 3,
+      loadingTask: { destroy: () => Promise.resolve() },
+      getPage: () =>
+        Promise.resolve({
+          getViewport: () => ({ width: 600, height: 800 }),
+          cleanup: () => undefined,
+        }),
+    }),
+    destroy: () => Promise.resolve(),
+  }),
+} as unknown as PdfjsLib;
+
+describe('PdfEngine in a frame that shows again', () => {
+  let size = { width: 472, height: 655 };
+  let scroller: HTMLDivElement;
+  let pages: HTMLDivElement;
+
+  beforeEach(() => {
+    size = { width: 472, height: 655 };
+    FakeResizeObserver.all.clear();
+    globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+    globalThis.IntersectionObserver =
+      FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+    scroller = document.createElement('div');
+    pages = document.createElement('div');
+    scroller.append(pages);
+    document.body.append(scroller);
+    Object.defineProperty(scroller, 'clientWidth', { get: () => size.width });
+    Object.defineProperty(scroller, 'clientHeight', { get: () => size.height });
+  });
+
+  afterEach(() => {
+    scroller.remove();
+  });
+
+  const boxWidth = () => (pages.children[0] as HTMLElement).style.width;
+
+  async function openShown(): Promise<PdfEngine> {
+    const engine = await PdfEngine.open({
+      lib,
+      bytes: new Uint8Array([37, 80, 68, 70]),
+      scroller,
+      pages,
+      onChange: () => undefined,
+    });
+    flushFrame();
+    return engine;
+  }
+
+  it('applies a restored page and zoom after opening without a size', async () => {
+    size = { width: 0, height: 0 };
+    const engine = await openShown();
+    engine.setZoom({ kind: 'scale', value: 1.5 });
+    engine.goToPage(2);
+    flushFrame();
+    expect(pages.children[0]!.getAttribute('style') ?? '').not.toContain('width: 900px');
+    size = { width: 472, height: 655 };
+    flushFrame();
+    expect(boxWidth()).toBe('900px');
+    expect(scroller.scrollTop).toBe(1212);
+    expect(engine.currentPage).toBe(2);
+    engine.destroy();
+  });
+
+  it('keeps the zoom and the place when the first size it reads is a stale size', async () => {
+    const engine = await openShown();
+    const fitted = boxWidth();
+    engine.goToPage(2);
+    const place = scroller.scrollTop;
+    engine.setActive(false);
+    // The frame is hidden: the observer reports nothing. The frame shows again, and the engine
+    // is told before the frame has its size. Then the frame gets its old size, which equals the
+    // last size that the observer reported.
+    size = { width: 4, height: 274 };
+    engine.setActive(true);
+    size = { width: 472, height: 655 };
+    scroller.scrollTop = 185;
+    flushFrame();
+    expect(boxWidth()).toBe(fitted);
+    expect(scroller.scrollTop).toBe(place);
+    expect(engine.currentPage).toBe(2);
+    engine.destroy();
+  });
+
+  it('keeps its anchor through a stale non-zero report and a clamped scroll', async () => {
+    const engine = await openShown();
+    engine.goToPage(2);
+    const place = scroller.scrollTop;
+    engine.setActive(false);
+    size = { width: 4, height: 274 };
+    engine.setActive(true);
+    flushFrame();
+    size = { width: 472, height: 655 };
+    scroller.scrollTop = 185;
+    scroller.dispatchEvent(new Event('scroll'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    flushFrame();
+    expect(scroller.scrollTop).toBe(place);
+    expect(engine.currentPage).toBe(2);
+    engine.destroy();
+  });
+
+  it('shows again with the size of the frame when the observer had reported zero', async () => {
+    const engine = await openShown();
+    const fitted = boxWidth();
+    engine.goToPage(3);
+    const place = scroller.scrollTop;
+    engine.setActive(false);
+    size = { width: 0, height: 0 };
+    flushFrame();
+    size = { width: 300, height: 400 };
+    engine.setActive(true);
+    flushFrame();
+    expect(boxWidth()).not.toBe(fitted);
+    expect(scroller.scrollTop).toBeGreaterThan(0);
+    expect(scroller.scrollTop).toBeLessThanOrEqual(place);
+    engine.destroy();
+  });
+
+  it('does not lay out while it is hidden', async () => {
+    const engine = await openShown();
+    const fitted = boxWidth();
+    engine.setActive(false);
+    size = { width: 300, height: 400 };
+    flushFrame();
+    expect(boxWidth()).toBe(fitted);
+    engine.destroy();
+  });
+});

@@ -91,6 +91,8 @@ export class PdfEngine {
   private revealPage = -1;
   private searchToken = 0;
   private active = true;
+  private waitingForSize = true;
+  private scrollExtent = 0;
   private destroyed = false;
   private waiting: PageView[] = [];
   private running = 0;
@@ -264,7 +266,6 @@ export class PdfEngine {
       this.observer.observe(view.el);
     }
     this.resizer.observe(this.options.scroller);
-    this.layout();
     this.emit();
     void this.loadSizes();
   }
@@ -331,9 +332,9 @@ export class PdfEngine {
 
   /** Lays out the pages again and keeps the position in the document. */
   private relayout(): void {
-    const anchor = this.captureAnchor();
+    if (!this.active || this.waitingForSize) return;
     this.layout();
-    this.restoreAnchor(anchor);
+    this.restoreAnchor(this.anchor);
     this.queueStale();
     this.emit();
   }
@@ -369,13 +370,22 @@ export class PdfEngine {
   private setScrollTop(top: number): void {
     const { scroller } = this.options;
     scroller.scrollTop = Math.max(0, top);
-    this.programmaticTop = scroller.scrollTop;
+    this.programmaticTop = Math.max(0, top);
+    this.scrollExtent = scroller.scrollHeight;
   }
 
   private trackScroll(): void {
-    if (this.destroyed || !this.active) return;
+    if (this.destroyed || !this.active || this.waitingForSize) return;
     const { scroller } = this.options;
-    if (this.programmaticTop !== null && Math.abs(scroller.scrollTop - this.programmaticTop) < 2) {
+    const area = this.area();
+    if (area.width !== this.lastArea.width || area.height !== this.lastArea.height) return;
+    const maximum = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    if (scroller.scrollHeight !== this.scrollExtent && scroller.scrollTop >= maximum) return;
+    this.scrollExtent = scroller.scrollHeight;
+    if (
+      this.programmaticTop !== null &&
+      Math.abs(scroller.scrollTop - Math.min(this.programmaticTop, maximum)) < 2
+    ) {
       return;
     }
     this.programmaticTop = null;
@@ -399,8 +409,11 @@ export class PdfEngine {
     if (this.destroyed || !this.active) return;
     const { scroller } = this.options;
     if (scroller.clientWidth === 0 || scroller.clientHeight === 0) return;
+    const waiting = this.waitingForSize;
+    this.waitingForSize = false;
     const area = this.area();
-    if (area.width === this.lastArea.width && area.height === this.lastArea.height) return;
+    if (!waiting && area.width === this.lastArea.width && area.height === this.lastArea.height)
+      return;
     this.relayout();
   }
 
@@ -413,10 +426,9 @@ export class PdfEngine {
       return;
     }
     this.active = true;
-    this.layout();
-    this.restoreAnchor(this.anchor);
-    this.queueStale();
-    this.emit();
+    this.waitingForSize = true;
+    this.resizer.unobserve(this.options.scroller);
+    this.resizer.observe(this.options.scroller);
   }
 
   // Drawing
