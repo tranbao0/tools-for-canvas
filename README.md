@@ -14,7 +14,7 @@ Tools for Canvas is not in the browser stores yet.
 
 What this build adds:
 
-- A new course shows in the list: the list loads your courses again when they are an hour old, or when you click Retry.
+- A new course shows up in the list within an hour, or right away when you click Retry.
 - On the new dashboard in a wide window, a minimized list leaves the page where it is when the window changes size.
 - In the file pane, Close on "Couldn't open this file" keeps your saved file tabs.
 - A click on a file inside a frame always opens it.

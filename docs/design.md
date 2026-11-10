@@ -1864,7 +1864,7 @@ These sizes come from one test build of the same small app [19].
   - It says that View Feedback and Preview load the DocViewer session of Canvas, and that Canvas then marks the notes of that file as read.
   - It says that a read of a file in the pane counts as opening that file, so Canvas can mark the view requirement of a module as done and record the access.
   - It says the extension stores on the device only the settings, the Canvas address, a change time stamp, the one-time notes that were seen, a fingerprint salt, and the page and zoom of up to 200 PDFs with the student id and the file ids, or the address in Canvas of a file attached to a comment.
-  - It says that nothing goes to me, and it names the storage, DocViewer and image hosts that Canvas or a teacher chooses.
+  - It says that nothing goes to me and that the extension has no analytics, error reporting or advertising, and it describes the storage, DocViewer and image hosts that Canvas or a teacher chooses.
   - It includes the Chrome Web Store Limited Use statement [20].
 - Chrome Web Store [20]:
   - Single purpose: "Make the Canvas site easier for students to use: see coursework as a to-do list, and open files, assignments, announcements and teachers in place on your own Canvas."
@@ -2179,8 +2179,7 @@ The list feels like part of Canvas.
 
 **Decision:** Four fixes, each with its own switch in one setting group, "New dashboard fixes".
 All four are on by default.
-A fix like the announcements list is meant to apply Canvas wide where that is possible.
-So the scroll list is one shared module, and a widget needs only an adapter for it.
+The scroll list is one shared module, and a widget needs only an adapter for it.
 The weekly card covers the Course work widget, so the group has no fix for its icons or its extras.
 With the card off, the student sees the plain widget of Canvas.
 A stored setting with the old keys `courseColors` and `courseWorkExtras` is ignored: the settings are read field by field, and other keys are dropped.
@@ -2494,7 +2493,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      The title is bold 0.75rem cut at 75 characters (lines 206 and 207), the snippet 0.75rem cut at 120 characters with the tags taken out (lines 256 and 257), the avatar is medium (line 195) and "Read more" is 0.875rem (line 264).
    **The rule about read marks.**
    Only an explicit student action marks an announcement as read.
-   The Announcements fix has one explicit write: the read mark above, on a trusted click of the read control.
+   The Announcements fix has one explicit write: the read or unread mark above, on a trusted click of the read control.
    Opening or closing a message, a search, a date search and a scroll send no write.
    The only other write of the extension for an announcement is "Mark as read" of the weekly list (decision 24).
    The extension never loads the Canvas page of an announcement itself, because it marks the topic as read.
@@ -2982,9 +2981,9 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 **Problem:** Canvas opens a PDF in a full-window overlay that hides the page, shows one file at a time, and offers the student's own submitted files only as downloads.
 The file viewer is the main reason for the "Tools" in the name.
 
-**Waterfox PDF failure:**
+**Waterfox PDF failure (2026-11-02):**
 
-A PDF fails to open in the pane in Waterfox 6.7.7 (Gecko 153.6.0, 64-bit), test channel 0.1.0.23.
+A PDF failed to open in the pane in Waterfox 6.7.7 (Gecko 153.6.0, 64-bit), test channel 0.1.0.23.
 Stock Firefox 159 renders the three-page fixture padded to about 1.7 MB with each of four separate profile settings: `privacy.resistFingerprinting=true`, `privacy.fingerprintingProtection=true` with `privacy.fingerprintingProtection.overrides="+AllTargets"`, `javascript.options.wasm=false`, and `webgl.disabled=true`.
 All four pass fetch, worker start, document load, and page render, and restore page 3.
 The stock browser does not reproduce this failure.
@@ -3039,7 +3038,7 @@ A complete one would need limits inside the vendored PDF.js, which the vendor ha
 The risk stays Low: it costs availability only, it needs a real click of the student on the file, and the student recovers by closing the tab or the browser.
 Real PDFs pass: the fixtures, and a file padded with a run of 1.7 MB.
 
-**Files link PDF failure in Firefox (incomplete):**
+**Files link PDF failure in Firefox (2026-11-02, incomplete):**
 
 The Firefox 159 Selenium test renders the existing three-page PDF through the fake Canvas redirect.
 The same test also passes with a PDF comment appended to make the response about 1.7 MB, using `.output-e2e/firefox-mv3`.
@@ -3053,7 +3052,7 @@ Its legacy handler calls `previewItem`, and `FilesApp.jsx` calls the page router
 The pane accepts that comment attachment form with strict numeric ids, including shard ids.
 The exact Files link address from the failing page and the original PDF are still needed to establish a reproduction.
 
-**Sign-in page in place of the file:**
+**Sign-in page in place of the file (2026-11-03):**
 
 A "Copy details" report for a 1.7 MB PDF from the classic Files page showed `not_a_file` at the fetch stage with no HTTP status and zero bytes.
 So the pane got a web page, most likely the sign-in page, in place of the file.
@@ -3764,8 +3763,7 @@ The Retry check fails only the file record request, so it does not interrupt the
 The Firefox smoke test opens an image in the pane and checks that it has loaded.
 Image zoom, tab URL cleanup, the Word card and passive submission text have browser checks.
 Image, text and video screenshots cover 1920 and 1280 px in light and dark.
-Build step 2 is built, except the live checks of the file players.
-Saving the page and the zoom is not implemented yet.
+The file players are built, except their live checks.
 The pane page uses the font stack of the list stylesheet, and Lato shows only where the system has it, because an extension page cannot use the web font of the Canvas page.
 The channel checks the saved Canvas origin, the parent window, one transferred port and the secret before it accepts file identities.
 
