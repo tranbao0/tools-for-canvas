@@ -275,7 +275,7 @@ test('the block shows from a 640 px viewport', async ({ context, page, backgroun
 });
 
 // Rows on every other surface keep the grid and the height they had before the slot rows. The
-// numbers are those of the rows at commit 8b7ae7f.
+// numbers are those of the rows at commit 4e2ef1e.
 const OTHER_SURFACES_PARTS = [
   '.wr-slot-pill',
   '.wr-points',
