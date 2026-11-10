@@ -340,11 +340,15 @@ export class PdfEngine {
   }
 
   private captureAnchor(): { index: number; fraction: number } {
-    const { scroller } = this.options;
-    const index = this.pageAt(scroller.scrollTop);
+    return this.anchorAt(this.options.scroller.scrollTop);
+  }
+
+  /** The place in the document at a scroll offset: a page and how far down that page. */
+  private anchorAt(y: number): { index: number; fraction: number } {
+    const index = this.pageAt(y);
     const top = this.tops[index] ?? PAD;
     const height = this.heights[index] ?? 1;
-    return { index, fraction: (scroller.scrollTop - (top - PAD)) / (height + PAD) };
+    return { index, fraction: (y - (top - PAD)) / (height + PAD) };
   }
 
   private restoreAnchor(anchor: { index: number; fraction: number }): void {
@@ -367,20 +371,33 @@ export class PdfEngine {
     return Math.max(0, low);
   }
 
+  /**
+   * Scrolls to a place in code. The place becomes the saved place in the document, so a later
+   * layout, such as a zoom or a new size, keeps it. It is the wanted place: a browser that clamps
+   * the offset in a layout that is too small does not change it.
+   */
   private setScrollTop(top: number): void {
     const { scroller } = this.options;
-    scroller.scrollTop = Math.max(0, top);
-    this.programmaticTop = Math.max(0, top);
+    const wanted = Math.max(0, top);
+    scroller.scrollTop = wanted;
+    this.programmaticTop = wanted;
     this.scrollExtent = scroller.scrollHeight;
+    this.anchor = this.anchorAt(wanted);
   }
 
   private trackScroll(): void {
     if (this.destroyed || !this.active || this.waitingForSize) return;
     const { scroller } = this.options;
     const area = this.area();
-    if (area.width !== this.lastArea.width || area.height !== this.lastArea.height) return;
     const maximum = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-    if (scroller.scrollHeight !== this.scrollExtent && scroller.scrollTop >= maximum) return;
+    // A new size before the next layout, or a new scroll height, can clamp the offset. That
+    // scroll is not the student's, and the next layout restores the saved place. Any other
+    // scroll is the student's, also while the size changes.
+    const resized =
+      area.width !== this.lastArea.width ||
+      area.height !== this.lastArea.height ||
+      scroller.scrollHeight !== this.scrollExtent;
+    if (resized && scroller.scrollTop >= maximum - 1) return;
     this.scrollExtent = scroller.scrollHeight;
     if (
       this.programmaticTop !== null &&
@@ -617,7 +634,6 @@ export class PdfEngine {
       // The page is not drawn yet. It marks the match when its text layer is ready.
       this.setScrollTop((this.tops[match.page] ?? PAD) - PAD);
     }
-    this.anchor = this.captureAnchor();
     this.setPage(match.page + 1);
   }
 

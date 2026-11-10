@@ -586,3 +586,58 @@ it('restores a text offset after an active tab gets its size', async () => {
   report();
   expect(top).toBe(800);
 });
+
+it('keeps a text offset at the end after the text got shorter, through a hide and a show', async () => {
+  let report = () => {};
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        report = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const host = { readFile: vi.fn(async () => new Uint8Array([104, 105])), loadPdfjs: vi.fn() };
+  const text = (active: boolean) => (
+    <MediaTab
+      {...base}
+      host={host as unknown as PdfHost}
+      name="n.txt"
+      contentType="text/plain"
+      active={active}
+    />
+  );
+  const view = render(text(true));
+  await waitFor(() => expect(document.querySelector('pre')).not.toBeNull());
+  const scroller = document.querySelector('.fv-media')!;
+  let height = 655;
+  let length = 43682;
+  let top = 800;
+  Object.defineProperties(scroller, {
+    clientWidth: { get: () => (height ? 472 : 0) },
+    clientHeight: { get: () => height },
+    scrollHeight: { get: () => length },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = height ? Math.min(value, Math.max(0, length - height)) : 0;
+      },
+    },
+  });
+  report();
+  scroller.dispatchEvent(new Event('scroll'));
+  // Full view makes the lines wider, so the text gets shorter, and the student reads its end.
+  length = 14595;
+  top = length - height;
+  scroller.dispatchEvent(new Event('scroll'));
+  const end = top;
+  view.rerender(text(false));
+  height = 0;
+  top = 0;
+  view.rerender(text(true));
+  height = 655;
+  report();
+  expect(top).toBe(end);
+});

@@ -248,27 +248,22 @@ export function MediaTab(props: {
   // Firefox resets the offset of a scroller that `display: none` hides, and no scroll event
   // follows. The tab keeps the offsets it had while it showed and puts them back when it shows.
   const places = useRef(new Map<Element, number>());
-  const extents = useRef(new Map<Element, number>());
   const restoring = useRef(false);
   const keepPlace = (event: Event) => {
     const target = event.target;
     if (!shown.current || restoring.current || !(target instanceof Element)) return;
     if (!target.clientWidth || !target.clientHeight) return;
+    // A scroller that is still too small clamps a restored offset. That scroll keeps the saved one.
     const maximum = Math.max(0, target.scrollHeight - target.clientHeight);
     const saved = places.current.get(target);
     if (saved !== undefined && target.scrollTop === Math.min(saved, maximum)) return;
-    if (
-      extents.current.has(target) &&
-      extents.current.get(target) !== target.scrollHeight &&
-      target.scrollTop >= maximum
-    )
-      return;
     places.current.set(target, target.scrollTop);
-    extents.current.set(target, target.scrollHeight);
   };
   useLayoutEffect(() => {
     if (!props.active) return;
     restoring.current = true;
+    for (const scroller of places.current.keys())
+      if (!scroller.isConnected) places.current.delete(scroller);
     const restore = () => {
       let ready = true;
       for (const [scroller, top] of places.current) {

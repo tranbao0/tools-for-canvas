@@ -134,6 +134,35 @@ describe('PdfEngine in a frame that shows again', () => {
     engine.destroy();
   });
 
+  it('keeps a place that code scrolled to, such as a search match, through a later layout', async () => {
+    const engine = await openShown();
+    const internals = engine as unknown as { tops: number[]; centerOn(mark: HTMLElement): void };
+    const box = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        height,
+        bottom: top + height,
+        left: 10,
+        right: 20,
+        width: 10,
+        x: 10,
+        y: top,
+      }) as DOMRect;
+    scroller.getBoundingClientRect = () => box(0, 655);
+    // A match 20 px into page 3. The engine centers it, as a search does when the page draws late.
+    const match = internals.tops[2]! + 20;
+    const mark = document.createElement('span');
+    mark.getBoundingClientRect = () => box(match - scroller.scrollTop, 10);
+    internals.centerOn(mark);
+    // A new width lays the pages out again at another zoom, and the match must stay in view.
+    size = { width: 300, height: 655 };
+    flushFrame();
+    const top = scroller.scrollTop;
+    expect(top).toBeGreaterThan(internals.tops[1]!);
+    expect(top).toBeLessThan(internals.tops[2]! + 20);
+    engine.destroy();
+  });
+
   it('keeps its anchor through a stale non-zero report and a clamped scroll', async () => {
     const engine = await openShown();
     engine.goToPage(2);
