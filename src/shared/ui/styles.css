@@ -126,7 +126,7 @@
 
 /*
  * The list has a fixed height, in a card and in the right column of the classic dashboard: the
- * window height minus 48px, at most 760px and at least 420px, whatever the length of the list, so
+ * window height minus 48px, at most 760px and at least 420px where the window permits, so
  * the card keeps its size from span to span. The header and the rings stay at the top, and
  * the groups scroll in .wr-scroll, or in .wr-group-area while No due date or Done is open. A view
  * without those regions, such as the settings, scrolls the whole card.
@@ -159,6 +159,7 @@
  * make a card as tall as the page, and its day list would not scroll inside it.
  */
 :host([data-panel='slot']) .wr[data-surface='inpage'] {
+  --wr-card-height: min(max(420px, min(100vh - 48px, 760px)), calc(100vh - 2 * var(--wr-slot-gap)));
   top: clamp(0px, var(--wr-slot-top, 0px), calc(100% - var(--wr-card-height)));
   height: 100%;
   max-height: var(--wr-card-height);
@@ -294,6 +295,10 @@
 }
 
 :host([data-panel='dock']) .wr[data-surface='inpage'] {
+  --wr-card-height: min(
+    max(420px, min(100vh - 48px, 760px)),
+    calc(100vh - 2 * var(--wr-panel-top, 24px))
+  );
   position: sticky;
   top: var(--wr-panel-top, 24px);
 }
