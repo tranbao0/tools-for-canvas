@@ -7,25 +7,24 @@ It has no account, no server of its own and no telemetry.
 
 ## Status
 
-Last update: 2026-11-08.
+Last update: 2026-11-10.
 
-**Released:** test build 0.1.0.32 for Firefox, signed by Mozilla, for a small group of testers.
+**Released:** test build 0.1.0.34 for Firefox, signed by Mozilla, for a small group of testers.
 Tools for Canvas is not in the browser stores yet.
 
 What this build adds:
 
-- A Preview button on the new Canvas dashboard opens an assignment beside the list, as on the Assignments list.
-- People search on the new dashboard.
-- "Mark as done" covers what Skip did, and done work from before the span folds into an "older" line.
-- A marked announcement leaves the list with a short animation.
-- Panes fit the page beside them on the new dashboard, the classic dashboard and the Files pages.
-- An open pane closes when you sign out or another student signs in, and it covers itself while Canvas cannot confirm your sign-in.
-- File links work in Firefox private windows and container tabs.
+- The list loads your courses again at most once an hour and when you click Retry, so a new course shows without a reload.
+- On the new dashboard in a wide window, a minimized list no longer pulls the page back up when the window changes size.
+- In the file pane, Close on "Couldn't open this file" keeps your saved file tabs.
+- A click on a file inside a frame always opens it.
+- A file tab change that fails to save stays as you left it.
+- The extension now needs Chrome or Edge 147, or Firefox 144, so the PDF viewer works in every browser that can install it.
 
 **Working on now:**
 
 - A listing in the Chrome Web Store and on Firefox Add-ons.
-- Fixes from a full code review, for example new courses that show without a reload, and a clear message when a save fails.
+- Fixes from a full code review.
 - The next tools on the [roadmap](docs/roadmap.md).
 
 ## What you get
