@@ -40,7 +40,7 @@ const PANE_HOST = '#tools-turn-in';
 const FILE_PANE = '#tools-file-viewer';
 const OTHER_STUDENT = '9001';
 const DIR = path.join(process.cwd(), 'screenshots', 'assignment-view');
-const SHOTS = '/tmp/ticket-l';
+const SHOTS = path.join(process.cwd(), 'screenshots', 'assignment-view');
 
 function details(change: (copy: typeof ASSIGNMENT_DETAILS) => void = () => undefined) {
   const copy = structuredClone(ASSIGNMENT_DETAILS);
@@ -425,7 +425,7 @@ test('each row has a Preview button at the end of its layout, and no row opens i
   await expect(page).toHaveURL(`${canvas.origin}${ASSIGNMENT}`);
 });
 
-test('the Preview button has the size and the look of the mockup, and the colors of the states', async ({
+test('the Preview button has a fixed size and look, and the colors of the states', async ({
   context,
   page,
   background,
@@ -1101,7 +1101,7 @@ test('screenshots of the pane and of its full view at 1400 by 930, in light and 
       await expect(page.locator(PANE_HOST)).toHaveAttribute('data-theme', theme);
       await page.mouse.move(700, 600);
       await page.screenshot({
-        path: `/tmp/ticket-t/assignment${full ? '-full' : ''}-${theme}-1400x930.png`,
+        path: path.join(SHOTS, `assignment${full ? '-full' : ''}-${theme}-1400x930.png`),
       });
     }
   }

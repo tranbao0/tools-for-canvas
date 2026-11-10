@@ -100,7 +100,7 @@ for (const size of [
       true,
     );
     await page.screenshot({
-      path: path.resolve(`screenshots/m1-slot-${size.width}x${size.height}.png`),
+      path: path.resolve(`screenshots/dashboard-slot-${size.width}x${size.height}.png`),
     });
     const height = first.card.height;
     await clickListControl(page.getByRole('tab', { name: 'Courses', exact: true }));

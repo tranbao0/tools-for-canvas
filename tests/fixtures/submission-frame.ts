@@ -105,5 +105,5 @@ export function turnitinScores(page: string = REPORT_PAGE) {
   };
 }
 
-/** A Turnitin score of the classic form, as the mockup shows it: 5.0%, acceptable. */
+/** A Turnitin score of the classic form: 5.0%, acceptable. */
 export const TURNITIN_SCORE = turnitinScores().legacy;

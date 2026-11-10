@@ -7,7 +7,7 @@
  * space under the column, at the width of the column, so that the student need not scroll back.
  * It sits under the last item of the column, so it never covers one.
  *
- * It is the same container and the same list, not a copy: the container stays in the DOM, takes
+ * It is the same container and the same list: the container stays in the DOM, takes
  * `position: absolute` under the column, and a spacer of the same height holds its place in the
  * column. State such as open groups, scroll position and checks stays, because nothing is
  * rendered twice and nothing moves. An `IntersectionObserver` on a sentinel at the bottom of the

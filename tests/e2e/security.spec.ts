@@ -80,9 +80,9 @@ test('the background refuses data messages from a content script on another Canv
       action: { ...identity, kind: 'cancelDelete', noteId: IDS.notes.bioStudyGroup },
     },
     { type: 'weekrow:open-page', page: 'settings' },
-    // Only the panel may accept an offer, and the typed-address messages no longer exist.
+    // Only the panel may accept an offer. The typed-address messages do not exist.
     { type: 'weekrow:accept-offer', origin: OTHER },
-    // The in-page confirmation no longer exists: only extension pages answer an offer.
+    // There is no in-page confirmation: only extension pages answer an offer.
     { type: 'weekrow:confirm-canvas' },
     { type: 'weekrow:change-address' },
     { type: 'weekrow:setup', origin: OTHER, fromOffer: false },

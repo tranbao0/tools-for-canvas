@@ -199,7 +199,7 @@ test.describe('the widget dashboard without Course work', () => {
         }
         if (width === 2088 || width === 1280) {
           await page.screenshot({
-            path: `screenshots/ticket-j-${width}-${tab.toLowerCase()}.png`,
+            path: `screenshots/dashboard-column-${width}-${tab.toLowerCase()}.png`,
             fullPage: true,
           });
         }
@@ -319,7 +319,10 @@ for (const width of [2088, 1760, 1280]) {
     for (const tab of ['Dashboard', 'Courses']) {
       await clickListControl(page.getByRole('tab', { name: tab, exact: true }));
       await settledList(page);
-      await page.screenshot({ path: `screenshots/j3-delay-${width}-${tab}.png`, fullPage: true });
+      await page.screenshot({
+        path: `screenshots/dashboard-column-delay-${width}-${tab}.png`,
+        fullPage: true,
+      });
     }
   });
 }
@@ -366,7 +369,7 @@ test.describe('when the grid arrives after the wait', () => {
       expect(audit.moves).toHaveLength(2);
       expect(await coveredCanvasElements(page)).toEqual([]);
       await page.screenshot({
-        path: `screenshots/j3-late-grid-placed-${width}.png`,
+        path: `screenshots/dashboard-column-late-grid-placed-${width}.png`,
         fullPage: true,
       });
     });

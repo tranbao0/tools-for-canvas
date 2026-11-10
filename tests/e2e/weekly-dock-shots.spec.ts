@@ -61,7 +61,7 @@ for (const size of SIZES) {
       ]);
       await addCsrfCookie(context, served.canvas.origin);
       await page.setViewportSize(size);
-      // The owner's navigation is collapsed, so the wrapper ends at 1420 px. Canvas starts expanded.
+      // The test collapses the navigation, so the wrapper ends at 1420 px. Canvas starts expanded.
       await page.addInitScript(() => {
         document.addEventListener('DOMContentLoaded', () =>
           document.body.classList.remove('primary-nav-expanded'),

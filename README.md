@@ -3,7 +3,7 @@
 Tools for Canvas is a free browser extension that makes Canvas LMS easier to use for students.
 See your coursework as a to-do list, and open files, assignments and announcements in place on your own Canvas.
 It works in Chrome, Edge and Firefox.
-It has no account, no server of its own and no telemetry.
+It works with your own Canvas sign-in and keeps your data in your browser and on your Canvas.
 
 ## Status
 
@@ -14,17 +14,17 @@ Tools for Canvas is not in the browser stores yet.
 
 What this build adds:
 
-- The list loads your courses again at most once an hour and when you click Retry, so a new course shows without a reload.
-- On the new dashboard in a wide window, a minimized list no longer pulls the page back up when the window changes size.
+- A new course shows in the list: the list loads your courses again when they are an hour old, or when you click Retry.
+- On the new dashboard in a wide window, a minimized list leaves the page where it is when the window changes size.
 - In the file pane, Close on "Couldn't open this file" keeps your saved file tabs.
 - A click on a file inside a frame always opens it.
 - A file tab change that fails to save stays as you left it.
-- The extension now needs Chrome or Edge 147, or Firefox 144, so the PDF viewer works in every browser that can install it.
+- The extension needs Chrome or Edge 147, or Firefox 144, so the PDF viewer works in every browser that can install it.
 
 **Working on now:**
 
 - A listing in the Chrome Web Store and on Firefox Add-ons.
-- Fixes from a full code review.
+- More bug fixes.
 - The next tools on the [roadmap](docs/roadmap.md).
 
 ## What you get
@@ -61,13 +61,13 @@ In Settings, you can hide a course from your list, turn the rings off, and choos
 ### File viewer
 
 Canvas opens a file in a full-window overlay that hides the page.
-The file viewer opens it in a resizable pane beside the page instead.
+The file viewer opens it in a resizable pane beside the page.
 
 - Tabs keep several files open at once.
 - PDFs have search, page thumbnails and zoom, and each PDF remembers your page and zoom.
 - Images, text, audio and video show in the pane.
 - Word, PowerPoint and other files that the pane cannot show get a card with Download and Open in Canvas.
-- Your own submitted files open in the pane, not only as downloads.
+- Your own submitted files open in the pane, with a Download button.
 
 ### One assignment view
 
@@ -86,7 +86,8 @@ These are four small fixes for the widgets of the new Canvas dashboard.
 
 - **Announcements in place:** one steady list with infinite scroll.
   A message opens in its row, and you can filter by course, search by topic and search by date.
-- **All course grades:** a grade card for every course, not only six.
+- **All course grades:** a grade card for every course on one page.
+  Canvas shows six cards a page.
 - **Steady page buttons:** each paged widget keeps one width and one place for each page button.
 - **People list:** the same steady list for your teachers and teaching assistants, with each course and role of a person and a message button.
 
@@ -180,7 +181,7 @@ On another Canvas, the side panel offers "Switch to this Canvas?".
 Tools for Canvas reads your Canvas data in your browser and shows it to you.
 It writes only done marks, your own tasks, announcement read and unread marks, the read mark of your rubric comments and your grade visibility preference, and only to your own Canvas.
 On your device, it stores its settings, which tools are on, your Canvas address, a change time stamp, which one-time notes you have seen, a fingerprint salt and the page and zoom of your PDFs.
-Nothing goes to the developer: there are no analytics, no error reports and no remote configuration.
+Nothing goes to me: the extension has no analytics, no error reports and no remote configuration.
 A lint rule and a CI check enforce this in the code.
 
 Canvas can send a file, View Feedback or Preview to its own storage and DocViewer hosts.

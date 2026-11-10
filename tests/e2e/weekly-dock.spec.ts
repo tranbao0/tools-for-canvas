@@ -383,7 +383,7 @@ test.describe('the dock on the classic dashboard', () => {
         return right;
       });
     await expect.poll(textRight).toBeLessThanOrEqual(tabBox.x);
-    await page.screenshot({ path: '/tmp/ticket-d/e2e-tab-1368.png' });
+    await page.screenshot({ path: 'screenshots/weekly-dock/e2e-tab-1368.png' });
   });
 
   test('docks the list on List View in the same place', async ({ context, page, background }) => {
@@ -434,7 +434,7 @@ test.describe('Canvas overlays on List View', () => {
     // The tray stands at the right window edge, over the dock, with the z-index of Canvas.
     expect(await topAt(page, 1600, 400)).toBe('planner-todo-tray');
     expect(await topAt(page, 1790, 20)).toBe('planner-todo-tray');
-    await page.screenshot({ path: '/tmp/ticket-d/e2e-tray-over-dock.png' });
+    await page.screenshot({ path: 'screenshots/weekly-dock/e2e-tray-over-dock.png' });
   });
 
   test('the Add To Do tray shows on top of the tab of the minimized list', async ({
@@ -451,7 +451,7 @@ test.describe('Canvas overlays on List View', () => {
     await clickListControl(page.getByRole('button', { name: '+ To Do' }));
     await expect(page.getByRole('dialog', { name: 'Add To Do' })).toBeVisible();
     expect(await topAt(page, box.x + 19, box.y + 40)).toBe('planner-todo-tray');
-    await page.screenshot({ path: '/tmp/ticket-d/e2e-tray-over-tab.png' });
+    await page.screenshot({ path: 'screenshots/weekly-dock/e2e-tray-over-tab.png' });
   });
 });
 
@@ -587,14 +587,14 @@ test.describe('minimize and the tab', () => {
           .evaluate((header) => getComputedStyle(header).backgroundColor),
       )
       .toBe('rgb(27, 35, 48)');
-    await page.screenshot({ path: '/tmp/ticket-d/e2e-dark-open-1797.png' });
+    await page.screenshot({ path: 'screenshots/weekly-dock/e2e-dark-open-1797.png' });
     await minimize(page);
     const look = await tab(page).evaluate((button) => {
       const style = getComputedStyle(button);
       return { background: style.backgroundColor, border: style.borderLeftColor };
     });
     expect(look).toEqual({ background: 'rgb(27, 35, 48)', border: 'rgb(74, 91, 104)' });
-    await page.screenshot({ path: '/tmp/ticket-d/e2e-dark-min-1797.png' });
+    await page.screenshot({ path: 'screenshots/weekly-dock/e2e-dark-min-1797.png' });
   });
 
   test('resizes from its left edge, saves its own width, and leaves the file pane width alone', async ({
@@ -756,7 +756,7 @@ test.describe('one dock at a time with the file pane', () => {
     await expect(page.locator('#tools-file-viewer')).toHaveCount(0);
     await expect(page.locator(DOCK)).toBeVisible();
     await expect.poll(() => padding(page)).toBe('360px');
-    await page.screenshot({ path: '/tmp/ticket-d/e2e-after-switch.png' });
+    await page.screenshot({ path: 'screenshots/weekly-dock/e2e-after-switch.png' });
   });
 });
 

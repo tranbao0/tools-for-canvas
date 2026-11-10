@@ -34,7 +34,7 @@ function armAfterSettings(fire: () => void, depth: number) {
 }
 
 for (const depth of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
-  it(`G1 deleteTask, address change at hop ${depth}`, async () => {
+  it(`deleteTask, address change at hop ${depth}`, async () => {
     const h = await createHarness();
     const other = createFakeCanvas(buildScenario(new Date(Date.now()).toISOString()));
     h.createApi.mockImplementation((origin: string) => (origin === ORIGIN ? h.canvas : other));
@@ -56,7 +56,7 @@ for (const depth of [0, 1, 2, 3, 4, 5, 6, 7, 8]) {
     if (reply.undo !== null) expect(reply.undo.origin).toBe(ORIGIN);
   });
 
-  it(`G3 setDone, address change at hop ${depth}`, async () => {
+  it(`setDone, address change at hop ${depth}`, async () => {
     const h = await createHarness();
     const other = createFakeCanvas(buildScenario(new Date(Date.now()).toISOString()));
     h.createApi.mockImplementation((origin: string) => (origin === ORIGIN ? h.canvas : other));

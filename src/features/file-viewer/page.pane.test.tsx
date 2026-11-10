@@ -269,7 +269,7 @@ function hold(when: (m: Msg, from: string) => boolean) {
   return () => release();
 }
 describe('page and pane persistence after reconnects and queued actions', () => {
-  it('A1 removed host, then a click on a file the page saved earlier', async () => {
+  it('removed host, then a click on a file the page saved earlier', async () => {
     setup({ ids: ['4'], active: '4' });
     await startViewer();
     await connect();
@@ -290,7 +290,7 @@ describe('page and pane persistence after reconnects and queued actions', () => 
     });
   });
 
-  it('A3 removed host, the page read fails, and the store lost the file the page saved earlier', async () => {
+  it('removed host, the page read fails, and the store lost the file the page saved earlier', async () => {
     setup({ ids: ['4'], active: '4' });
     await startViewer();
     await connect();
@@ -312,7 +312,7 @@ describe('page and pane persistence after reconnects and queued actions', () => 
     });
   });
 
-  it('A4 Close under the cover, then the same file again once the identity is confirmed', async () => {
+  it('Close under the cover, then the same file again once the identity is confirmed', async () => {
     identity.confirmed = false;
     setup({ ids: ['4', '5'], active: '4' });
     await startViewer();

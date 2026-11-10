@@ -34,7 +34,7 @@ async function abandon(h: Harness) {
   });
 }
 
-it('Q6 queues a dashboard mark with a fresh stamp after the surface wait abandons its queue', async () => {
+it('queues a dashboard mark with a fresh stamp after the surface wait abandons its queue', async () => {
   const h = await createHarness();
   await loadReady(h);
   h.canvas.setAnnouncements(BIO, [{ id: '11', title: 'Notice', message: 'Body', posted_at: null }]);
@@ -48,7 +48,7 @@ it('Q6 queues a dashboard mark with a fresh stamp after the surface wait abandon
   expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([[BIO, '11', true]]);
 });
 
-it('E19 refuses another origin before checking the announcement tab cookie store', async () => {
+it('refuses another origin before checking the announcement tab cookie store', async () => {
   const h = await createHarness();
   await loadReady(h);
   vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValue(false);
@@ -58,7 +58,7 @@ it('E19 refuses another origin before checking the announcement tab cookie store
   expect(h.deps.surfaceUsesRequestStore).not.toHaveBeenCalled();
 });
 
-it('E4 reconciles the saved address when the feed arrives before its watcher', async () => {
+it('reconciles the saved address when the feed arrives before its watcher', async () => {
   const h = await createHarness();
   await loadReady(h);
   await canvasOriginItem.setValue(OTHER);
@@ -75,7 +75,7 @@ it('E4 reconciles the saved address when the feed arrives before its watcher', a
   });
 });
 
-it('V6 starts the viewer read with a fresh stamp after a same-student surface abandon', async () => {
+it('starts the viewer read with a fresh stamp after a same-student surface abandon', async () => {
   const h = await createHarness();
   await loadReady(h);
   vi.mocked(h.deps.surfaceUsesRequestStore).mockImplementationOnce(async () => {
@@ -87,7 +87,7 @@ it('V6 starts the viewer read with a fresh stamp after a same-student surface ab
   expect(read).toHaveBeenCalledTimes(1);
 });
 
-it('V2 refuses an assignment response before reading settings from another identity', async () => {
+it('refuses an assignment response before reading settings from another identity', async () => {
   const h = await createHarness();
   await loadReady(h);
   h.canvas.setAssignmentView('12', '101', rawRecords());
@@ -111,7 +111,7 @@ it('V2 refuses an assignment response before reading settings from another ident
   checkSettings();
 });
 
-it('W11 reports a saved dashboard mark after a same-student abandon during its response', async () => {
+it('reports a saved dashboard mark after a same-student abandon during its response', async () => {
   const h = await createHarness();
   await loadReady(h);
   h.canvas.setAnnouncements(BIO, [{ id: '11', title: 'Notice', message: 'Body', posted_at: null }]);
@@ -127,7 +127,7 @@ it('W11 reports a saved dashboard mark after a same-student abandon during its r
   expect(h.canvas.callsOf('setAnnouncementRead')).toEqual([[BIO, '11', true]]);
 });
 
-it('R2 does not repeat a rubric mark that finishes on its retry before a same-student abandon', async () => {
+it('does not repeat a rubric mark that finishes on its retry before a same-student abandon', async () => {
   const h = await createHarness();
   await loadReady(h);
   vi.mocked(h.deps.surfaceUsesRequestStore).mockResolvedValueOnce(false);

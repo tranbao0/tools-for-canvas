@@ -41,7 +41,7 @@ const FILE_PANE = '#tools-file-viewer';
 const FILE_NAME = 'ENGR195A - Reflection Paper #1.pdf';
 
 const DESCRIPTION =
-  '<p>Choose one industry or technology and analyze its social impact on diversity, equality and structural inequality. Your paper should:</p><ul><li>describe the industry and who works in it;</li><li>explain one structural inequality it creates or keeps, with evidence;</li><li>connect the analysis to your own life as a user or consumer;</li><li>use at least four credible sources, cited in IEEE style.</li></ul><p>Length: 1,200 to 1,500 words. Submit one PDF. State in a short note at the end whether and how you used AI tools.</p>';
+  '<p>Choose one industry or technology and analyze its social impact on diversity, equality and structural inequality. Your paper should:</p><ul><li>describe the industry and who works in it;</li><li>explain one structural inequality it creates or keeps, with evidence;</li><li>connect the analysis to your own life as a user or consumer;</li><li>use at least four credible sources, cited in IEEE style.</li></ul><p>Length: 1,200 to 1,500 words. Submit one PDF. State in a short note at the end whether and how you used outside help.</p>';
 
 const LONG_DESCRIPTION = Array.from(
   { length: 24 },
@@ -1469,7 +1469,7 @@ test('the instructions stop at about fifteen lines, and "Show more" shows the re
   await expect.poll(() => body.evaluate((node) => node.clientHeight)).toBe(clipped);
 });
 
-test('a short text has no "Show more", and the look follows the mockup', async ({
+test('a short text has no "Show more", and the text has a fixed font size, weight and line height', async ({
   context,
   page,
   background,
@@ -1504,7 +1504,7 @@ const SIDEBAR_FILE = 'ENGR195A - Reflection Paper #2-1.pdf';
 const SIDEBAR_HREF = `${ASSIGNMENT}/submissions/42?download=501`;
 const SECOND_FILE = 'Appendix.pdf';
 const SECOND_HREF = `${ASSIGNMENT}/submissions/42?download=502`;
-const SIDEBAR_SHOTS = '/tmp/sb1shots';
+const SIDEBAR_SHOTS = 'screenshots/submission-sidebar';
 
 /** The assignment page with Canvas's Submission box, for the student of the saved Canvas. */
 async function openSidebar(

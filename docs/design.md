@@ -13,7 +13,7 @@ The extension shows a student's Canvas coursework for the week as a simple to-do
 It replaces the original Tasks for Canvas sidebar.
 On Canvas, that extension now shows only a banner that sends users to BetterCampus [1].
 Its listing description says it collects no data, but the current build sends PostHog events and passes synced settings to BetterCampus through a hidden iframe [1].
-This extension has no account, no server of its own and no telemetry.
+This extension sends no analytics or error reports, and it keeps the student's data in the browser and on the student's own Canvas.
 
 ## Why Canvas alone is not enough
 
@@ -48,9 +48,9 @@ This extension has no account, no server of its own and no telemetry.
 | 18 | Settings | Five settings, also shown inside the panel and the in-page list, and a minimize button on the in-page list (a slim bar, or a tab on the right edge for the dock of the classic dashboard) |
 | 19 | Accessibility, language and theme | WCAG 2.2 AA, English text, a Theme setting with Automatic, Light and Dark |
 | 20 | No-telemetry guarantee | One fetch wrapper that only reaches the student's Canvas |
-| 21 | Visual design | Looks like a native part of Canvas, not an add-on sidebar |
-| 22 | New dashboard fixes | Three small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own; the owner removed Course colors and Course work extras on 2026-11-04 |
-| 23 | File access check | A read-only check that runs on the owner's live Canvas in test builds only, and answers the open questions for the file viewer |
+| 21 | Visual design | Looks like a native part of Canvas |
+| 22 | New dashboard fixes | Three small fixes for the widgets of the new Canvas dashboard, each with its own switch, in a page script of their own |
+| 23 | File access check | A read-only check that runs on a live Canvas in test builds only, and answers the open questions for the file viewer |
 | 24 | Announcements in the weekly list | A Tasks and Announcements switch under the rings on the classic dashboard, List View, course home pages and the side panel, with a read mark that only an explicit student action writes |
 | 25 | File viewer | Files open in a docked, resizable pane with tabs beside Canvas (the weekly list dock steps aside while it is open); PDFs in a bundled PDF.js viewer that saves the page, other types in the browser's own players or an "Open in Canvas" card |
 | 26 | One assignment view | The Submission Details page of the student's own submission shows the instructions and the files in place of Canvas's files frame, with a feedback pane for View Feedback; each row of the Assignments list, and each row of an assignment in the weekly card, has a Preview button that opens Canvas's own assignment page in the docked pane |
@@ -59,11 +59,11 @@ This extension has no account, no server of its own and no telemetry.
 
 ### 1. Version 1 scope
 
-**Product scope:** the extension is a set of quality-of-life fixes for Canvas, not only a weekly list.
-The owner decided this on 2026-10-27, and wants to add other fixes later, such as a better PDF viewer.
+**Product scope:** the extension is a set of quality-of-life fixes for Canvas.
+Other fixes can follow later, such as a better PDF viewer.
 The weekly to-do list is the first fix, and version 1 ships only it.
-Each later fix must stay small and separate, so the extension never becomes the kind of bloated tool that it replaces.
-The name (decision 17) must therefore describe Canvas fixes in general, not only a week view.
+Each later fix must stay small and separate, so the extension stays small and focused.
+The name (decision 17) must therefore describe Canvas fixes in general.
 
 
 **Question:** What should version 1 include?
@@ -137,7 +137,7 @@ This also covers work with no due date and work handed in outside Canvas, such a
   Canvas then links the override to the quiz or discussion [10].
 - A done mark can also complete a module "mark as done" requirement [10].
   This is Canvas behavior.
-  The student must know this when they check an item off, not only in the store listing.
+  The student must know this when they check an item off.
   So the first done mark shows a one-time note: "Done marks sync to Canvas and its apps. On a module item, this can count as 'Mark as done'."
   The README and the store listing say the same.
 - When a submission's state changes to `submitted`, Canvas sets `marked_complete` to true on an existing override [10].
@@ -183,24 +183,14 @@ If the course lookup fails, the item uses the course or group name that the plan
 - D. Both, with one shared UI, and the Canvas page as the main home.
 
 **Decision:** D.
-The owner chose it after testing an early build: the panel took the spot that the list should have, and on Firefox it opened on the left.
-On 2026-10-29 the owner tested on a real Canvas with the new widget dashboard.
-The list did not show there, and only the side panel had it.
-The widgets filled about 1,100 px on the left, and a wide empty area stayed on the right.
-The owner wants the list in the page on every dashboard view.
-This replaces the first rule of this decision, which was to inject nothing on the widget dashboard and in List View.
-A first build turned on Canvas's own right column there (the `with-right-side` body class).
-On 2026-10-30 the owner tested that build on the live page (sjsu.instructure.com, new widget dashboard).
-Canvas's right column squeezed the widget grid into narrow columns, and the list got only about 170 px of content width.
-The owner asked for a card like the original Tasks for Canvas, larger, with the look of the widgets, and with the widgets at their own width.
-The owner then chose a card inside the widget grid as the main mode on the widget dashboard, and a floating panel as the backup.
-The owner accepts that the card needs an update when Canvas changes the markup of its widget grid.
-The owner tested that build on the live page on 2026-10-30 (sjsu.instructure.com, Firefox).
-In a wide window the grid ended at about 1,130 px, and the dashboard clipped what left it.
-The card, a column of its own at the end of the grid, showed only as a thin sliver at the edge of the dashboard.
-At smaller sizes it left the grid, and the page needed a sideways scroll to reach it.
-The owner chose a new place after that test, to match the old dashboard: the card sits in the wide white area to the right of the grid, where the old dashboard has its right column.
-This replaces the own grid column and the sticky floating card on the widget dashboard.
+The list belongs in the Canvas page, and it shows in the page on every dashboard view.
+The side panel is the second surface, and on Firefox it opens on the left.
+On the new widget dashboard, the widgets fill about 1,100 px on the left, and a wide empty area stays on the right.
+Canvas's own right column (the `with-right-side` body class) squeezes the widget grid into narrow columns and leaves about 170 px of content width, so the list stays out of that column on the widget dashboard.
+The card is like the card of the original Tasks for Canvas, but larger, with the look of the widgets, and the widgets keep their own width.
+The card needs an update when Canvas changes the markup of its widget grid.
+In a wide window the grid ends at about 1,130 px, and the dashboard clips a grid column past that edge.
+So the card sits outside the grid, in the wide white area to its right, where the old dashboard has its right column.
 The card has the look of a widget card: no border, the shadow of a widget, 8 px corners in both themes.
 Source check on 2026-10-30: `@instructure/platform-widget-dashboard@16.2.0`, `dist/index.js` (`TemplateWidget`), uses an InstUI View with `shadow="above"`, `borderRadius="large"`, `background="primary"` and `padding="medium"`.
 `@instructure/ui-view@11.7.4`, `src/View/v1/theme.ts` and `src/View/v1/styles.ts`, maps those properties to the theme tokens.
@@ -212,19 +202,16 @@ The View large radius stays at `0.5rem` (8 px) in both themes.
 The token is at `@instructure/ui-theme-tokens@11.7.4/tokens/canvas/scss/_variables.scss:308`.
 Canvas also sets only View colors in [`buildDarkThemeOverride`, lines 45-56](https://github.com/instructure/canvas-lms/blob/master/ui/features/widget_dashboard/index.tsx#L45-L56).
 Canvas at `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, `ui/features/widget_dashboard/react/components/widgets/CourseGradesWidget/CourseGradesWidget.tsx`, imports `TemplateWidget` from the package.
-On the same day the owner asked for three more changes.
-The in-page list shows the full list, as the side panel does, with no short glance.
+The in-page list shows the full list, as the side panel does.
 The card has a height limit, and the groups scroll inside it.
-A minimize button replaces the setting "Show the weekly list on Canvas pages" (decision 18).
-On 2026-10-30 the owner also reported that on the old dashboard the card sits at the top of a page that scrolls up without end, so reaching the list means scrolling up through the planner.
-On 2026-11-04 the owner drew the new place on a 1797 px window of the old dashboard.
+A minimize button shrinks the list to a slim bar or a tab (decision 18).
+On the old dashboard, the page scrolls up without end, so reaching a card at the top of the page means scrolling up through the planner.
 The old dashboard is List View (the planner), Card View and Recent Activity.
-The drawing crosses out any change to the content of Canvas, and it marks the right part of the window, from about x 1420 to the edge and from the top to the bottom, as the place of the list.
-So the list lives in a dock fixed to the right edge of the window (see "The dock on the classic dashboard").
-This replaces the card in the right column and the dock under the column for these three views.
+On a 1797 px window, the list takes the right part of the window, from about x 1420 to the edge and from the top to the bottom, and the extension changes no content of Canvas.
+The list lives in a dock fixed to the right edge of the window (see "The dock on the classic dashboard").
 Course home pages keep the card in Canvas's right column, and the new widget dashboard keeps its card.
-The owner also crossed out the floating card on the Courses tab of the new widget dashboard: that tab shows no card.
-The owner also asked for relief on a long classic dashboard: after a long scroll, the list must not stay at the top of a column that is far out of view.
+The Courses tab of the new widget dashboard shows no card.
+On a long classic dashboard, after a long scroll, the list must not stay at the top of a column that is far out of view.
 
 The Canvas page is the main home.
 The in-page list replaces the Canvas To Do list on the classic dashboard (Card View and Recent Activity) and on course home pages, like the original Tasks for Canvas.
@@ -258,8 +245,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   Only the placement beside the grid reads the widget test ids, and it reads them in one small file (`src/shared/canvas/widgetDashboard.ts`).
   Without them, the list takes the free area beside the content, or stacks above it.
 - List View hides the right column, and the original forced it visible [9].
-  The first build did the same, in the way that Canvas's own layout expects.
-  On the live widget dashboard that squeezed the widgets, so the list now stays out of Canvas's right column on these two views.
+  On the live widget dashboard, Canvas's right column squeezes the widgets, so the list stays out of it on these two views.
 
 **Risk:**
 
@@ -316,7 +302,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   That is the source fact for the width cap.
   The rules are `body:not(.full-width):not(.outcomes):not(.body--login-confirmation):not(.content-only) .ic-Layout-wrapper` and `body:not(.no-headers):not(.content-only):not(.hide-global-nav) .ic-Layout-wrapper` in `app/stylesheets/base/_ic_app_layout.scss` (canvas-lms `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, where `$ic-header-primary-width` is 84 px), shipped in `common.css`.
   The accepted result at 1797 px with a 360 px dock:
-  - With the collapsed navigation the content of Canvas ends at 1420 px, which is the left edge of the place that the owner drew, so it does not move.
+  - With the collapsed navigation the content of Canvas ends at 1420 px, which is the left edge of the place of the list, so it does not move.
     The left and the right edge of the content are the same with the dock open and minimized.
   - With the expanded navigation, which is the default, the content ends at 1450 px, so it narrows by the 13 px that do not fit.
     With a page scroll bar of 15 px it narrows by 28 px.
@@ -349,7 +335,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The class on `body` stays as Canvas sets it, so the menu returns with the student's choice when the pane closes.
     The global navigation and its wrapper margin stay as they are.
     The attribute and the style go with the last holder of room.
-  - The code does not read the style sheets of Canvas to move their breakpoints, because a hosted Canvas serves them from another origin (`stylesheet_link_tag` has no `crossorigin`), and the browser then hides their rules.
+  - The code uses its own breakpoint numbers, because a hosted Canvas serves its style sheets from another origin (`stylesheet_link_tag` has no `crossorigin`), and the browser then hides their rules.
   - Accepted result on the local Canvas, student dana, Card View, dock of 360 px, expanded navigation: at 1000 px and 1100 px the dock lies over the page and the right column of Canvas is under it, as the plain page at that width has it, and no part of the header overlaps another; at 1200 px and 1280 px the room is below 992 px and the right column stands under the cards; at 1366 px and 1440 px the two columns stay.
     At 1000 px the options button of the dashboard header stands under the dock, so a student minimizes the list to reach it.
 - The dock and its tab are under the overlays of Canvas.
@@ -400,7 +386,6 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   A host without the mark of a dock stays.
 - The code that docked the card under the right column (`inpage/dock.ts`) runs on course home pages only.
   The adapter tells the mount where the list sits (`placement`: `dock`, `layout` or `column`), so the classic dashboard and List View start no column dock and no layout, and the widget dashboard keeps `layout.ts`.
-  The panel mode `float` of the stylesheet is gone, because nothing sets it.
 - A copy of the script whose context ended never writes the padding again.
   Its `stop` always ends the resize listener of the dock and of the tab, and a dock whose host a page removed writes nothing.
   When a newer copy removed the host, the old copy leaves the room to the newer copy.
@@ -410,7 +395,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   `tests/fixtures/pages/canvas-layout.css` has the real rules of `.ic-Layout-wrapper` and of the right column, and the widget dashboard fixture has the tab markup of InstUI Tabs.
   `tests/firefox/dashboard-dock.mjs` (`npm run test:firefox:dashboard-dock`) runs the dock, the tab and the swap with a file pane in real Firefox with a fake Canvas over HTTPS.
 
-**Live checks for the owner (the weekly dock):**
+**Live checks for the weekly dock:**
 
 1. On the Recent Activity dashboard of sjsu.instructure.com, in a window of about 1,800 px, check the list: it is fixed at the right edge from the top to the bottom.
    With the collapsed navigation the content of Canvas does not move when you minimize and open it.
@@ -454,7 +439,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - The keyboard shortcut is `_execute_action`, which runs the same click handler.
 - There is no in-page "open panel" button.
   A content script click cannot open the Firefox sidebar, and on Chrome it is unreliable [11] [14].
-- Use a global panel, not a per-tab panel.
+- Use a global panel.
   Microsoft recommends this for Edge [11].
 - Do not use hash routing in the panel.
   Edge reloads a panel with a hash URL on every tab switch [11].
@@ -471,11 +456,11 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   - **In the Course work slot**, replace the first single or combined Course work widget in document order.
     Keep every other Course work widget, including summary widgets.
     The widget keeps its place in the page layout, invisible: its wrapper gets `visibility: hidden` and never `display: none` while the card is in the slot.
+    Canvas then lays out its columns as if the widget showed, and the widgets below stay where Canvas puts them.
     Its section is also `inert` and transparent (`opacity: 0`), and the card sits above it (`z-index: 2`), so a control of the widget that makes itself visible still draws nothing and takes no focus, clicks or screen reader attention; a release takes back only the `inert` that the card set.
-    On 2026-11-04 the owner saw the widget's filters and its summary toggle draw over the card: Canvas's form controls make themselves visible inside the hidden wrapper, which the transparency stops.
+    Canvas's form controls, such as the widget's filters and its summary toggle, make themselves visible inside the hidden wrapper, and the transparency stops them from drawing over the card.
     The card has the height of the widget it covers, and it does not follow the widgets beside it.
-    Canvas lays out each column on its own, so the card's bottom can differ by a few pixels from the bottom of the Announcements widget beside it, and that widget grows while a message is open in place; the owner chose this on 2026-11-04 over matching the widgets beside the card.
-    So Canvas lays out its columns as if the widget showed, and the widgets below stay where Canvas puts them.
+    Canvas lays out each column on its own, so the card's bottom can differ by a few pixels from the bottom of the Announcements widget beside it, and that widget grows while a message is open in place.
     The card container is the first child of the wrapper, with `position: absolute` over the section.
     Its inset is the section's computed margin, copied and not fixed, and its own `visibility` is visible.
     The wrapper gets `position: relative`.
@@ -595,13 +580,10 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
   An adapter that finds no anchor does nothing.
 - K-5 course home pages have no right column, so the adapter does nothing there [13].
 - The in-page list shows the full list, as the side panel does.
-  The owner chose a short glance after a design review on 2026-10-28 measured the list at about 1,380 px.
-  On 2026-10-30 the owner replaced it: the card has a fixed height, so a long list no longer pushes the page.
+  A full list can be about 1,380 px high, so the card has a fixed height and a long list never pushes the page.
   - Every group and every item shows: Past due in full, Today, Tomorrow, the later days, No due date and Done.
     "N older" and "Mark all older done" work as in the side panel.
     Done has its own "N older" line, with no action (decision 6).
-  - The glance had a "N past due" summary line, "Show N more" links and a link for the rest of the span.
-    These are gone.
   - The card has a fixed height: the window height minus 48 px, at most 760 px and at least 420 px.
     In the Course work slot it has this height as its most, and it is lower only over a widget that is lower than this.
     A short list leaves empty room at the bottom, so the card keeps its size from span to span.
@@ -649,7 +631,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The same holds while the days still load: a part or a heading with no rows shows "?", and a screen reader hears "Loading".
   - A choice on the switch shows at once and is saved after.
     The page keeps the settings that it saved and waits for their echoes from the storage: the echo of a save that a newer save has replaced is dropped, so quick choices never flip the part back.
-    A value that matches no save of this page, such as a change from another tab, arrives as before.
+    A value that matches no save of this page, such as a change from another tab, arrives as usual.
   - Until the saved settings load, the parts cannot be chosen (they are disabled), so a click never leaves a part on that the state does not show.
   - Focus stays on the part that the student chooses.
     When the last row of an open group leaves, for example when the student unchecks the last Done item, focus goes to the heading of the group.
@@ -677,7 +659,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
     The order is the list, then what scrolls around it (the card `.wr`, or the panel of the file pane), then the page (`document.scrollingElement`), so a card that scrolls as a whole in a low window scrolls before the rows pull.
     A scroller of the page other than the window is not looked at.
     A list with nothing to scroll gives the wheel to the page, as anywhere else on the page.
-    A list with rows to scroll that is at its top or its end keeps the page still, as before.
+    A list with rows to scroll that is at its top or its end keeps the page still.
     When nothing can move in that direction, the rows pull and spring back: the pull follows each wheel step by 0.18 of its delta, damped by how far the rows already are, at most 28 px.
     The rows spring back 110 ms after the last wheel event, over 0.24 s with `cubic-bezier(.2,.8,.2,1)`.
     Only the rows move (a `transform` on the children of the list, so nothing changes in the layout): the header, the notice, the rings and the view switch stay.
@@ -735,8 +717,7 @@ Chrome and Edge use `chrome.sidePanel`, and Firefox uses `sidebar_action`.
 - C. Optional access only.
 
 **Decision:** A.
-The owner chose it on 2026-10-28 after testing: the extension must link to Canvas by itself and work right after install, with no setup step.
-An earlier version used option B; schools on their own domain then needed an "Allow access" step, and the grant flow added much complex code.
+The extension links to Canvas by itself and works right after install, with no setup step.
 
 **Manifest:**
 
@@ -789,8 +770,7 @@ An earlier version used option B; schools on their own domain then needed an "Al
   - The side panel shows the same choice when the student opens it.
   - After the click, the list appears in the Canvas tab at once, with no reload, on every Canvas page layout.
   - Test and beta hosts follow the same rule.
-  - The owner chose this on 2026-10-29.
-    A hostile page can copy the Canvas markers, and a security review showed that any button inside a page can be disguised or hidden, so the confirmation lives only in extension pages.
+  - A hostile page can copy the Canvas markers, and any button inside a page can be disguised or hidden, so the confirmation lives only in extension pages.
   - About 93 percent of Canvas school domains are on `instructure.com` [15], so most students never see this step.
 - Test and beta hosts (`*.test.instructure.com`, `*.beta.instructure.com`) are never saved automatically.
 - Version 1 supports one Canvas address.
@@ -870,11 +850,10 @@ An earlier version used option B; schools on their own domain then needed an "Al
 
 - A student thinks of each item as work due on a day.
   A Gradescope homework due Tuesday is a Tuesday task, like any other.
-- How Canvas tracks an item is a fact about that item, not a place in the list.
+- How Canvas tracks an item is a fact about that item.
   A status chip shows that fact where the student already looks.
-- A separate section splits one to-do list into two places.
+- One list keeps all work in one place.
   The work a student forgot is exactly the work they would not look for in a collapsed section.
-- Option B came from where the data comes from, not from how students think.
 
 **Item states:**
 
@@ -942,7 +921,7 @@ A span that ended before today has one exception: open work dated inside it stay
   The notice has no timer: it stays until the student acts again or closes it.
   In the in-page list it lies over the end of the list, right above the bottom bar, so the view switch never moves, and the end of the list scrolls clear of it.
   Ctrl+Z (Cmd+Z on a Mac) also undoes while the notice shows, also over a state that is not the list, such as the signed-out page.
-  A fixed time limit would fail keyboard and screen reader users, who need time to reach the notice.
+  The notice waits so that keyboard and screen reader users have time to reach it.
 - Every Undo says whether it restored the item: the reply to an Undo of a done mark, of a task delete or of a read mark has `restored`, true or false.
   The reply to an Undo of a done mark or of a read mark comes after Canvas answered the write, and it says `restored: true` only when Canvas saved every write.
   A write that Canvas refuses or that times out gives `restored: false`.
@@ -953,7 +932,6 @@ A span that ended before today has one exception: open work dated inside it stay
 
 **Checked but missing:**
 
-The owner reversed the first rule on 2026-10-29, after testing on a real Canvas.
 A checked item never counts as late.
 
 - When the student checks an item that Canvas marks missing, the item is done.
@@ -964,13 +942,12 @@ A checked item never counts as late.
   The Done header counts that chip as a warning, so the student sees it without opening the group.
 - When the student unchecks it, it is open again: it goes back to Past due with the red "Missing" chip.
 - Why: a student who checked an item has decided that it is finished.
-  A list that keeps calling that item late hides the student's own progress.
+  The list shows that progress.
   The red chip still tells the student what Canvas thinks.
 
 **Done, and work that Canvas has as dismissed:**
 
-The owner decided on 2026-11-06 to merge Skip into Done, because Skip was too close to "mark as done" and its word did not say what it does.
-A student now has one way to clear work: Done.
+A student has one way to clear work: Done.
 
 - An item whose override has `dismissed` set to true and `marked_complete` set to false is done.
   A dismiss that an earlier version of the extension wrote and a dismiss made in Canvas both show the item as done, with a check, and the rings count it as done.
@@ -1098,7 +1075,6 @@ Availability is a separate small marker next to the status chip, because it answ
 - The student asks two questions about each item: is it done, and can Canvas see it?
   A chip on the item answers both, in the place where the student already looks.
 - A paper lab and a Gradescope homework are the same case for the student: real work handed in outside Canvas.
-  An earlier draft treated only Gradescope work this way, because only that work came from a separate query.
 - Red stays for Canvas "Missing" only.
   So the student can tell work that hurts the grade from work that Canvas simply cannot see.
 - Gradescope may post nothing to Canvas until grades are released, but that evidence comes only from a search summary of a Gradescope guide [25].
@@ -1120,7 +1096,7 @@ Availability is a separate small marker next to the status chip, because it answ
 1. Work handed in on Canvas with a redo request is not done, even if the student checked it off.
    Its checkbox is disabled, with the tip "Resubmit in Canvas to finish this."
 2. Otherwise, if the item has a planner override, it is done when `marked_complete` or `dismissed` is true.
-   A dismissed item with no check is done since 2026-11-06 (decision 6).
+   A dismissed item with no check is done (decision 6).
 3. Otherwise, a peer review is done when its `workflow_state` is `completed`.
 4. Otherwise, an item is done when one of these is true:
    - it is submitted;
@@ -1151,7 +1127,7 @@ Availability is a separate small marker next to the status chip, because it answ
 
 - There is one ring per course that has items dated in the shown span.
   In every span, every course with items in Past due also has a ring.
-- A ring counts items, not points, as in the original [9].
+- A ring counts items, as in the original [9].
   Reminders do not count.
   An item that Canvas has as dismissed counts as done.
   A checked item that Canvas still marks missing counts as done.
@@ -1164,20 +1140,20 @@ Availability is a separate small marker next to the status chip, because it answ
 - When the course lookup fails for an item, the ring uses the course or group name that the planner item carries (`context_name`) [10].
 - Rings appear in dashboard order from `GET /api/v1/users/self/dashboard_positions` [10].
 - The rings are the main progress display, as in the original Tasks for Canvas [9].
-  The owner asked for this after testing: the rings must show the week's progress clearly and stand out more than any other element.
+  The rings show the week's progress clearly and stand out more than any other element.
   - One chart holds concentric rings, one per class, in the class colors, with thick strokes on a light track.
   - The center shows the week's total, such as "62%" over "8/13", and a check mark when every class is done with nothing past due.
   - A legend lists each class: the color, the course code and "done/total", and the past-due count when there is one.
     It sits beside the chart when the list is at least 280 px wide, and under the chart when it is narrower.
     A long course code wraps to a second line and does not shorten.
-  - A click on a ring or a legend row filters the list, as before.
+  - A click on a ring or a legend row filters the list.
   - When a check changes a count, the ring arc grows to its new length, with no motion under reduced motion.
   - The chart draws at most 4 rings when the surface is narrower than 280 px (the in-page column and narrow panels), and at most 6 when it is wider.
     It draws the classes with the most work in the span, and a "+N" mark in the center area names how many more the legend lists.
-  - The ring stroke stays thick as the count grows: the chart widens the stroke and shrinks the center instead of thinning the rings.
+  - The ring stroke stays thick as the count grows: the chart widens the stroke and shrinks the center.
   - Classes with no work in the span stay out of the chart and show only in the legend.
   - A span with no work at all shows no ring: the chart place shows a short line, such as "Nothing due in these 7 days", or a check mark when all work is done.
-  - The legend's past-due count is a labeled badge, such as "1 late", not a bare number.
+  - The legend's past-due count is a labeled badge, such as "1 late".
     It counts the items of the Past due group in every span, so the badge and the group always agree.
 - Ring colors come from `GET /api/v1/users/self/colors` [10].
   - A course with no saved color gets one of Canvas's 12 default dashboard colors, picked by a hash of the course id [10].
@@ -1194,8 +1170,6 @@ Availability is a separate small marker next to the status chip, because it answ
 - C. A span of days that starts today, in the student's Canvas time zone.
 
 **Decision:** C.
-The owner chose it on 2026-10-29, after testing on a real Canvas.
-Option A was the first decision, and it put the first days of a long span in the past.
 
 **The shown span:**
 
@@ -1290,7 +1264,7 @@ Option A was the first decision, and it put the first days of a long span in the
 - The original's 3:00 pm start puts work due on Monday morning into the previous week [9].
 - The original uses the browser's time zone with no label, so a student who travels sees wrong days [9].
 - A student asks what is due from now on.
-  A span that starts today answers it, and the first days of a calendar week that are already over do not.
+  A span that starts today answers it.
 - The look-ahead keeps deadlines that are hours away in view when the span is one day.
 
 ### 10. Custom tasks
@@ -1305,7 +1279,7 @@ Option A was the first decision, and it put the first days of a long span in the
 **Decision:** A.
 
 - The form has a title (required), a "Do on" date, an optional time, an optional course and optional details.
-  - The date field says "Do on", not "Due", because for a personal task the date means when the student plans to do it.
+  - The date field says "Do on", because for a personal task the date means when the student plans to do it.
   - If the time is empty, the extension stores 11:59 pm.
 - Create uses `POST /api/v1/planner_notes`.
   Edit uses `PUT /api/v1/planner_notes/:id`.
@@ -1329,7 +1303,7 @@ Option A was the first decision, and it put the first days of a long span in the
 
 **Why:**
 
-- Option B leaves typos and wrong dates with no fix.
+- Edit and delete give a fix for typos and wrong dates.
 - Simple Canvas Tasks deletes a task when it is marked done, and the original allowed deletion only after completion [9].
   Option A keeps done marks and deletion separate.
 - A Canvas planner note needs a date [10], so a custom task cannot be undated.
@@ -1346,7 +1320,7 @@ Option A was the first decision, and it put the first days of a long span in the
 - B. Each surface fetches its own data.
 
 **Decision:** A.
-The owner asked for progressive loading of a span on 2026-10-30, so that a first fetch feels seamless (see "The planner cache").
+A span loads progressively, so that a first fetch feels seamless (see "The planner cache").
 
 **Why:**
 
@@ -1481,12 +1455,12 @@ The owner asked for progressive loading of a span on 2026-10-30, so that a first
   An open pane stays covered there, and the checks keep to their normal limits.
 - Open risk: the open surfaces learn of a sign-out only from a Canvas page load, a focus change, a visibility change or the timer.
   A sign-out that ends on another site, such as a single sign-on page, shows the list until one of them happens.
-  The ticket removed the cookie event listener on purpose.
+  The extension has no cookie event listener.
 - Measured on real Firefox 159 with local Canvas on 2026-11-07: "Never remember history" makes the background private and prevents IndexedDB from opening.
   The background uses the session vault of decision 5 and selects `firefox-private` when `extension.inIncognitoContext` is true.
   A normal background continues to use `firefox-default`, and container tabs remain separate.
   The live check confirms the offer, "Use it", loaded list, rendered PDF and pane removal on sign-out.
-- Live finding on 2026-10-30: the owner's browser on hosted Canvas at `sjsu.instructure.com` has `canvas_session`, `_csrf_token`, `_hp2_id.*`, `k5_observer*` and `log_session_id`, with no `_normandy_session`.
+- Live finding on 2026-10-30: a browser on hosted Canvas at `sjsu.instructure.com` has `canvas_session`, `_csrf_token`, `_hp2_id.*`, `k5_observer*` and `log_session_id`, with no `_normandy_session`.
   The extension reads `canvas_session` first, then the open-source default `_normandy_session`.
   `GET /api/v1/users/self` sets `_csrf_token` and `log_session_id`, but does not set the session cookie.
   This closes the renewal risk for the observed hosted Canvas: no session cookie renewal occurs on `users/self`.
@@ -1632,7 +1606,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
 | Assignment (decision 26) | `GET /api/v1/courses/:id/assignments/:id` | The assignment pane shows an assignment, on each later read of the pane (each trusted load of a frame after the first, the assignment that the pane just left when it shows another, each assignment of its frames when it closes, every 20 seconds while it is open and the page is in view), and the Submission Details page loads |
 | Own submission (decision 26) | `GET /api/v1/courses/:id/assignments/:id/submissions/self` | With each assignment read above; alone, to learn the user of the submission and to get the report data for the scores beside the files, when an assignment page loads |
 | Teacher status names | `POST /api/graphql` with `customGradeStatusesConnection` for each course | Once per session, when a teacher status appears, and again with each reload of the session data |
-| All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Instead of the planner, per course |
+| All assignments (planner turned off only) | `GET /api/v1/courses/:id/assignments?include[]=submission&per_page=100` | Per course |
 | Undated work | `GET /api/v1/courses/:id/assignments?bucket=undated&...` | 5-minute timer, per course |
 | Overrides | `GET /api/v1/planner/overrides?per_page=100` | 5-minute timer, when No due date has items |
 | Announcements (decision 24) | `GET /api/v1/announcements?context_codes[]=course_:id...&start_date=...&end_date=...&active_only=true&per_page=100` | A surface with the Announcements tab asks, and the list is missing or older than 60 seconds; one request for each 20 courses |
@@ -1691,10 +1665,10 @@ Notes on these states:
   For a signed-in user, Canvas answers 403, not 401 [10].
   Planner notes also return 403 in this state, but overrides still work [10].
 - The Canvas session cookie lasts for one browser session, and the server ends it after a day without activity by default [11].
-  So "Signed out" is a common state, not a rare error.
+  So "Signed out" is a common state.
 - In Firefox private windows and container tabs, the extension uses a different cookie store [12].
   The signed-out notice says so on Firefox.
-- The student cares whether the list is current, not why a refresh failed.
+- The student needs to know whether the list is current.
   So one "Can't refresh" state covers every cause, and the code keeps the cause for its retry logic.
 - With no cached data, the "Can't refresh" state shows the notice alone.
 - In the "Planner turned off" state, the assignments API and overrides are not in the list of blocked calls in the source [10].
@@ -1755,21 +1729,15 @@ These sizes come from one test build of the same small app [19].
 
 - The in-page UI lives in an open shadow root that the extension attaches itself, with its CSS in a `<style>` element [19].
   Styles in a shadow root work in both engines, even under a strict page CSP [19].
-  WXT's `createShadowRootUi` would add about 3.3 KB gzip to each content script for features the extension does not use.
-- Storage uses a small typed wrapper over `browser.storage`, not the WXT storage library.
-  The library adds about 4 KB gzip to each content script.
+  The extension builds the root itself, because WXT's `createShadowRootUi` adds about 3.3 KB gzip to each content script.
+- Storage uses a small typed wrapper over `browser.storage`, because the WXT storage library adds about 4 KB gzip to each content script.
 - The in-page UI uses px units, because rem units follow the page's font size [19].
-- Plain CSS with custom properties for colors and spacing; no CSS framework.
+- Plain CSS with custom properties for colors and spacing.
 - No runtime dependencies besides Preact.
 - Each entry point must stay under 45 KB after gzip, except `inpage.js`, which may reach 52 KB, and `background.js`, which may reach 48 KB, and the detector must stay under 2 KB, because the detector runs on every https page.
-  Every entry point loads from the extension's own files, not over the network.
-  The limit was 30 KB until 2026-10-29, when the span feature and the dashboard column filled it.
-  The limit was 40 KB until 2026-11-03, when the Course work slot filled it.
-  The limit of `inpage.js` alone is 52 KB since 2026-11-07: the page script now holds the weekly dock, its tab and the shared room lease, which the card did not need.
-  The owner chose this limit over moving the Announcements tab to its own script, which saves about 2 KB but adds a second load path for a change a student does not see.
-  The limit of `background.js` alone is 48 KB since 2026-11-07: the background now also answers the student check of every open pane, and on Firefox it alone opens the trusted vault.
-  It was 46 KB from 2026-11-06, when the data owner started to check the Canvas and the student of every page request.
-  The owner chose 48 KB over cuts in the data owner.
+  Every entry point loads from the extension's own files.
+  The limit of `inpage.js` alone is 52 KB, because the page script holds the weekly dock, its tab, the Announcements tab and the shared room lease.
+  The limit of `background.js` alone is 48 KB, because the background checks the Canvas and the student of every page request, answers the student check of every open pane, and on Firefox it is the only context that opens the trusted vault.
   The other entry points keep 45 KB, and the script is not split (decision 25 keeps the file pane in its own script).
   `inpage.js` carries no code that only other surfaces use.
   The extension pages pass the offer view to the list (`offerView`), because only they show the offer, and its rules are in `pages.css`.
@@ -1849,7 +1817,7 @@ These sizes come from one test build of the same small app [19].
 - So CI uses fixtures, and a person runs the live checks.
 - Tests run with no retries.
   A flaky test is a bug to fix.
-  A test that fails only under heavy load may be removed by the owner's choice, but a test that is the only cover of a security or data rule stays.
+  I may remove a test that fails only under heavy load, but a test that is the only cover of a security or data rule stays.
 
 ### 14. Browsers and versions
 
@@ -1896,7 +1864,7 @@ These sizes come from one test build of the same small app [19].
   - It says that View Feedback and Preview load the DocViewer session of Canvas, and that Canvas then marks the notes of that file as read.
   - It says that a read of a file in the pane counts as opening that file, so Canvas can mark the view requirement of a module as done and record the access.
   - It says the extension stores on the device only the settings, the Canvas address, a change time stamp, the one-time notes that were seen, a fingerprint salt, and the page and zoom of up to 200 PDFs with the student id and the file ids, or the address in Canvas of a file attached to a comment.
-  - It says nothing goes to the developer, and it names the storage, DocViewer and image hosts that Canvas or a teacher chooses.
+  - It says that nothing goes to me, and it names the storage, DocViewer and image hosts that Canvas or a teacher chooses.
   - It includes the Chrome Web Store Limited Use statement [20].
 - Chrome Web Store [20]:
   - Single purpose: "Make the Canvas site easier for students to use: see coursework as a to-do list, and open files, assignments, announcements and teachers in place on your own Canvas."
@@ -1918,7 +1886,7 @@ These sizes come from one test build of the same small app [19].
   - Register in Partner Center early, because some individual developers report enrollment problems.
 - Every listing ends with: "Canvas is a trademark of Instructure, Inc. This independent project is not affiliated with or endorsed by Instructure." [20]
 - Reviewer account: a Canvas Lite course with sample work, and an invited student login for reviewers.
-  The owner must pass the Canvas Lite teacher ID check [19] [20].
+  The teacher account of the course must pass the Canvas Lite ID check [19] [20].
   Before the store step, check that the Canvas Lite planner, overrides and notes work.
   If they do not, run canvas-lms from the April 2026 code on a small server with a custom domain during review periods.
   That server also tests the custom-domain grant.
@@ -1949,7 +1917,7 @@ Contributions need a DCO sign-off and come in under the same license.
 - MPL-2.0 lets a fork keep new files closed [20].
 - Firefox Add-ons offers GPL-3.0 as a built-in license choice [20].
 - No store rule conflicts with GPL-3.0 [20].
-- The owner can relicense their own code.
+- I can relicense my own code.
   Code from outside contributors can be relicensed only with their consent [20].
   A CLA would keep that right, but it also discourages small contributions.
   The project accepts this trade-off.
@@ -1962,12 +1930,10 @@ Contributions need a DCO sign-off and come in under the same license.
 
 **Question:** What should the extension be called?
 
-**History:**
+**Basis:**
 
-- The first pick, "Weekrow for Canvas", came from a collision check of twelve coined names [21].
-  The owner rejected it after testing, and also rejected a second round of coined names, such as "Whew" and "Tickalong".
-- The owner then chose a plain, clear name, because this is an extension, not a company: the name should describe the product and match what students search for.
-- The scope also widened to Canvas fixes in general (decision 1), so the name must not be about a week.
+- The name is plain and clear: it describes the product and matches what students search for.
+- The scope covers Canvas fixes in general (decision 1), so the name is not about a week.
 
 **Options:**
 
@@ -1976,7 +1942,6 @@ Contributions need a DCO sign-off and come in under the same license.
 - C. Tweaks for Canvas.
 
 **Decision:** A, Tools for Canvas.
-The owner chose it on 2026-10-27.
 
 **Why:**
 
@@ -1995,15 +1960,15 @@ The owner chose it on 2026-10-27.
 
 - Keep the form "<Name> for Canvas", and do not start with "Canvas", because Instructure enforces its CANVAS trademark [20].
 - Do not use a name that contains "Tasks for Canvas" [20].
-- Setting and UI texts name the feature, not the product, so they stay correct as more fixes arrive.
-  For example, "Show progress rings", not "Show Tools for Canvas rings".
+- Setting and UI texts name the feature, so they stay correct as more fixes arrive.
+  For example, "Show progress rings".
 
 **Follow-up actions:**
 
 1. Rename the product in the code: the extension name and the description in the messages, the package name, the README, the privacy policy, the store texts and the UI texts that name the product.
 2. Change the Firefox add-on id before the first Firefox release, for example to `tools-for-canvas@tranbao0.github.io`.
    An add-on id cannot change after the first release.
-3. Done on 2026-10-29: the GitHub repository is `tranbao0/tools-for-canvas`, and the URL allowlist uses the new repository and privacy policy links.
+3. The GitHub repository is `tranbao0/tools-for-canvas`, and the URL allowlist uses the new repository and privacy policy links.
 4. Run a final store check for the exact name, including Edge, just before the first release.
 
 ### 18. Settings
@@ -2020,8 +1985,7 @@ The owner chose it on 2026-10-27.
 | Theme | Automatic (see decision 19) |
 | Row size | Compact |
 
-The list on the Canvas page has no switch.
-It has a minimize button instead (see below).
+The list on the Canvas page has a minimize button (see below).
 
 - The settings show in three places with the same view: inside the side panel, inside the in-page list, and on the extension's own settings page.
   The gear in the panel and in the in-page list opens the settings in place, and a Back button returns to the list.
@@ -2071,11 +2035,11 @@ It has a minimize button instead (see below).
 
 **Why:**
 
-- The owner said on 2026-10-30 that the list on the Canvas page is the point of the extension, and that the setting "Show the weekly list on Canvas pages" made it hard to get the list back.
+- The list on the Canvas page is the point of the extension.
   A student who wants the page quiet minimizes the list, and the bar shows how to get it back.
 - The default shows every active course, because the Canvas planner itself returns work from every course.
-  An earlier draft used dashboard favorites, but students often leave favorites out of date, and the list would then drop a course with no sign.
-- The setting names describe what the student gets, not how the extension works.
+  Students often leave dashboard favorites out of date, and a list that followed them would drop a course with no sign.
+- The setting names describe what the student gets.
 - There is no switch for undated work.
   The No due date group starts collapsed, and Done clears single items.
 
@@ -2129,7 +2093,7 @@ They show in the same three places, below Row size, and they are stored apart fr
     It uses dark colors only when the page background is dark, as the original did [9].
   - It follows the page live, with no reload, in both directions.
     The widget dashboard of Canvas turns its dark mode on and off ("Switch to dark mode") with an inline `background-color` on `html` and `body`, so the watch reads the page background again after each change of an attribute of `html` or `body`.
-    The watch does not follow stylesheet links that are added or removed: a review showed that this never reported a change, and the dark mode of Canvas uses the inline background.
+    The watch does not follow stylesheet links, because the dark mode of Canvas uses the inline background.
     Every surface that follows the page does this: the in-page list and the weekly dock, the file pane and the assignment panes.
 
 ### 20. No-telemetry guarantee
@@ -2176,7 +2140,7 @@ They show in the same three places, below Row size, and they are stored apart fr
 - B. Keep a separate, app-like look of its own.
 
 **Decision:** A.
-The owner asked for it after testing an early build: the list should feel like part of Canvas, not like a sidebar added on top.
+The list feels like part of Canvas.
 
 **Rules:**
 
@@ -2192,7 +2156,7 @@ The owner asked for it after testing an early build: the list should feel like p
     The course name sits under it in regular weight and the secondary text color, never in bold, so it does not outweigh the title.
   - The due line holds the due text and the row actions, such as "Move to today".
     The chips come after it.
-  - A chip that is too long for the column wraps onto a second line instead of cutting its text.
+  - A chip that is too long for the column wraps onto a second line and shows its whole text.
   - Every target is at least 24 px high, as WCAG 2.2 AA asks.
 - Loading placeholders are light bars in the divider color, with a slow pulse, as Canvas draws its loading blocks.
   They follow the theme, they stand still with reduced motion, and a screen reader does not read them.
@@ -2215,16 +2179,13 @@ The owner asked for it after testing an early build: the list should feel like p
 
 **Decision:** Four fixes, each with its own switch in one setting group, "New dashboard fixes".
 All four are on by default.
-The owner chose the list on 2026-10-30 (see `docs/roadmap.md`).
-The owner added the People list on 2026-11-05.
-The owner asked that a fix like the announcements list apply Canvas wide where that is possible, not only to one widget.
+A fix like the announcements list is meant to apply Canvas wide where that is possible.
 So the scroll list is one shared module, and a widget needs only an adapter for it.
-The owner removed two fixes on 2026-11-04: "Course colors on Course work icons" and "Course work extras".
-The weekly card covers the Course work widget, so the two switches did nothing while the card was on.
+The weekly card covers the Course work widget, so the group has no fix for its icons or its extras.
 With the card off, the student sees the plain widget of Canvas.
 A stored setting with the old keys `courseColors` and `courseWorkExtras` is ignored: the settings are read field by field, and other keys are dropped.
-The dashboard data no longer carries the extras, because nothing reads them.
-The courses stay, because the grade cards and the course filter read them.
+The dashboard data carries no extras.
+It holds the courses, because the grade cards and the course filter read them.
 The fixes run on the dashboard of the saved Canvas, next to the weekly list, and need not have the list turned on.
 The dashboard uses the origin that the router checks and shares the session fingerprint check in decision 11.
 The extension reads both session cookies there to compare their salted fingerprints.
@@ -2234,13 +2195,12 @@ The cache writes of the weekly list follow the cookie rule of decision 11, and t
 | Switch | Fix |
 |---|---|
 | Announcements in place | One steady list with infinite scroll replaces the list of the widget: a message opens in its row, the card keeps its height, and a course filter, a search by topic and a search by date join the read filter |
-| All course grades | A grade card for every course, not only six |
+| All course grades | A grade card for every course on one page; Canvas shows six a page |
 | Steady page buttons | One page navigator with nine fixed places for the paged widgets |
 | People list | The same steady list with infinite scroll replaces the list and the pager of the People widget: the card keeps its height, the Course filter and the Role filter stay Canvas's own, a search by name and course joins them, and each person shows every course and role on its own line |
 
 **Facts.**
 They come from the source of the widget package `@instructure/platform-widget-dashboard`, version 16.2.0, and from canvas-lms at commit 1c9f0bb [10] [13].
-I read each of them in the package source.
 
 - The Course work widget lists assignment submissions only (`courseWorkSubmissionsConnection`), 4 to a page (6 in the combined widget), with no sort.
 - The Announcements widget cuts a title at 75 characters and a message at 120, with the HTML taken out.
@@ -2376,7 +2336,7 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    The read filter of Canvas and the course filter of the fix stay above it, and the fix reads the value of the read filter as the widget shows it.
    The fix reads that value from the English labels of the input of Canvas: "Unread" is the Unread filter, "Read" is the Read filter, and any other text counts as All.
    The course filter takes the look of the read filter, and it lines up with it on screen: the two filters share one top, the labels share one top, and the boxes share one top and one height, within 1 px.
-   The course filter has the arrow of the read filter, the `IconArrowOpenDown` icon of InstUI with the size, the color and the place that the arrow of the read filter has, and not an arrow that the fix draws with a border.
+   The course filter has the arrow of the read filter, the `IconArrowOpenDown` icon of InstUI with the size, the color and the place that the arrow of the read filter has.
    The read filter is 7 rem wide (`width="7rem"` of its `SimpleSelect` in `AnnouncementsWidget.tsx`), and its three short options fit.
    The course filter is as wide as its longest course name needs, and never narrower than the read filter, so no course name is cut off.
    Its width does not change with the chosen course, because the select sizes to its longest option.
@@ -2386,7 +2346,6 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    From the first pass on, the list of Canvas is hidden, so no flash shows while the first page loads.
    One rule of the stylesheet, scoped to the widget mark `data-wr-filtered`, hides every child of the filter bar except the filter block and the nodes of the fix, and the pager.
    The reason is that Canvas shows 3 announcements a page, and an open message changes the height of the card, which moves the pager, so the next page is hard to reach.
-   The owner approved a mockup of four states: the list, an open message, a search by topic and a search by date.
    Below the filters the fix draws a host with a shadow root that holds the search row and one scroll area.
    - The scroll area has `height: min(36rem, calc(100vh - 14rem))`, `min-height: 20rem`, `overflow-y: auto` and the default `overscroll-behavior`.
      Its height does not change, whatever happens inside.
@@ -2402,7 +2361,6 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
      The sizes are the rem sizes of the widget: the avatar 3.125rem, the title bold 0.75rem cut at 75 characters, the meta line 0.75rem, the snippet 0.75rem cut at 120 characters with the tags taken out, "Read more" 0.875rem.
      The title shows whole while the message is open.
    - The open message has the type size of a message on the Canvas page, 1rem.
-     The sizes of the mockup were at the zoom of the owner's browser, so they do not set this size.
    - "Read more" opens the whole message in the row, with the message component and the sanitizer of this decision, and "Show less" closes it.
      The message comes from `weekrow:announcement` (`GET /api/v1/courses/:id/discussion_topics/:id`), which does not mark the topic as read.
      Opening or closing a message changes no read state.
@@ -2534,10 +2492,9 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    - `GET /api/v1/announcements` takes `start_date` and `end_date`, and a `yyyy-mm-dd` value covers the whole day in the time zone of the user.
    - The read control is an empty circle when unread, a green check when read, with `aria-pressed` (`AnnouncementItem.tsx` lines 150 to 171).
      The title is bold 0.75rem cut at 75 characters (lines 206 and 207), the snippet 0.75rem cut at 120 characters with the tags taken out (lines 256 and 257), the avatar is medium (line 195) and "Read more" is 0.875rem (line 264).
-   **The choice about the owner's rule.**
-   The owner chose on 2026-10-30 that only an explicit student action marks an announcement as read, and this stays.
-   The dashboard fixes had no write until the own list.
-   Now they have one explicit write: the read mark above, on a trusted click of the read control.
+   **The rule about read marks.**
+   Only an explicit student action marks an announcement as read.
+   The Announcements fix has one explicit write: the read mark above, on a trusted click of the read control.
    Opening or closing a message, a search, a date search and a scroll send no write.
    The only other write of the extension for an announcement is "Mark as read" of the weekly list (decision 24).
    The extension never loads the Canvas page of an announcement itself, because it marks the topic as read.
@@ -2549,7 +2506,6 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    A reply with no user id and no course leaves the courses of the earlier reply in place.
    A card is a copy of a card that the widget drew, so it has the same markup, classes and theme.
    The copy keeps an eye button with the native look and accessible name, and has no "Course settings" menu.
-   The owner approved the eye on 2026-11-07.
    Only a trusted click asks the background to change the course's entry in the `widget_dashboard_config` preference through `updateWidgetDashboardConfig`.
    The background confirms the saved origin, the student, the course and the session cookies, and uses the write guard before each request.
    It serializes these writes and reads the current widget filter inside the queue slot before each write, preserving all other entries and widget settings.
@@ -2596,7 +2552,6 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    A place that does not apply stays empty and keeps its box (`visibility: hidden`), so no place moves.
    A gap shows "…" only when a page lies in it.
    Arrows always show, and one that cannot be used is light gray with `aria-disabled="true"` and no tab stop.
-   The owner approved the design on 2026-11-03 with a mockup of pages 1, 2, 3, 4, 5, 139 and 141 of 141.
    Each place maps to a button that Canvas draws, and a click clicks that button, so Canvas changes the page and loads its data.
    An arrow clicks the arrow of Canvas when it draws one, and else the page button that the arrow leads to.
    The navigator reads the current page and the total from Canvas after each change and draws again.
@@ -2624,8 +2579,8 @@ They come from `@instructure/platform-widget-dashboard@16.2.0` (`dist/index.js`,
    Canvas's filter and list then follow the child (`OBSERVED_USER_ID`), and the own list would show "No instructors found".
    A user who is a student and also an observer: when the Course filter text is not one of the courses of the session, Canvas's own list stays, because the text names a course of the child.
    A school with another language therefore sees Canvas's own list, and the fix does nothing there.
-   The Announcements fix reads any other text as All, and this fix does not, because a list for the wrong person group is worse than Canvas's own list.
-   - The card keeps its height, as in the approved mockup of 2026-11-05.
+   Any text that is not one of these labels keeps Canvas's own list, because a list for the wrong person group is worse than Canvas's own list.
+   - The card keeps its height.
      Below the filters the fix draws a host with a shadow root that holds one scroll area, with the rules of choice 1: `overflow-y: auto`, the default `overscroll-behavior`, a fixed height and the focus stop.
      The scroll area keeps the height `max(20rem, min(22rem, calc(100vh - 14rem)))`, which is 352 px in a window of 1,000 px, while the search row has no result line under it.
      The host is the search row (2rem and a margin of 0.5rem) above the scroll area, so its fixed height is that number plus 2.5rem, as in the Announcements widget.
@@ -2759,7 +2714,7 @@ The page scripts of the fixes and of the weekly list share one sanitizer, `src/s
 **Decision:** Build a "File access check" before the viewer.
 Only explicit builds of the Firefox test channel (`npm run build:firefox-test`) and the end-to-end build include it.
 A store build has none of it.
-The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
+It runs on `sjsu.instructure.com` in Firefox, and "Copy report" gives the report.
 
 **The four questions.**
 
@@ -2816,16 +2771,16 @@ The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
 - The probe page posts only to the saved Canvas origin, read from the trusted storage, and the injected function accepts only a message from its own iframe with the right nonce.
   A hostile page can read the nonce and fake the handshake.
   That can only falsify this diagnostic, which sends nothing anywhere.
-- The first 5 bytes of a file are part of the report, as the owner asked.
+- The first 5 bytes of a file are part of the report.
   A text file would show its first letters.
-  The page and the tester read the report before they paste it.
+  The page and a person read the report before it is pasted.
   The bytes `?` and `#` show as escapes, so the last pass does not cut them.
 - The follow-up request for the file bytes follows the redirect to any host with the student's cookies, because that is the question of the check.
   A hostile saved Canvas could send it to another site.
   That needs the student to confirm a hostile Canvas first, and the check exists in test builds only, so the risk is accepted.
 - The hooks list shows class names and `data-` names from the page.
   Names with three digits in a row are left out.
-  A teacher can write a class name in rich content, so the tester reads the report before pasting it.
+  A teacher can write a class name in rich content, so the report is read before it is pasted.
 
 **`web_accessible_resources`.**
 
@@ -2867,7 +2822,6 @@ The owner runs it on `sjsu.instructure.com` in Firefox and pastes the report.
 **Question:** How does the weekly list show announcements, as the original Tasks for Canvas did on the classic dashboard?
 
 **Decision:** The list gets two tabs under the rings, "Tasks" and "Announcements".
-The owner asked for it on 2026-10-30.
 The original had small tab icons under the rings: announcements, tasks and done.
 Announcements are still not tasks (decision 3), so they stay out of the groups, the rings and the done count, and have their own view.
 
@@ -2917,7 +2871,7 @@ Announcements are still not tasks (decision 3), so they stay out of the groups, 
   The list shows only the posts of the last 14 days.
   `active_only=true` leaves out unpublished and delayed posts.
 - Canvas sends `read_state` (`read` or `unread`) for each topic of this list, `context_code` (`course_<id>`) and the author [10].
-  The source of `AnnouncementsApiController#index` and `serialize_additional_topic_fields` was read on 2026-10-30 [28].
+  The source of `AnnouncementsApiController#index` and `serialize_additional_topic_fields` confirms this [28].
   So the list needs no second request for the read state.
 - The cache keeps at most 100 announcements, newest first, each with a message of at most 1,500 characters.
   The row shows a snippet, and the full message loads when the row opens.
@@ -2945,7 +2899,7 @@ Announcements are still not tasks (decision 3), so they stay out of the groups, 
 
 - A click on the title opens the row in place.
   The full message loads through the `weekrow:announcement` message of decision 22, `GET /api/v1/courses/:id/discussion_topics/:id`, which does not mark the topic as read.
-  It then goes through the strict sanitizer, which moved to `src/shared/ui/sanitize.ts` so that the page script of the fixes and the list script share it.
+  It then goes through the strict sanitizer, which lives in `src/shared/ui/sanitize.ts` so that the page script of the fixes and the list script share it.
   The rules of decision 22 apply unchanged: an allowlist of tags and attributes, nodes built one by one, links with http, https and mailto only, https images with no referrer for another origin, and limits on depth and size.
   The list is already in a shadow root (or in the side panel page), so the styles of Canvas do not reach the message.
   The message styles keep images within the width and let tables and code scroll sideways, so a 240 px column holds them.
@@ -2988,8 +2942,8 @@ Announcements are still not tasks (decision 3), so they stay out of the groups, 
   Each tab keeps its own scroll position.
   A new span resets the position of Tasks only.
 - In a low window the region keeps at least 128 px, and the whole card scrolls instead.
-  Without this the tab strip took the last room of the card.
-- The side panel scrolls as a page, as before.
+  This keeps the tab strip from taking the last room of the card.
+- The side panel scrolls as a page.
 
 **Widths.**
 
@@ -3026,15 +2980,15 @@ If a later feature goes over the budget, the Announcements view can move to a sc
 **Question:** How does a student read Canvas files without losing the rest of Canvas?
 
 **Problem:** Canvas opens a PDF in a full-window overlay that hides the page, shows one file at a time, and offers the student's own submitted files only as downloads.
-The owner chose this tool on 2026-10-30 as the main reason for the "Tools" in the name.
+The file viewer is the main reason for the "Tools" in the name.
 
-**F3 investigation (2026-11-02):**
+**Waterfox PDF failure:**
 
-The owner reports Waterfox 6.7.7 (Gecko 153.6.0, 64-bit), test channel 0.1.0.23.
+A PDF fails to open in the pane in Waterfox 6.7.7 (Gecko 153.6.0, 64-bit), test channel 0.1.0.23.
 Stock Firefox 159 renders the three-page fixture padded to about 1.7 MB with each of four separate profile settings: `privacy.resistFingerprinting=true`, `privacy.fingerprintingProtection=true` with `privacy.fingerprintingProtection.overrides="+AllTargets"`, `javascript.options.wasm=false`, and `webgl.disabled=true`.
 All four pass fetch, worker start, document load, and page render, and restore page 3.
-The stock browser does not reproduce the owner's failure.
-These tests do not prove that Waterfox applies the same restrictions or that the owner's PDF uses the same image formats.
+The stock browser does not reproduce this failure.
+These tests do not prove that Waterfox applies the same restrictions or that the failing PDF uses the same image formats.
 No PDF.js compatibility option changes ship without a reproduced cause.
 The Firefox smoke command includes all four profile sets.
 
@@ -3048,7 +3002,7 @@ The stage separates the library or worker start from document load and page rend
 A page that fails to draw shows its own error and Retry, and the rest of the document stays readable.
 A line above the pages then shows the reason and Copy details for that page.
 A fetch failure reports the last received byte count, or zero when no bytes arrive.
-The owner can send this report to locate the Waterfox failure before a compatibility fix is selected.
+The report locates the Waterfox failure before a compatibility fix is selected.
 
 **A guard for the repair scan.**
 When the cross-reference table of a PDF does not parse, the PDF.js worker always retries in repair mode (`pdf.worker.mjs`, no `getDocument` option turns it off).
@@ -3057,7 +3011,7 @@ A body without those bytes becomes one huge string, about 37 to 41 times the len
 Measured: 8 MB of such bytes after a valid `%PDF-1.7` header added about 330 MB, 16 MB about 590 MB, and 99 MB about 4 GB.
 Anyone who can upload a file that the student opens (a teacher, or a student in a discussion or a group) can make one, and in Firefox the worker likely runs in the shared extension process.
 **What the guard refuses.**
-Before `getDocument`, `assertRepairable` (`pdf/repairGuard.ts`) scans the bytes of every file, not only those whose table fails, because a check that follows the parser would need the verdict of the parser.
+Before `getDocument`, `assertRepairable` (`pdf/repairGuard.ts`) scans the bytes of every file, because a check that follows the parser would need the verdict of the parser.
 The rule is one rule: the pane refuses any file that holds a run of more than 2 MB (`MAX_LINE_RUN`) with no LF, CR or `<`, anywhere in the file.
 The run can lie in a stream, a comment or a string, and the file does not need to be broken: the E2E file `long-run-valid.pdf` has a valid table and is refused.
 The scan goes in slices of 4 MB and carries the open run from slice to slice.
@@ -3075,7 +3029,7 @@ Trade-off: a valid PDF with any run of more than 2 MB that has no line break and
 **What the guard does not stop.**
 It stops junk and flat bodies, such as a zero-filled upload or a body with no line breaks.
 It does not stop a crafted file.
-The reviewer measured two bypasses:
+Two bypasses are known:
 - A file in repair mode whose trailer holds a 16 MB literal string with an LF every 1 MB: about 559 MB of memory.
 - A 16 KB file whose FlateDecode page content holds a 16 MB string: about 515 MB.
 
@@ -3085,23 +3039,23 @@ A complete one would need limits inside the vendored PDF.js, which the vendor ha
 The risk stays Low: it costs availability only, it needs a real click of the student on the file, and the student recovers by closing the tab or the browser.
 Real PDFs pass: the fixtures, and a file padded with a run of 1.7 MB.
 
-**F1 investigation (2026-11-02, incomplete):**
+**Files link PDF failure in Firefox (incomplete):**
 
 The Firefox 159 Selenium test renders the existing three-page PDF through the fake Canvas redirect.
 The same test also passes with a PDF comment appended to make the response about 1.7 MB, using `.output-e2e/firefox-mv3`.
-This checks the response size but does not model the image encodings or structure of the owner's PDF.
+This checks the response size but does not model the image encodings or structure of the failing PDF.
 The reported Firefox failure is not reproduced, so its cause remains unverified.
 
 At Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`, `ui/features/files/react/components/FolderChild.jsx` renders `.ef-name-col__link` with `href={this.props.model.get('url')}` and a prevented click handler.
 Its legacy handler calls `previewItem`, and `FilesApp.jsx` calls the page router with a preview query.
 `ui/shared/files/react/components/FilePreview.jsx` reads `props.query.preview` to select the file.
 `app/views/gradebooks/grade_summary.html.erb` links comment attachments with both `download` and `comment_id` on a submission address.
-Ticket F2 accepts that comment attachment form with strict numeric ids, including shard ids.
-The exact Files link address from the owner's failing page and the original PDF are still needed to establish a reproduction.
+The pane accepts that comment attachment form with strict numeric ids, including shard ids.
+The exact Files link address from the failing page and the original PDF are still needed to establish a reproduction.
 
-**F4 investigation (2026-11-03):**
+**Sign-in page in place of the file:**
 
-The owner's "Copy details" report for a 1.7 MB PDF from the classic Files page showed `not_a_file` at the fetch stage with no HTTP status and zero bytes.
+A "Copy details" report for a 1.7 MB PDF from the classic Files page showed `not_a_file` at the fetch stage with no HTTP status and zero bytes.
 So the pane got a web page, most likely the sign-in page, in place of the file.
 The pane page is a `moz-extension:` frame inside the Canvas page.
 In the Firefox 159 test with a fake Canvas, `/files/:id/download?download_frd=1` redirects to a sign-in page without the session cookie and to a file host on another origin with the cookie or a verifier.
@@ -3111,17 +3065,17 @@ The test does not prove which rule applies in Waterfox 6.7.7, but the report sho
 The Firefox smoke test covers settings 1, 4 and 5, for a file and for a comment attachment.
 With the pane read alone, the default run of the test failed before the fix.
 
-**Live facts (decision 23, owner's runs on sjsu.instructure.com, Firefox, 2026-10-30):**
+**Live facts (decision 23, sjsu.instructure.com, Firefox, 2026-10-30):**
 
 - `GET /api/v1/files/:id` answers with the content type, the size and a same-origin `url` (`/files/:id/download`).
 - That URL redirects to `cdn.inst-fs-iad-prod.inscloudgate.net`, which serves the PDF bytes.
   The background and an extension page both read all 271,512 bytes, starting with `%PDF-`.
-- The first run failed with a `TypeError` while Firefox withheld the host permission, and worked after the owner granted it.
+- The first run failed with a `TypeError` while Firefox withheld the host permission, and worked after the permission was granted.
 - An extension page loads in an iframe inside Canvas.
   Canvas sends only `frame-ancestors 'self' sjsu.instructure.com ...` and no other CSP.
 - Module lists link to module items (`/courses/:id/modules/items/:id`, hook `a.ig-title.title.item_link`), not to files.
 - The assignment page links the student's own submission files under `/courses/:id/assignments/:id/submissions/:id`.
-- **Submission link shapes in the Canvas source (2026-11-02, canvas-lms `1c9f0bb`, not yet seen live).**
+- **Submission link shapes in the Canvas source (canvas-lms `1c9f0bb`, not yet seen live).**
   - The Submission section of the assignment page (`app/views/assignments/_submission_sidebar.html.erb`) draws in the right column, as `div.details > div.content > div > a`.
     The link is `/courses/:id/assignments/:id/submissions/:user?download=:file`, and it has no `download` attribute.
   - Comment attachments in that section are `div.comments.module > div.comment > div.comment_attachments > div.comment_attachment > a.comment_attachment_link`, with `?comment_id=:id&download=:file`.
@@ -3160,7 +3114,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The saved width is the width of the card.
      The resize handle sits at the left edge of the card, in the host and not in the card, because the card clips its content.
      A click in the gap goes to the page, because the host does not take pointer events outside the card.
-     The weekly list dock is no card and keeps the look that the owner approved.
+     The weekly list dock is no card and keeps its own look.
    - The pane has a close button, and Escape closes it when focus is inside.
      In full view, Escape leaves full view first (see "Full view" below).
    - Below 876 px of window width, the pane covers the page instead, with the same close button, with no gap, no round corners and no Full view button.
@@ -3172,7 +3126,7 @@ With the pane read alone, the default run of the test failed before the fix.
      Escape in the file pane closes only the file pane.
    - **Full view.**
      Each pane has a "Full view" button that makes the pane fill the browser page, over the Canvas page, with a 12 px gap on every side.
-     The owner asked for it on 2026-11-05, so a student with a split screen or two monitors sees a whole PDF or assignment, and the Canvas page stays one click away.
+     It lets a student with a split screen or two monitors see a whole PDF or assignment, and the Canvas page stays one click away.
      The file pane has the button in its tab row, before the close button.
      The assignment pane and the feedback pane have it in their header, before "Open in new tab".
      The button then says "Exit full view".
@@ -3297,7 +3251,7 @@ With the pane read alone, the default run of the test failed before the fix.
      The pane takes only the file id from the address, for every read and for every link of the card.
      No `verifier` and no `location` of the address goes to a read, a stored value or a link that the student can click, except the one case in "The address of the clicked link" below.
    - A link without a `download` attribute opens the pane by its address alone.
-     The address of a comment attachment carries numeric `comment_id` and `download` query parameters, and the pane takes it on the top frame of Grades and submission details pages (Ticket F2b).
+     The address of a comment attachment carries numeric `comment_id` and `download` query parameters, and the pane takes it on the top frame of Grades and submission details pages (see "Clicks, comment attachments and folder views").
      An explicit HTML `download` attribute keeps its download action.
    - When the viewer is off, no click is rerouted.
      The script takes a click at once, before the settings have loaded, and if the setting turns out to be off, it clicks the same link again from script.
@@ -3315,8 +3269,6 @@ With the pane read alone, the default run of the test failed before the fix.
      Each position has its own key, `viewerPosition:` followed by the JSON of the origin, the user and the file id, so a save writes one small entry and a change event carries that key only.
      A save that takes the store over 200 drops the oldest positions.
      A read of a position removes the keys of other students, other Canvas addresses and bad keys, without reading their values.
-     The first build keeps the page, the zoom and the document of each tab only while the pane stays open.
-     Saving them across reloads is build step 3.
    - Image: a raster image shows in an image element, and an SVG is drawn on a canvas (item 10).
    - Audio and video: the browser's own elements, from a blob URL of the fetched bytes.
    - Plain text and code: shown as text, never rendered as HTML.
@@ -3348,8 +3300,8 @@ With the pane read alone, the default run of the test failed before the fix.
        So a transfer cannot wait for ever on either side.
      - A comment attachment has no file record, so its head read (16 bytes, to find the type) uses the same route.
        The background returns the media type of its answer only when it has the syntax of one, and the pane then keeps the type as strict as before.
-     - The background stays the second reader and not the only one.
-       Every successful read would pay the cost of the copy and of a second buffer, and the pane has no streaming need: PDF.js already gets the complete buffer.
+     - The background is the second reader.
+       A read through it costs the copy and a second buffer, and the pane has no streaming need: PDF.js already gets the complete buffer.
    - Files larger than 100 MB show the card instead, with "Download" and "Open in Canvas".
      The pane checks the size of the file record before it fetches.
      It also stops the read when `Content-Length` or the bytes read pass 100 MB, because a header can be wrong.
@@ -3413,7 +3365,7 @@ With the pane read alone, the default run of the test failed before the fix.
    - "Allow access" shows in the slim line of a PDF, and on the card for every other tab.
 8. **The theme of the pane.**
    - The pane follows the Theme setting (decision 19).
-     With Automatic, it follows the Canvas page, as the in-page list does, and never the system, because the pane is part of the page.
+     With Automatic, it follows the Canvas page, as the in-page list does, because the pane is part of the page.
    - The page script resolves the theme and sets it on the pane frame, and it sends it to the pane page as a `theme` message over the channel, once the pane proved the secret and with each new file.
      It also sends the theme again when the background says that a setting changed, so an open pane follows the Theme setting at once.
      The pane page sets `data-theme` on its root element and shows nothing until the first message arrives.
@@ -3828,7 +3780,6 @@ The channel checks the saved Canvas origin, the parent window, one transferred p
 **Question:** How does a student see an assignment's instructions next to the work that they handed in?
 
 **Problem:** Canvas splits one assignment over several pages.
-The owner showed this on 2026-10-30 with screenshots of sjsu.instructure.com.
 The Submission Details page (`/courses/:id/assignments/:id/submissions/:user`) holds the files, the comments and "Re-submit Assignment", but not the instructions.
 So a student switches pages to read the instructions next to the feedback on a file.
 
@@ -3836,11 +3787,10 @@ So a student switches pages to read the instructions next to the feedback on a f
 
 1. **What shows where.**
    - **Submission Details page, own submission.**
-     - Canvas's strip goes away: the files frame with the "Files" table, which the owner crossed out on 2026-11-03, and the comments column.
+     - Canvas's strip goes away: the files frame with the "Files" table, and the comments column.
        This also holds when a file has a Turnitin score.
      - A "Submission" box stands in the free space right of the content.
        It sits in Canvas's own right column, which Canvas draws empty on this page and hides.
-       The owner approved a mockup of the box.
      - The box has the heading "Submission", then the status line in bold, the date, the files and the comments.
        - The status line follows the header of Canvas's own Submission box: "Excused!", "Submitted!" with a check icon, or "Not Submitted!" with an x icon.
          "Submitted!" shows when the submission has a time or a type.
@@ -3868,13 +3818,12 @@ So a student switches pages to read the instructions next to the feedback on a f
      - A submission of another type (media recording, quiz, LTI tool, student annotation, discussion) keeps Canvas's own left area, visible and untouched, and Canvas's comments column stays in its place.
        The extension adds only the "Instructions" block, with the same look and the same "Show more" rule, above the whole content area, and the box with only the status line and the date.
        "Your submission" and the files do not show for these types.
-       The owner decided this on 2026-11-03: the view cannot show these types safely, and the instructions belong at the top of every Submission Details page.
+       The view cannot show these types safely, and the instructions belong at the top of every Submission Details page.
      - Canvas's primary button of the title row ("Submit Assignment" or "Re-submit Assignment") is hidden, and the extension adds a button of its own beside it.
        The new button says "Go to assignment" and opens the assignment page, with no hash, so Canvas does not open the upload form by itself.
        It has Canvas's own button look.
        Canvas's button goes back when the switch goes off.
        A page where Canvas draws no such button gets no new button.
-       The owner decided this on 2026-11-04.
      - Everything else on the page stays Canvas's own and untouched: the "Submission Details" header, the grade, "Show Rubric", the title and "submitted ...".
        Only when the view shows Canvas's own rubric (RB1), the header's "Show Rubric" and its unread mark are hidden, and the rubric holder moves under the instructions.
    - **Assignment page (`/courses/:id/assignments/:id`).**
@@ -3901,26 +3850,17 @@ So a student switches pages to read the instructions next to the feedback on a f
    - **Assignments list (`/courses/:id/assignments`).**
      - Each row keeps Canvas's own markup and gets a "Preview" button as the last child of its layout.
        The button opens Canvas's own assignment page in the docked pane (steps 2 and 3 below).
-       No row opens in place, and no row has a Submit button, because Canvas's own "Start Assignment" or "Re-submit" button works inside the pane.
-     - The owner approved a mockup of this on 2026-11-05.
-       The owner's words: the control of the row opens the panel instead of the dropdown, the dropdown goes, the control must not look like an arrow, and it helps students check which assignment is which, because teachers name them badly.
+       A row has no Submit button, because Canvas's own "Start Assignment" or "Re-submit" button works inside the pane.
+     - The button helps a student check which assignment is which, because teachers often name assignments unclearly.
    - **Weekly card (the dashboards and the course home pages).**
      - Each row of an assignment, a graded quiz or a graded discussion gets the same "Preview" button among its row actions, in Done and No due date too.
        The button opens the same pane on the same dock as the Assignments list does (step 4 below).
        An own task, a plain page, and any item with no assignment id get none.
-     - The owner approved a mockup of this.
-       The mockup also showed the other row actions, which this decision leaves as they are.
    - **Grades list (`/courses/:id/grades`).**
      - Canvas's own look.
-2. **What was removed and why.**
-   - The owner tested the first build on sjsu.instructure.com on 2026-11-03.
-   - The expanded rows of the Grades list made very long stacks, and the owner said the native Grades list "looks fine".
-     The expand buttons and rows there are gone.
-   - The "Your submission" panel of the classic assignment page showed a second rubric next to Canvas's own.
-     It is gone.
-   - The owner decided on 2026-11-05 that the rows of the Assignments list no longer expand in place.
-     The expand arrow, the details row, its cache and reads, the chips and the Submit and Re-submit button are gone.
-     The pane that shows Canvas's own assignment page does what they did, with Canvas's own data and buttons.
+2. **Rows of the Assignments list.**
+   - A row of the Assignments list does not expand in place.
+     Its Preview button (item 1) opens Canvas's own assignment page in the docked pane, with Canvas's own data and buttons.
 3. **Only for the signed-in student's own submission.**
    - The page is the own submission when the user in the path is the user of the record that the background reads with `submissions/self`.
      The two ids are compared as decimal global ids with BigInt, like `normalizeCanvasId`: `s~l` becomes `s * 10^13 + l`.
@@ -3941,7 +3881,6 @@ So a student switches pages to read the instructions next to the feedback on a f
        On a wide window, the content keeps the width that Canvas gives it, and the box lands in the free space on its right.
      - Canvas lays the column beside the content only at 1140 px or wider with the course menu open, and at 992 px or wider with it closed.
        Below that, the column stacks under the content, and so does the box.
-       The owner accepts this.
    - The view adds two hosts.
      - The box is `div#av-submission-box`, with the attribute `data-av-own`, an open shadow root and the attribute that lets the file pane take the clicks on its file links (decision 25).
        It is the last child of `#right-side`, and it has the role "region" with the label "Submission".
@@ -3989,9 +3928,8 @@ So a student switches pages to read the instructions next to the feedback on a f
      One exception stays: after a successful read request for the rubric comments, the unread mark keeps `display: none` and the link keeps its blank title, as they are after Canvas's own click, because the comments are read in Canvas.
 5. **Where the files come from.**
    - The Submission Details page never depends on the markup of Canvas's files frame.
-     The owner's live test of build 0.1.0.29 on sjsu.instructure.com showed the old strip and a box with only the status and the date, while the same code passed on fixtures in Firefox 159 and in Firefox 153.6 ESR.
-     The cause is known: on the live page, `data-canvadoc_session_url` of the preview link has `blob` as its only query parameter, and the first check of the session address required `hmac` too.
-     The view now reads what it needs from the records of Canvas, and the frame is only a helper.
+     On the live page of sjsu.instructure.com, `data-canvadoc_session_url` of the preview link has `blob` as its only query parameter, so the check of the session address does not require `hmac`.
+     The view reads what it needs from the records of Canvas, and the frame is only a helper.
    - The files, the scores and the feedback addresses come from `GET /api/v1/courses/:id/assignments/:id/submissions/self` (item 8).
      - Each entry of `attachments` has `id`, `display_name`, `size` and `preview_url`.
        `preview_url` is the signed `/api/v1/canvadoc_session` address, and only a file that Canvas can preview has one.
@@ -4027,7 +3965,6 @@ So a student switches pages to read the instructions next to the feedback on a f
        Canvas fills the cell with a script after the load, so the view watches the frame for 10 seconds after each load and uses the mode when the cell fills.
        The view returns to the replace mode if a later load of the frame shows an empty cell.
        When Canvas draws a report after the view has shown, the page switches to Canvas's frame, and an open feedback pane may close with the view's host, because Canvas's own button is then visible.
-       The owner accepts this (2026-11-03).
      - A file whose report data the view cannot show: a score that is not a number, a `state` or a `status` that is not text, a key whose value is not an object, a key past the limit of the report list, or a report address that fails the check below.
        Only the entries that the lookup of the template selects for the file count.
        The student never loses a report: when the view cannot show it, Canvas's frame shows it.
@@ -4055,7 +3992,7 @@ So a student switches pages to read the instructions next to the feedback on a f
      So the keyboard focus in the box stays, and a file whose feedback the student opened keeps its unread dot off until the page reloads.
    - **The similarity score.**
      - The forms of Canvas are `app/views/submissions/_originality_score.html.erb` and `app/views/shared/_originality_score_icon.html.erb`.
-       The view follows the data of the template, not its markup.
+       The view follows the data of the template.
      - The template looks up a VeriCite entry first (`vericite_data[attachment]`, then `originality_data` of the submission), and then the entry of the attachment, and then the entry of the whole submission.
        For a file, the entry of the whole submission is the one whose key holds the time of the submission, and the plain `submission_<id>` belongs to a text entry only.
        The plain key never gives a score to a file row.
@@ -4177,7 +4114,7 @@ So a student switches pages to read the instructions next to the feedback on a f
   - The button is the last child of `.ig-row__layout`.
     It has the text "Preview", the label "Preview <title>" and `aria-pressed`.
     The title keeps its link to the assignment page.
-  - The look follows the approved mockup: 30 px high, a 1 px border of #c7cdd1, a 4 px radius, a white background, 13 px text, and a 16 px side panel icon before the text.
+  - The button is 30 px high, with a 1 px border of #c7cdd1, a 4 px radius, a white background, 13 px text, and a 16 px side panel icon before the text.
     On a row under the mouse the border and the text take the link color (`--ic-link-color`), and the hover background of Canvas stays.
     The row of the assignment that the pane shows has the background #e0ebf5 and a 3 px bar of the brand color (`--ic-brand-primary`) at its left edge, made with an inset shadow.
     Its button is filled with the brand color, has white text, and has the right part of its icon filled.
@@ -4196,7 +4133,7 @@ So a student switches pages to read the instructions next to the feedback on a f
   - A comment attachment opens in the pane through its submission route, from the comments of the Submission Details page.
   - The error card of every file keeps a Download button, so a file that fails in the pane can still be saved.
     The button links to the file id alone.
-  - A comment attachment has no "Open in Canvas" there, because it has no Canvas page (Ticket F2b).
+  - A comment attachment has no "Open in Canvas" there, because it has no Canvas page (see "Clicks, comment attachments and folder views").
     Its error card shows one only when the clicked link carried a `verifier` or a `location`, and then it is that address.
 - **Settings.** "One assignment view" is in the tools settings, on by default, in the same three places as the other settings.
 
@@ -4303,7 +4240,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c` (20
   `Array.from(url.searchParams.keys())` fails the same way.
   `[...url.searchParams]` and `url.searchParams.size` work.
 - Chromium and jsdom accept `keys()`, so the unit tests and the Chromium tests pass.
-- The error made the Submission box show "Download NAME" in Firefox, and it made every file row with a preview button count as incomplete, so the page fell back to Canvas's files frame (an earlier rule of item 5).
+- The error made the Submission box show "Download NAME" in Firefox, and it made every file row with a preview button count as incomplete, so the page fell back to Canvas's files frame.
 - The two places that check the parameters (`sidebar.ts` and `files.ts`) read `url.search` as text, so they need no iterator in any browser version.
   An ESLint rule forbids `keys()`, `values()` and `entries()` on `searchParams` in `src`.
 
@@ -4404,7 +4341,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 
 **The rubric in the view (RB1):**
 
-- The view shows Canvas's own holder, not a copy.
+- The view shows Canvas's own holder.
   `rubric.ts` moves the same node (so the script of Canvas keeps its handlers) into a wrapper `div#av-rubric` and leaves a comment mark `av-rubric-home` where the holder was.
   The wrapper is a child of the host, and a slot of the host shows it under the instructions and "Your submission".
   Where the frame stays (the instructions-above case), the wrapper goes after the frame inside `div.submission-details-frame`, and the frame itself does not move.
@@ -4437,8 +4374,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
   - The address is `api_v1_course_submission_rubric_assessments_mark_read_url(course, assignment, submission user)`: `PUT /api/v1/courses/:c/assignments/:a/submissions/:user/rubric_assessments/read` (`config/routes.rb` line 1544, `submissions_api#mark_rubric_assessments_read`).
     The action refuses any user but the current one (`return render_unauthorized_action unless @user == @current_user`), marks the rubric assessments read and answers `{"read": true}` (`submissions_api_controller.rb` lines 1588-1593).
   - Canvas's script sends it with `$.ajaxJSON(url, 'PUT', {}, ...)` (`ui/shared/jquery/jquery.ajaxJSON.js` lines 36-50): a form `POST` with `_method=PUT` and `authenticity_token` from the CSRF cookie, with the cookies of the page.
-    The view does not copy that form.
-    It sends a real `PUT` with the `X-CSRF-Token` header, the same cookie and no body, through the checked write path that the extension already has (the Canvas client of the background).
+    The view sends a real `PUT` with the `X-CSRF-Token` header, the same cookie and no body, through the checked write path that the extension already has (the Canvas client of the background).
     The API documents this form (`curl -X PUT ... -H "Content-Length: 0"`).
   - The in-page script makes no Canvas request of its own, and every request goes through the background, which holds the session binding. So it sends `assignment:rubric-read { courseId, assignmentId, userId }` (strict Canvas id checks) and the background does the write.
     The router accepts it only from the top frame of a tab whose page has the saved origin.
@@ -4491,7 +4427,7 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
   It also checks a record with no session address and a frame row with the button "Preview", the unread dot and a session address: the frame is read in Firefox, and the box shows "Preview" with the unread dot.
   It also checks that Canvas's comment form works inside the box: Save reaches Canvas's handler, and "No Comments" goes with the first comment.
 
-**Live checks for the owner:**
+**Live checks:**
 
 1. Open a graded submission on sjsu.instructure.com: the strip is gone, and "Instructions" shows in its place.
    The right column shows the "Submission" box with the status line, the date, the file, "View Feedback" and the comments.
@@ -4502,9 +4438,9 @@ These facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
    If Canvas disabled its button for no attempts left, "Go to assignment" still works.
    Canvas's own rubric shows open under the instructions, and "Show Rubric" is gone.
    If a page shows Canvas's own files area with the instructions above it instead, open the console and read the line `[weekrow] submission details keeps the Canvas frame, reason: CODE`.
-   Tell me the code (`type`, `report-data`, `asset-reports`, `no-session` or `mount-failed`), so the case can get its own display.
+   Note the code (`type`, `report-data`, `asset-reports`, `no-session` or `mount-failed`), so the case can get its own display.
 2. On a file with a Turnitin score: the box shows the score in Canvas's color, and a click opens the report in a new tab.
-   If the score is missing, tell me the `turnitin_data` of the `submissions/self` reply (without the address), so the form can get its own reading.
+   If the score is missing, note the `turnitin_data` of the `submissions/self` reply (without the address), so the form can get its own reading.
 3. Click the file name: the file opens in the pane.
 4. Click "View Feedback" on an annotated PDF: the pane shows the teacher's notes.
    If DocViewer refuses the frame, use "Open in new tab" and report it.
@@ -4556,7 +4492,7 @@ These items need a live check or an outside answer.
     That catcher has run only against the fixture.
     The live checklist has the steps.
 16. The Submission Details view (decision 26) has run only against fixtures that follow the canvas-lms source.
-    The live test of build 0.1.0.29 showed the old strip on two pages, which the fixtures did not predict, so the files, the scores and the session addresses now come from the `submissions/self` record and not from the frame.
+    The files, the scores and the session addresses come from the `submissions/self` record, because the markup of the real frame can differ from the fixtures.
     The real shape of `turnitin_data` and `preview_url`, the real content of `td.asset-report-status-container`, and whether DocViewer lets the feedback pane frame it are known from source only.
     A cell of the asset processors that is never empty on the real page would keep the frame for every submission.
     The text entry and URL data come from the `submissions/self` record, not from the page.
@@ -4635,7 +4571,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A click on Preview then shows the pane over the file pane, whatever row it is.
 - **Host.**
   - The pane has its own host, owned by the assignment view script (`assignment-view.js`), so it works while the File viewer switch is off.
-    The id of the host is `tools-turn-in`, from the first name of the pane, because the cleanup of a dead copy finds the host by it.
+    The id of the host is `tools-turn-in`, and the cleanup of a dead copy finds the host by it.
   - The host is not the file pane host.
     A frame of the Canvas origin can reach the closed shadow root that holds it, through `window.frameElement.getRootNode()`.
     The closed root of the file pane therefore holds only extension content.
@@ -4673,7 +4609,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     The feedback pane has no second line, because its row has no such data.
   - The frame sits in a white wrapper with the padding 20 px, 16 px, 0 and 32 px.
     The frame reaches 12 px into the right padding, so its own scroll bar stays 4 px from the edge of the card.
-    In full view the wrapper has the padding 24 px, 96 px and 0, so the text of the page has wide margins, as in the mockup of 2026-11-05.
+    In full view the wrapper has the padding 24 px, 96 px and 0, so the text of the page has wide margins.
     The frame keeps its 12 px reach, so its scroll bar then stays 12 px inside the right margin.
     The PDF pane has no such padding, because the PDF viewer draws its own page margins.
     The feedback pane keeps its frame without padding in both states, because DocViewer draws its own margin.
@@ -4682,8 +4618,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     A frame is `/courses/:c/assignments/:a?content_only=1` on the page origin, with validated ids.
     A frame receives no extension channel, secret or port.
   - A frame never goes to another assignment.
-    Three review rounds showed why: a frame that goes to another page can make Canvas ask whether to leave, a declined question fires no event, and no rule on loads, addresses or key presses can tell what the frame shows afterwards.
-    Each rule that was tried lost the work of the student or showed the title of the wrong assignment.
+    A frame that goes to another page can make Canvas ask whether to leave, a declined question fires no event, and no rule on loads, addresses or key presses can tell what the frame shows afterwards.
     With one frame for each assignment, a Preview click never makes Canvas ask, and the title, "Open in new tab", the frame title, the pressed row and the poll always belong to the assignment of the frame that shows.
     A redirect inside a frame, for example to a discussion or to a page of a group, changes nothing in the header, because the header belongs to the row.
   - A frame that does not show has `display: none` on its own element.
@@ -4740,7 +4675,7 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
     It opens the assignment address without `content_only`.
 - **Unsent work.**
   - Moving between rows keeps the frames, so a draft survives a move.
-  - The close button of the pane (a trusted click) and a trusted Preview click on the assignment that shows close the pane and remove every frame, with no question and no way to bring back a draft, as the close of one frame did before.
+  - The close button of the pane (a trusted click) and a trusted Preview click on the assignment that shows close the pane and remove every frame, with no question and no way to bring back a draft.
     A frame that stays hidden plays sound with no control in view, can show the page of an earlier student after a sign-out in another tab, and stays failed once it failed.
     So the next Preview click starts with new frames, as a closed tab does.
     The room goes back to the page.
@@ -4789,12 +4724,12 @@ A click on Preview opens Canvas's own assignment page in a docked pane.
 These source facts use canvas-lms commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 `ApplicationController#set_layout_options` in `app/controllers/application_controller.rb` handles embedded and no_headers, not display=borderless.
 `AssignmentsController#show` in `app/controllers/assignments_controller.rb` excludes display=borderless from the current A2 student view.
-The pane therefore uses content_only=1 rather than borderless.
+The pane therefore uses content_only=1.
 `ApplicationHelper#enable_content_view_if_requested` in `app/helpers/application_helper.rb` converts content_only to a boolean.
 `app/views/layouts/application.html.erb` calls that helper and omits the global header, breadcrumbs and course navigation for content-only pages.
 The parameter does not disable the assignment student view or its submission code.
 
-### Ticket F2: Files routes and comment attachments
+### Files routes and comment attachments
 
 Verified against Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 `ui/features/files/react/components/FolderChild.jsx` renders the name anchor with the model `url`, class `ef-name-col__link`, role `button`, and `preventDefault(this.handleFileLinkClick)`.
@@ -4804,16 +4739,16 @@ Verified against Canvas commit `1c9f0bb8013ed69c4f2efe11fd483025469b7e6c`.
 `app/views/gradebooks/grade_summary.html.erb` uses a submission URL with `comment_id` and `download` for comment attachments.
 `lib/api/v1/attachment.rb` builds the model URL with `file_download_url` and `download=1&download_frd=1`, plus an optional verifier.
 The fixture name link uses the preview address and pushes it through its click handler, as the router does.
-The exact live model URL is still not supplied by the owner.
+The exact live model URL is still unknown.
 Trusted plain clicks stop before the router, while explicit download links keep their action.
-A direct load of a preview address, and a move through the history to one, keep Canvas's own overlay and open no pane (F2b, item 1).
+A direct load of a preview address, and a move through the history to one, keep Canvas's own overlay and open no pane (see "Clicks, comment attachments and folder views", item 1).
 No verified public close API is available for that overlay, so the extension does not remove React-owned nodes or alter Canvas router state.
 
-### Ticket F2b: Fixes after the review of Ticket F2
+### Clicks, comment attachments and folder views
 
 1. **Only a trusted click opens the pane.**
    The pane does not read `?preview=` from a direct load, a `popstate` event, a `hashchange` event or the history.
-   A review showed that a page script can open the pane without any user action by these routes: `replaceState` with a synthetic `PopStateEvent`, `pushState` with `history.back()` (which gives a trusted event), and a fragment change that reopened a closed pane.
+   A page script can open the pane without any user action by these routes: `replaceState` with a synthetic `PopStateEvent`, `pushState` with `history.back()` (which gives a trusted event), and a fragment change that reopened a closed pane.
    A direct load of, or a move through the history to, a `?preview=` address keeps Canvas's own overlay.
    After a history move the pane stays as the student left it.
 2. **A comment attachment is read through its own submission route.**
@@ -4845,7 +4780,7 @@ No verified public close API is available for that overlay, so the extension doe
    Tests prove that `replaceState` with a synthetic `popstate`, `pushState` with `history.back()`, a fragment change and a direct load open no pane, and that a history move leaves the pane open or closed as it was.
    A comment attachment test serves the file only through the submission route and checks that the PDF shows in the pane.
 
-### Ticket F2c: Follow-up to Ticket F2b
+### Comment attachment names, positions and cookie checks
 
 1. The name of a comment attachment is cut to 200 characters before the last trim, so a space at the cut goes and the channel takes the name.
 2. A PDF of a comment attachment saves its page and zoom under its route id, with the same strict pattern as the tabs.

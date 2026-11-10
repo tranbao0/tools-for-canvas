@@ -590,9 +590,9 @@ A store build or a build from `npm run build` does not.
 4. Click "Run check".
    The check reads the Canvas tab you used last, so do not open another Canvas tab first.
    Expect: a plain-text report shows in about 10 seconds.
-5. Click "Copy report" and paste it into the next planning message.
+5. Click "Copy report" and paste the text into a file.
    The report holds hosts and counts, and no names, file names, tokens or query strings.
-   Read it once before you paste it.
+   Read it once before you share it.
 6. Repeat steps 2 to 5 for each kind of page: a rich content file link, a module file item, the assignment page of a submitted file, and the submission details page.
    To test one file, paste its id or its link in the field above "Run check".
 

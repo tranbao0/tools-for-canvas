@@ -103,7 +103,7 @@ export function Rings(props: {
     done >= total ? 100 : 99,
     Math.max(done && 1, Math.round((done * 100) / total)),
   );
-  // The stroke stays thick as the count grows: the hole shrinks instead of the rings thinning.
+  // The stroke stays thick as the count grows, so the hole shrinks.
   const width = Math.min(10, (OUTER - HOLE - GAP * (drawn.length - 1)) / drawn.length);
   const select = (ring: Ring) =>
     props.onSelect(isRingSelected(ring, filter) ? undefined : ring.courseId);
