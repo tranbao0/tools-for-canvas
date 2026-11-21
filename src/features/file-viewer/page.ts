@@ -16,9 +16,9 @@ import { createCardDock, type CardDock } from './cardDock';
 import { TOP_OPEN } from './frame';
 import {
   acceptPaneHello,
+  answerPaneProof,
+  createViewerNonce,
   isViewerSecret,
-  secretMessage,
-  validPaneReady,
   validPaneRequest,
 } from './channel';
 import {
@@ -61,7 +61,7 @@ export function listenViewerHello(
 /** What an open of a file came to. See `openNow`. */
 type OpenResult = 'opened' | 'closed' | 'ended' | 'failed' | 'timeout';
 
-/** How long the pane page has to answer with the secret before the pane closes. */
+// Time for the pane to prove that it has the session secret.
 const HANDSHAKE_MS =
   import.meta.env.WXT_E2E === '1'
     ? Number(sessionStorage.getItem('e2ePaneHandshakeMs')) || 15_000
@@ -512,7 +512,7 @@ export async function startViewer(): Promise<void> {
     frame.src = browser.runtime.getURL('/viewer.html');
     // The pane page says hello first, so the port goes to the origin the frame really has.
     // Chromium can load a web-accessible page under a dynamic address that differs from getURL.
-    // The port counts only after the pane answers with the secret.
+    // The port opens only after the pane proves that it has the session secret.
     const answerInTime = () => {
       clearTimeout(handshake);
       handshake = setTimeout(() => {
@@ -531,24 +531,25 @@ export async function startViewer(): Promise<void> {
       const channel = new MessageChannel();
       const candidate = channel.port1;
       pending = candidate;
-      candidate.onmessage = (message) => {
-        if (!active()) return;
-        if (port === candidate) {
-          if (!validPaneRequest(message.data)) return;
-          // Escape leaves full view first, and a narrow window has none. Full view ends with the
-          // close of a pane (see `createDock`).
-          if (message.data.type === 'full-view') setFullView(message.data.on);
-          else if (message.data.type === 'escape' && created.full) setFullView(false);
-          else close();
-          return;
-        }
+      const nonce = createViewerNonce();
+      candidate.onmessage = async ({ data }) => {
+        candidate.onmessage = null;
+        const proof = await answerPaneProof(data, secret, nonce).catch(() => undefined);
         if (pending !== candidate) return;
         pending = undefined;
-        if (!validPaneReady(message.data, secret)) {
+        if (!proof) {
           candidate.close();
           return;
         }
+        candidate.postMessage({ type: 'page-proof', proof });
         port = candidate;
+        candidate.onmessage = (message) => {
+          if (!active() || port !== candidate || !validPaneRequest(message.data)) return;
+          // Escape leaves full view first.
+          if (message.data.type === 'full-view') setFullView(message.data.on);
+          else if (message.data.type === 'escape' && created.full) setFullView(false);
+          else close();
+        };
         settleConnection?.('opened');
         settleConnection = undefined;
         synced = false;
@@ -557,8 +558,7 @@ export async function startViewer(): Promise<void> {
         applyTheme();
         void send();
       };
-      frame.contentWindow?.postMessage({ type: 'viewer-connect' }, origin, [channel.port2]);
-      candidate.postMessage(secretMessage(secret));
+      frame.contentWindow?.postMessage({ type: 'viewer-connect', nonce }, origin, [channel.port2]);
     });
     // Every load of the frame after the first is a new document, and it must say hello again. The
     // hello can come a moment before the load event, so a hello shortly before the load counts.

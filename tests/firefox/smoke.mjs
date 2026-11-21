@@ -400,18 +400,25 @@ async function checkHostilePaneFrame(driver, server) {
   await driver.switchTo().defaultContent();
   await driver.executeScript(`
     const target = document.getElementById('hostile');
-    for (const first of [null, { type: 'secret', secret: 'a'.repeat(64) }, { type: 'open-file', fileId: '99' }]) {
-      const channel = new MessageChannel();
-      channel.port1.onmessage = (event) => window.__got.push(JSON.stringify(event.data));
-      target.contentWindow.postMessage({ type: 'viewer-connect' }, '*', [channel.port2]);
-      if (first) channel.port1.postMessage(first);
+    const channel = new MessageChannel();
+    channel.port1.onmessage = (event) => {
+      window.__got.push(JSON.stringify(event.data));
+      channel.port1.postMessage({ type: 'page-proof', proof: '0'.repeat(64) });
       channel.port1.postMessage({ type: 'open-file', fileId: '99' });
-      channel.port1.postMessage({ type: 'theme', theme: 'dark' });
-    }
+    };
+    target.contentWindow.postMessage(
+      { type: 'viewer-connect', nonce: '1'.repeat(32) },
+      '*',
+      [channel.port2],
+    );
   `);
   await driver.sleep(1500);
   const got = await driver.executeScript('return window.__got;');
-  if (got.length !== 0) throw new Error(`A hostile port got an answer: ${got.join(' ')}`);
+  if (
+    got.length !== 1 ||
+    !/^\{"type":"pane-proof","proof":"[0-9a-f]{64}","nonce":"[0-9a-f]{32}"\}$/.test(got[0])
+  )
+    throw new Error('The port received an unexpected message');
   if (server.requests.some((request) => request.includes('/api/v1/files/99')))
     throw new Error('A hostile frame opened another file');
   await driver.switchTo().frame(copy);

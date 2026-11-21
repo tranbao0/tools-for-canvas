@@ -28,7 +28,7 @@ vi.mock('./channel', async (original) => ({
   ...(await original<typeof import('./channel')>()),
   acceptPaneHello: (event: MessageEvent) =>
     (event.data as { type?: string })?.type === 'viewer-hello' ? 'chrome-extension://x' : null,
-  validPaneReady: () => true,
+  answerPaneProof: async () => 'a'.repeat(64),
 }));
 
 const ports: {
@@ -108,7 +108,7 @@ describe('the stored tabs of a click that waits for the pane', () => {
     document.getElementById(id)!.dispatchEvent(event);
   };
   const settle = () => new Promise((resolve) => setTimeout(resolve, 40));
-  /** Connects the pane frame, as its hello and its ready message do. */
+  // Connects the pane frame after its hello and proof.
   async function connect() {
     window.dispatchEvent(new MessageEvent('message', { data: { type: 'viewer-hello' } }));
     await settle();

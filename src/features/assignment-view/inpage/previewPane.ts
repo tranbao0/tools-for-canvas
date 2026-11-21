@@ -61,10 +61,7 @@ const MAX_REWRITES = 3;
 /** How often the submission is read again while the pane is open and the page is in view. */
 export const PREVIEW_POLL_MS = 20_000;
 
-/**
- * The id of the host. Copies of the script that ran before the pane had its present name made
- * hosts with this id, and the cleanup of a dead copy finds them by it, so it stays.
- */
+// The preview pane host id. Cleanup uses it to find stale pane hosts.
 export const PREVIEW_HOST_ID = 'tools-turn-in';
 
 export interface PreviewPaneOptions {

@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import { h, render } from 'preact';
+import { originMatchPattern } from '@/shared/platform/address';
 import { canvasOriginItem } from '@/shared/platform/storage';
 import {
   acceptViewerConnect,
@@ -25,11 +26,6 @@ function isPaneFile(value: unknown): value is Omit<PaneFile, 'courseId'> & { cou
   if (typeof value !== 'object' || value === null) return false;
   const file = value as Record<string, unknown>;
   return typeof file['name'] === 'string' && typeof file['contentType'] === 'string';
-}
-
-/** The host access that the files of the saved Canvas need, the same set that the background checks. */
-function accessOrigins(origin: string): string[] {
-  return [`${origin}/*`, 'https://*/*'];
 }
 
 export default defineUnlistedScript(() => {
@@ -109,9 +105,12 @@ export default defineUnlistedScript(() => {
       ),
     loadPdfjs,
     async hasAccess() {
-      return (await browser.runtime.sendMessage({ type: 'viewer:permission' })) !== false;
+      return (await browser.runtime.sendMessage({ type: 'viewer:permission' })) === true;
     },
-    requestAccess: () => browser.permissions.request({ origins: accessOrigins(canvasOrigin) }),
+    async requestAccess() {
+      const pattern = originMatchPattern(canvasOrigin);
+      return pattern !== null && browser.permissions.request({ origins: [pattern, 'https://*/*'] });
+    },
     async getTabs() {
       const reply: unknown = await browser.runtime.sendMessage({ type: 'viewer:tabs-get' });
       // A reply that is not an object is a refusal or an error. It is not "no tabs".
@@ -147,10 +146,10 @@ export default defineUnlistedScript(() => {
   // a port too, and it must not block the port of the page script.
   const listener = async (event: MessageEvent) => {
     const [canvasOrigin, known] = await Promise.all([origin, secret]);
-    if (!canvasOrigin || !known) return;
+    if (port || !canvasOrigin || !known) return;
     const offered = acceptViewerConnect(event, canvasOrigin, parent);
     if (!offered) return;
-    bindViewerPort(offered, known, {
+    void bindViewerPort(offered.port, known, offered.nonce, {
       receive(message) {
         if (message.type === 'theme') {
           document.documentElement.setAttribute('data-theme', message.theme);
@@ -173,12 +172,13 @@ export default defineUnlistedScript(() => {
         });
       },
       bound() {
-        if (port) return;
-        port = offered;
+        if (port) return false;
+        port = offered.port;
         window.removeEventListener('message', listener);
         document.addEventListener('keydown', (key) => {
           if (key.key === 'Escape') port?.postMessage({ type: 'escape' });
         });
+        return true;
       },
     });
   };

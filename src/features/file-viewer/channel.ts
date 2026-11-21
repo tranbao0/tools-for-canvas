@@ -1,11 +1,3 @@
-/**
- * The channel between the Canvas page script and the pane page (design decision 25).
- *
- * No address and no window message carries the session secret. Both sides get it from the
- * background, which keeps one secret for each browser tab. The port goes over by `postMessage`
- * and is trusted only after it carries the secret: the page script sends it first, and the pane
- * answers with it only after it has checked the first message.
- */
 import { ADDRESS_LIMIT, isTabId, linkName } from './model';
 
 /**
@@ -62,11 +54,28 @@ export type PaneRequest =
 const ID = /^[1-9][0-9]{0,19}(?:~[1-9][0-9]{0,19})?$/;
 const SECRET = /^[0-9a-f]{64}$/;
 
-/** A random 256 bit secret as 64 hex characters. */
+const NONCE = /^[0-9a-f]{32}$/;
+
+function hex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// The background gives the same secret to both peers through extension messaging.
 export function createViewerSecret(): string {
-  return Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  ).join('');
+  return hex(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+export function createViewerNonce(): string {
+  return hex(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+export async function viewerProof(
+  side: 'pane' | 'page',
+  secret: string,
+  nonce: string,
+): Promise<string> {
+  const input = new TextEncoder().encode(`${side}:${secret}:${nonce}`);
+  return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', input)));
 }
 
 export function isViewerSecret(value: unknown): value is string {
@@ -133,7 +142,6 @@ export function validCovered(value: unknown): value is CoveredMessage {
   );
 }
 
-/** The page script side: whether a message on its port is a request of the real pane page. */
 export function validPaneRequest(value: unknown): value is PaneRequest {
   if (typeof value !== 'object' || value === null) return false;
   const message = value as Record<string, unknown>;
@@ -147,39 +155,18 @@ export function validPaneRequest(value: unknown): value is PaneRequest {
   );
 }
 
-/** A message that carries the secret: the first one on a port, and the answer to it. */
-function validSecretMessage(value: unknown, type: string, secret: string): boolean {
-  if (typeof value !== 'object' || value === null || !isViewerSecret(secret)) return false;
-  const message = value as Record<string, unknown>;
-  return (
-    Object.keys(message).every((key) => key === 'type' || key === 'secret') &&
-    message['type'] === type &&
-    message['secret'] === secret
-  );
-}
-
-/** Whether an origin belongs to an extension page: the frame of the pane, never a web page. */
 export function isExtensionOrigin(origin: string): boolean {
   return /^(?:chrome-extension|moz-extension):\/\/[^/]+$/.test(origin);
 }
 
-/** The first message of the page script on a port. */
-export function secretMessage(secret: string): { type: 'secret'; secret: string } {
-  return { type: 'secret', secret };
-}
-
-/** The hello of the pane page. It names the extension, which is no secret. */
 export function helloMessage(extensionId: string): { type: 'viewer-hello'; extensionId: string } {
   return { type: 'viewer-hello', extensionId };
 }
 
-/**
- * The page script side. Checks a hello from the pane frame and gives back the origin to send the
- * port to. The pane frame has an extension origin, and its hello names this extension. A page
- * that replaced the frame by navigating it to a web page, or to a page of another extension,
- * gets no port. Chromium can load the pane under a session address that differs from the address
- * of `getURL`, so the origin is checked by its kind and the extension by its id.
- */
+/*
+Chromium can give the pane a dynamic extension origin.
+The hello supplies that origin, and the port proof authenticates the pane.
+*/
 export function acceptPaneHello(
   event: Pick<MessageEvent, 'source' | 'origin' | 'data'>,
   paneWindow: MessageEventSource | null,
@@ -195,21 +182,31 @@ export function acceptPaneHello(
   return event.origin;
 }
 
-/** The page script side: whether a message on its port is the answer of the real pane. */
-export function validPaneReady(value: unknown, secret: string): boolean {
-  return validSecretMessage(value, 'ready', secret);
+export async function answerPaneProof(
+  value: unknown,
+  secret: string,
+  pageNonce: string,
+): Promise<string | undefined> {
+  if (typeof value !== 'object' || value === null) return;
+  const { type, proof, nonce } = value as Record<string, unknown>;
+  if (
+    type !== 'pane-proof' ||
+    Object.keys(value).length !== 3 ||
+    !isViewerSecret(proof) ||
+    typeof nonce !== 'string' ||
+    !NONCE.test(nonce) ||
+    proof !== (await viewerProof('pane', secret, pageNonce))
+  )
+    return;
+  return viewerProof('page', secret, nonce);
 }
 
-/**
- * The pane side. A port arrives by `postMessage` from the parent page, which a script in the
- * main world of that page can also reach. This only checks where the message came from. The
- * secret decides whether the port is trusted (see {@link bindViewerPort}).
- */
+// The Canvas main world can also offer a port from the parent window.
 export function acceptViewerConnect(
   event: MessageEvent,
   savedOrigin: string,
   parent: MessageEventSource,
-): MessagePort | null {
+): { port: MessagePort; nonce: string } | null {
   if (
     event.origin !== savedOrigin ||
     event.source !== parent ||
@@ -217,47 +214,48 @@ export function acceptViewerConnect(
     typeof event.data !== 'object' ||
     event.data === null ||
     event.data.type !== 'viewer-connect' ||
-    Object.keys(event.data).length !== 1
+    Object.keys(event.data).length !== 2 ||
+    typeof event.data.nonce !== 'string' ||
+    !NONCE.test(event.data.nonce)
   )
     return null;
-  return event.ports[0]!;
+  return { port: event.ports[0]!, nonce: event.data.nonce };
 }
 
-/**
- * Waits for the secret on a port. A first message without the right secret closes the port. A
- * right one gets the answer, and then the port passes the messages of the page script on. The
- * pane never sends first, so a port that a script made reveals nothing.
- */
-export function bindViewerPort(
+export async function bindViewerPort(
   port: MessagePort,
   secret: string,
-  handlers: { receive(message: PaneMessage): void; bound(): void },
-): () => void {
-  let trusted = false;
-  const listener = (message: MessageEvent<unknown>) => {
-    if (!trusted) {
-      if (!validSecretMessage(message.data, 'secret', secret)) {
-        port.removeEventListener('message', listener);
-        port.close();
-        return;
-      }
-      trusted = true;
-      port.postMessage({ type: 'ready', secret });
-      handlers.bound();
-      return;
-    }
-    if (
-      validOpenFile(message.data) ||
-      validTheme(message.data) ||
-      validFullView(message.data) ||
-      validCovered(message.data)
-    )
-      handlers.receive(message.data);
-  };
-  port.addEventListener('message', listener);
-  port.start();
-  return () => {
-    port.removeEventListener('message', listener);
+  pageNonce: string,
+  handlers: { receive(message: PaneMessage): void; bound(): boolean },
+): Promise<void> {
+  const nonce = createViewerNonce();
+  try {
+    const [proof, expected] = await Promise.all([
+      viewerProof('pane', secret, pageNonce),
+      viewerProof('page', secret, nonce),
+    ]);
+    port.addEventListener(
+      'message',
+      ({ data }) => {
+        if (
+          data?.type !== 'page-proof' ||
+          Object.keys(data).length !== 2 ||
+          data.proof !== expected ||
+          !handlers.bound()
+        ) {
+          port.close();
+          return;
+        }
+        port.addEventListener('message', ({ data }) => {
+          if (validOpenFile(data) || validTheme(data) || validFullView(data) || validCovered(data))
+            handlers.receive(data);
+        });
+      },
+      { once: true },
+    );
+    port.postMessage({ type: 'pane-proof', proof, nonce });
+    port.start();
+  } catch {
     port.close();
-  };
+  }
 }

@@ -6,11 +6,11 @@ import {
   createViewerSecret,
   helloMessage,
   isExtensionOrigin,
-  secretMessage,
+  answerPaneProof,
   validOpenFile,
   validCovered,
   validFullView,
-  validPaneReady,
+  viewerProof,
   validPaneRequest,
   validTheme,
 } from './channel';
@@ -197,25 +197,17 @@ describe('hello from the pane', () => {
     expect(hello({ data: { type: 'viewer-hello' } })).toBeNull();
     expect(hello({}, '')).toBeNull();
   });
-  it('trusts the answer of the pane only with the secret', () => {
-    expect(validPaneReady({ type: 'ready', secret }, secret)).toBe(true);
-    expect(validPaneReady({ type: 'ready', secret: 'b'.repeat(64) }, secret)).toBe(false);
-    expect(validPaneReady({ type: 'ready' }, secret)).toBe(false);
-    expect(validPaneReady({ type: 'secret', secret }, secret)).toBe(false);
-    expect(validPaneReady({ type: 'ready', secret, extra: 1 }, secret)).toBe(false);
-    expect(validPaneReady({ type: 'ready', secret }, 'short')).toBe(false);
-  });
 });
 
+const nonce = 'd'.repeat(32);
 function fakePort() {
-  let listener: ((event: { data: unknown }) => void) | undefined;
+  const events = new EventTarget();
   return {
-    addEventListener: vi.fn((_: string, next: typeof listener) => (listener = next)),
-    removeEventListener: vi.fn(() => (listener = undefined)),
+    addEventListener: events.addEventListener.bind(events),
     start: vi.fn(),
     close: vi.fn(),
     postMessage: vi.fn(),
-    deliver: (data: unknown) => listener?.({ data }),
+    deliver: (data: unknown) => events.dispatchEvent(new MessageEvent('message', { data })),
   };
 }
 
@@ -226,44 +218,66 @@ describe('port of the pane', () => {
     const event = {
       origin: 'https://school.edu',
       source: parent,
-      data: { type: 'viewer-connect' },
+      data: { type: 'viewer-connect', nonce },
       ports: [port],
       ...overrides,
     } as unknown as MessageEvent;
     return { port, offered: acceptViewerConnect(event, 'https://school.edu', parent) };
   }
-  it('takes a port only from the parent at the saved origin, with a bare connect message', () => {
-    expect(connect().offered).not.toBeNull();
+
+  it('takes a port only from the parent at the saved origin with a fixed-length nonce', () => {
+    const { port, offered } = connect();
+    expect(offered).toEqual({ port, nonce });
     for (const override of [
       { origin: 'https://other.edu' },
       { source: {} as Window },
       { data: { type: 'viewer-connect', nonce: 'x' } },
       { data: { type: 'viewer-connect', secret } },
+      { data: { type: 'viewer-connect', nonce, extra: true } },
       { ports: [] },
     ]) {
       expect(connect(override).offered).toBeNull();
     }
   });
-  it('never sends first, and drops a port whose first message has no right secret', () => {
-    for (const first of [{ type: 'open-file', fileId: '1' }, secretMessage('b'.repeat(64)), null]) {
-      const { port } = connect();
-      const receive = vi.fn();
-      bindViewerPort(port as unknown as MessagePort, secret, { receive, bound: vi.fn() });
-      expect(port.postMessage).not.toHaveBeenCalled();
-      port.deliver(first);
-      expect(port.close).toHaveBeenCalledOnce();
-      expect(port.postMessage).not.toHaveBeenCalled();
-      expect(receive).not.toHaveBeenCalled();
-    }
-  });
-  it('answers the right secret, then passes on valid messages only', () => {
-    const { port } = connect();
+
+  it.each([
+    null,
+    { type: 'open-file', fileId: '1' },
+    { type: 'page-proof', proof: '0'.repeat(64) },
+  ])('closes a port with an invalid first message: %j', async (first) => {
+    const { port, offered } = connect();
     const receive = vi.fn();
-    const bound = vi.fn();
-    const unbind = bindViewerPort(port as unknown as MessagePort, secret, { receive, bound });
-    port.deliver(secretMessage(secret));
-    expect(port.postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'ready', secret });
+    const bound = vi.fn(() => true);
+    await bindViewerPort(offered!.port, secret, nonce, { receive, bound });
+    expect(port.postMessage).toHaveBeenCalledExactlyOnceWith({
+      type: 'pane-proof',
+      nonce: expect.stringMatching(/^[0-9a-f]{32}$/),
+      proof: await viewerProof('pane', secret, nonce),
+    });
+    port.deliver(first);
+    port.deliver(open);
+    expect(port.close).toHaveBeenCalledOnce();
+    expect(bound).not.toHaveBeenCalled();
+    expect(receive).not.toHaveBeenCalled();
+  });
+
+  it('checks both proofs against their own challenge and passes only valid messages', async () => {
+    const { port, offered } = connect();
+    const receive = vi.fn();
+    const bound = vi.fn(() => true);
+    await bindViewerPort(offered!.port, secret, nonce, { receive, bound });
+    const [challenge] = port.postMessage.mock.calls[0]!;
+    await expect(answerPaneProof(challenge, secret, 'e'.repeat(32))).resolves.toBeUndefined();
+    await expect(
+      answerPaneProof({ ...challenge, extra: true }, secret, nonce),
+    ).resolves.toBeUndefined();
+    const proof = await answerPaneProof(challenge, secret, nonce);
+    expect(proof).toMatch(/^[0-9a-f]{64}$/);
+    expect(proof).not.toBe(challenge.proof);
+    port.deliver({ type: 'page-proof', proof });
+    port.deliver({ type: 'page-proof', proof });
     expect(bound).toHaveBeenCalledOnce();
+    expect(port.close).not.toHaveBeenCalled();
     port.deliver({ ...open, fileId: 'https://school.edu/files/42' });
     port.deliver({ type: 'theme', theme: 'blue' });
     expect(receive).not.toHaveBeenCalled();
@@ -279,7 +293,5 @@ describe('port of the pane', () => {
     port.deliver({ type: 'covered', covered: true });
     expect(receive).toHaveBeenCalledTimes(4);
     expect(receive).toHaveBeenNthCalledWith(4, { type: 'covered', covered: true });
-    unbind();
-    expect(port.close).toHaveBeenCalledOnce();
   });
 });

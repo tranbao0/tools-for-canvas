@@ -3,7 +3,11 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { canvasOriginItem } from '../../shared/platform/storage';
 import { DEFAULT_TOOLS_SETTINGS } from '../../shared/settings/tools';
 import { toolsSettingsItem } from '../../shared/settings/toolsItem';
-import { installFakeScripting, type FakeScripting } from '../../shared/platform/testing/fakes';
+import {
+  installFakePermissions,
+  installFakeScripting,
+  type FakeScripting,
+} from '../../shared/platform/testing/fakes';
 import { wireViewerRouter } from './background';
 
 const ORIGIN = 'https://canvas.school.edu';
@@ -57,4 +61,22 @@ describe('the File viewer switch in the background', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(scripting.executeScript).not.toHaveBeenCalled();
   });
+});
+
+it('checks permissions with a host pattern when Canvas uses a custom port', async () => {
+  const origin = `${ORIGIN}:8443`;
+  await canvasOriginItem.setValue(origin);
+  const contains = installFakePermissions(['https://*/*']).contains;
+  const addListener = vi.spyOn(fakeBrowser.runtime.onMessage, 'addListener');
+  wireViewerRouter({} as Parameters<typeof wireViewerRouter>[0]);
+  const receive = addListener.mock.calls.at(-1)![0];
+  const result = await new Promise((resolve) => {
+    receive(
+      { type: 'viewer:permission' },
+      { url: `${origin}/courses/5`, frameId: 0, tab: { id: 1 } } as Parameters<typeof receive>[1],
+      resolve,
+    );
+  });
+  expect(result).toBe(true);
+  expect(contains).toHaveBeenCalledWith({ origins: [`${ORIGIN}/*`, 'https://*/*'] });
 });

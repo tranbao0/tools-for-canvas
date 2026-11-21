@@ -1,5 +1,5 @@
 import { RETRY_MS } from './submissionTiming';
-import { checkPaneIdentity } from '../../file-viewer/paneIdentity';
+import type { checkPaneIdentity } from '../../file-viewer/paneIdentity';
 import { resetPanes } from '../../file-viewer/paneReset';
 /**
  * The Submission Details page of the student's own submission (design decision 26).
@@ -68,7 +68,7 @@ import {
 } from '../protocol';
 import { renderInstructions } from '../render';
 import { COMMENTS_CSS, findComments, takeComments } from './comments';
-import type { FeedbackRequest } from './feedbackPane';
+import { FEEDBACK_HOST_ID, type FeedbackRequest } from './feedbackPane';
 import { fitInstructions, toggleInstructions } from './instructions';
 import {
   findRubric,
@@ -196,6 +196,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   let stopped = false;
   /** Names the start that may draw, so an older answer cannot draw after a newer start. */
   let generation = 0;
+  let feedbackClick = 0;
   /** The style element of the view. It stays through a change of the mode. */
   let style: HTMLStyleElement | null = null;
   /** The rules of the page, and the rules of the mode that the host shows now. */
@@ -470,15 +471,25 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       files: first.map(known),
       submissionReport: textReport,
       openFeedback: (file) => {
-        if (file.sessionUrl === null) return;
-        // Validate the original token before any signed address enters a frame.
+        const url = file.sessionUrl;
+        if (url === null) return;
+        const request = { title: file.name, url };
+        const click = ++feedbackClick;
         if (options.paneIdentity && identityToken !== undefined) {
-          void checkPaneIdentity(identityToken).then((verdict) => {
-            if (verdict.verdict === 'no') resetPanes();
-            else if (active && !stopped)
-              options.openFeedback({ title: file.name, url: file.sessionUrl!, identityToken });
+          const tokenAtClick = generation;
+          const feedbackHost = doc.getElementById(FEEDBACK_HOST_ID);
+          void options.paneIdentity(identityToken).then(({ verdict }) => {
+            if (tokenAtClick !== generation || !active || stopped || !created.isConnected) return;
+            if (click !== feedbackClick || (feedbackHost && !feedbackHost.isConnected)) return;
+            if (verdict === 'no') resetPanes();
+            else
+              options.openFeedback({
+                ...request,
+                identityToken,
+                ...(verdict === 'unknown' ? { identity: verdict } : {}),
+              });
           });
-        } else options.openFeedback({ title: file.name, url: file.sessionUrl });
+        } else options.openFeedback(request);
         opened.add(file.fileId);
       },
     });
