@@ -195,12 +195,12 @@ test.describe('Ctrl+Z', () => {
     extensionUrl,
   }) => {
     const scenario = buildScenario(SCENARIO_NOW);
-    let signedOut = false;
-    const { canvas, state } = await serveScenario(context, [
+    let checkFails = false;
+    const { canvas } = await serveScenario(context, [
       {
         path: '/api/v1/users/self',
         respond: () =>
-          signedOut ? errorReply(CANVAS_ERRORS.signedOut) : { body: json(scenario.self) },
+          checkFails ? errorReply(CANVAS_ERRORS.serverError) : { body: json(scenario.self) },
       },
     ]);
     await addCsrfCookie(context, canvas.origin);
@@ -212,19 +212,31 @@ test.describe('Ctrl+Z', () => {
     await clickListControl(doneBox(page, QUIZ_3));
     const toast = page.locator('.wr-toast');
     await expect(toast).toContainText('Marked done');
-    // The refresh round that follows the write ends before the session does.
     await refreshedSince(page, canvas, from);
 
-    // The session ends. The next span cannot load, and the notice stays over the signed-out page.
-    signedOut = true;
-    state.plannerReply = errorReply(CANVAS_ERRORS.signedOut);
+    checkFails = true;
+    await context.addCookies([
+      {
+        name: 'canvas_session',
+        value: 'renewed',
+        url: canvas.origin,
+        secure: true,
+        sameSite: 'Lax',
+      },
+    ]);
     await clickListControl(page.getByRole('button', { name: /^Next/ }));
-    await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
-    await expect(toast).toBeVisible();
+    await expect(page.getByRole('heading', { name: "Couldn't load your list" })).toBeVisible();
+    await expect(toast).toContainText('Marked done');
 
-    // Nothing can be restored after a sign-out, so the notice ends with the failure line.
+    const checks = () => canvas.requests.filter((request) => request.path.endsWith('/users/self'));
+    const beforeUndo = checks().length;
     await page.keyboard.press('Control+Z');
-    await expect(toast).toContainText("Couldn't undo that");
-    await expect(toast.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
+    await expect.poll(() => checks().length).toBeGreaterThan(beforeUndo);
+    await expect(toast).toContainText('Marked done');
+
+    await context.clearCookies({ name: 'canvas_session' });
+    await clickListControl(page.getByRole('button', { name: 'Retry', exact: true }));
+    await expect(page.getByRole('heading', { name: "You're signed out of Canvas" })).toBeVisible();
+    await expect(toast).toHaveCount(0);
   });
 });
