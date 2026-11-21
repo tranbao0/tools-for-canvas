@@ -70,6 +70,7 @@ describe('check-storage', () => {
       'chrome-mv3/submission-frame.js': 'void 0',
       'chrome-mv3/dashboard.js': 'chrome.runtime.sendMessage(m)',
       'chrome-mv3/assignment-view.js': 'chrome.runtime.sendMessage(m)',
+      'chrome-mv3/viewer-frame.js': 'browser.storage.local.get(null)',
     });
     const result = await runCheck(['--out-dir', dir, 'chrome-mv3']);
     assert.equal(result.code, 0, result.output);
@@ -84,12 +85,15 @@ describe('check-storage', () => {
       'firefox-mv3/submission-frame.js': 'void 0',
       'firefox-mv3/dashboard.js': 'indexedDB.open("x")',
       'firefox-mv3/assignment-view.js': 'void 0',
+      'firefox-mv3/viewer-frame.js': 'browser.storage.local.get(null); indexedDB.open("x")',
       'firefox-mv3/background.js': 'browser.storage.local.get(null)',
     });
     const result = await runCheck(['--out-dir', dir, 'firefox-mv3']);
     assert.equal(result.code, 1);
     assert.match(result.output, /inpage\.js uses the extension storage/);
     assert.match(result.output, /dashboard\.js uses the extension storage/);
+    assert.match(result.output, /viewer-frame\.js uses the extension storage: .*\.storage/);
+    assert.match(result.output, /viewer-frame\.js uses the extension storage: .*indexedDB/);
     assert.doesNotMatch(result.output, /background\.js/);
   });
 

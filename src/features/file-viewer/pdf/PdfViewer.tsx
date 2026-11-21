@@ -4,7 +4,7 @@
  * destroys the document when it unmounts, which is when its tab closes.
  */
 import { browser } from 'wxt/browser';
-import { parsePositionReply, validPosition } from '../positions';
+import { parsePositionReply, validPosition } from '../positionFormat';
 import type { TargetedKeyboardEvent } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../../shared/ui/i18n';

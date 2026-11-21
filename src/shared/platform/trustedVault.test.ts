@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { orderedVault, vaultMessageHandler } from './trustedStorage';
+import { indexedDbVault, orderedVault, sessionVault, vaultMessageHandler } from './trustedStorage';
 
 function memoryVault() {
   const values = new Map<string, unknown>();
@@ -105,6 +105,42 @@ it('reads from the background in another extension page without opening IndexedD
     vi.resetModules();
   }
 });
+
+it.each(['saved', 'stale'])(
+  'uses the background session vault from another page (%s)',
+  async (next) => {
+    vi.resetModules();
+    vi.stubEnv('BROWSER', 'firefox');
+    vi.stubGlobal('indexedDB', {
+      open() {
+        throw new DOMException('IndexedDB unavailable', 'InvalidStateError');
+      },
+    });
+    const vault = orderedVault(indexedDbVault(sessionVault()));
+    const handler = vaultMessageHandler(vault, sender.id, extensionOrigin);
+    const send = vi
+      .spyOn(fakeBrowser.runtime, 'sendMessage')
+      .mockImplementation((message) => handler(message, sender) as never);
+    try {
+      await fakeBrowser.storage.local.set({ note: 'stale' });
+      const { createTrustedItem } = await import('./trustedStorage');
+      const item = createTrustedItem({ key: 'note', fallback: () => '' });
+      const listener = vi.fn();
+      const stop = item.watch(listener);
+      expect(await item.getValue()).toBe('');
+
+      await item.setValue(next);
+      expect(await fakeBrowser.storage.session.get(null)).toEqual({ 'trustedVault:note': next });
+      expect(await fakeBrowser.storage.local.get(null)).toEqual({ note: 'stale' });
+      await vi.waitFor(() => expect(listener).toHaveBeenCalledWith(next, ''));
+      stop();
+    } finally {
+      send.mockRestore();
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  },
+);
 
 it.each([
   ['Could not establish connection. Receiving end does not exist.', true],
