@@ -257,7 +257,7 @@ Use a new, empty profile, and the student account.
     Expect: only one slim notice shows at the top of the list, with a quiet count such as "1 more notice" when another one waits.
     Check an item off, while the "Couldn't refresh" line shows.
     Expect: the one-time note shows first, and the line returns after you press "Got it".
-20. Click the gear in the panel and change each of the four settings, then do the same with the gear in the in-page list.
+20. Click the gear in the panel and change each of the five settings, then do the same with the gear in the in-page list.
     Expect: the settings open in place, Back returns to the list, and each change shows at once in the panel, in the in-page list and on the settings page.
     Expect: the shown span, the courses that show in the list (every switch is on at first, and a course that you turn off leaves the list), the rings and the theme follow the settings, and a hidden course adds a line such as "1 course hidden".
 21. In the panel, pick each span in the control next to the arrows: Day, Week, 2 weeks, Month and Custom with 10 days.
@@ -401,6 +401,8 @@ These steps need the new widget dashboard ("Switch to new dashboard view" in Can
     Expect: the fixes keep working.
 38. Open a course home page and the Courses tab.
     Expect: no fix shows, and nothing changes.
+
+- [ ] On the new dashboard, hide a native grade, hide and show a copied grade, reload, and check that plain Canvas agrees.
 
 ### Weekly list dock
 
@@ -563,14 +565,17 @@ Use Firefox first, and then Chrome and Edge.
 ### Store listings
 
 58. Check the Chrome Web Store listing.
-    Expect: the single purpose is "Show your Canvas coursework for the week as a to-do list.", the data usage ticks "Website content" processed only on the device, the account is a non-trader, and 2-Step Verification is on.
+    Expect: the single purpose is "Make the Canvas site easier for students to use: see coursework as a to-do list, and open files, assignments, announcements and teachers in place on your own Canvas."
+    Expect: the data usage ticks "Website content", "Personally identifiable information" (name and user ID) and "Authentication information" (the CSRF token and the session cookie that the extension reads only to hash it).
+    Expect: the disclosure says the extension processes the data only on the device and sends it only to your own Canvas and to the file storage and DocViewer hosts that Canvas redirects to.
+    Expect: the account is a non-trader, and 2-Step Verification is on.
 59. Check the Edge Add-ons listing.
     Expect: the description has the license link and does not mention other browsers.
 60. Check the Firefox Add-ons listing.
     Expect: the source zip and the lockfile are attached, the reviewer notes say that the only writes are done marks, custom tasks, announcement read and unread marks, rubric comment read marks and the grade visibility preference sent to the student's own Canvas at the student's request, and two-factor authentication is on.
     Expect: the privacy policy states that the grade visibility preference write has no corrective write, and the cookie check covers it.
 61. Check every listing.
-    Expect: the privacy policy link opens `docs/privacy.md` on the project site.
+    Expect: the privacy policy link opens [the privacy policy](https://tranbao0.github.io/tools-for-canvas/privacy/).
     Expect: the description ends with the trademark notice at the end of the README.
 62. Sign in to the reviewer test account.
     Expect: the planner, done marks and custom tasks work in its course.
@@ -582,7 +587,7 @@ This part answers the open questions for the file viewer (roadmap item 3, design
 Only a build of the Firefox test channel has the check.
 A store build or a build from `npm run build` does not.
 
-1. Install the test channel build from `https://tranbao0.github.io/tools-for-canvas/firefox/tools-for-canvas-latest.xpi` in Firefox, and sign in to `sjsu.instructure.com` as the student.
+1. Install the test channel build from `https://tranbao0.github.io/tools-for-canvas/firefox/tools-for-canvas-latest.xpi` in Firefox, and sign in to `<school>.instructure.com` as the student.
 2. Open a Canvas page that has a file link.
    Good pages are a page or an assignment with a file in its text, a module with a file, or the submission details of an assignment where you handed in a file.
 3. Open the settings of the extension, find the "Developer" group, and click "File access check".
@@ -860,5 +865,3 @@ Run them on the widget dashboard, on the classic dashboard and on a course home 
 
 1. Install the Firefox build on a phone with Firefox 144 or later, and open the in-page list on a Canvas page.
    Expect: it works, and you write down every control that does not.
-
-- [ ] On the new dashboard, hide a native grade, hide and show a copied grade, reload, and check that plain Canvas agrees.

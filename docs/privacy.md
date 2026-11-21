@@ -14,8 +14,8 @@ Canvas can send a file, View Feedback or Preview to its own storage and DocViewe
 ## What the extension reads
 
 The extension reads these data from the Canvas site whose address you save, with your own Canvas sign-in.
-The first Canvas page that you open on `instructure.com` sets that address.
-For a Canvas with its own address, you answer "Use <address> as your Canvas?" in the extension's welcome page or side panel to set it.
+The first Canvas page that you open on `instructure.com` sets that address if it is a production site.
+For a Canvas with its own address or a test or beta site on `instructure.com`, you answer "Use <address> as your Canvas?" in the extension's welcome page or side panel to set it.
 
 - your name, time zone and Canvas language;
 - your active courses, your course groups, your course colors and your dashboard order;
@@ -61,7 +61,7 @@ When both cookies exist, the fingerprint includes both salted hashes.
 It stores up to three confirmed fingerprints with their cookie names, the user id and the check time in session storage.
 It stores a random per-install salt in a trusted storage item.
 On Chrome and Edge, the item lives in `storage.local`, which the browser locks to trusted extension contexts, so web pages and content scripts cannot read it.
-On Firefox, the shipped code reads and writes only through the background the salt in its IndexedDB vault, or in `storage.session` in private browsing or after an IndexedDB `InvalidStateError`.
+On Firefox, only the background reads and writes the salt in its IndexedDB vault, or in `storage.session` in private browsing or after an IndexedDB `InvalidStateError`.
 The salt has no copy in `storage.local`, and Canvas content scripts cannot read it through the supplied APIs.
 A compromised Firefox page process can read it through an extension-origin frame or through `storage.session`; the vault does not stop that threat.
 It never stores or sends the session cookie value.
@@ -79,7 +79,7 @@ The detector does not announce itself to the page.
 The detector sends nothing to any server.
 On a page that is not Canvas, it stops at once and keeps nothing.
 On a Canvas page, it sends the address of that page to the extension itself.
-The extension keeps that address only when it is the first `instructure.com` Canvas that you open, when you answer "Use it" to the question for a Canvas with its own address, or when you choose "Switch to this Canvas?".
+The extension keeps that address only when it is the first production `instructure.com` Canvas that you open, when you answer "Use it", or when you choose "Switch to this Canvas?".
 Until you answer, the extension keeps the detected Canvas address in session storage (`storage.session`), as the offer that the question shows.
 Session storage stays in browser memory and the browser clears it when it closes.
 The extension opens its welcome page once per browser session when it finds a Canvas that waits for your answer.
@@ -324,14 +324,15 @@ A link inside a PDF opens in a new tab only when you click it.
 
 The file pane reads image, audio, video and text files through the same Canvas file checks as PDFs.
 It keeps the bytes in memory and frees each blob URL when its tab closes.
-SVG files appear only in image elements, and text files appear as plain text.
+The file pane decodes SVG files in an image element outside the page and draws them on a canvas.
+Text files appear as plain text.
 
 ## Saved PDF positions
 
 The extension stores the page number, zoom mode or scale, and save time for each PDF.
 Each entry uses the Canvas address, student ID and file ID as its key.
 On Chrome and Edge, the entries live in local browser storage (`storage.local`), which the browser locks to the extension.
-On Firefox, the shipped code reads and writes only through the background them in its IndexedDB vault, with no copy in `storage.local`.
+On Firefox, only the background reads and writes the entries in its IndexedDB vault, with no copy in `storage.local`.
 In private browsing or after an IndexedDB `InvalidStateError`, the positions live in `storage.session` and end with that browser session.
 The pane requests one position through the existing background check for the current student.
 That API refuses a whole-vault read or another student's positions, but the Firefox process limit above still applies.

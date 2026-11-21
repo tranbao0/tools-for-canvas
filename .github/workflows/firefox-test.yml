@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: firefox-test
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   SITE: https://tranbao0.github.io/tools-for-canvas
@@ -77,6 +77,7 @@ jobs:
           cat > site/firefox/updates.json <<EOF
           {"addons":{"${ADDON_ID}":{"updates":[{"version":"${VERSION}","update_link":"${SITE}/firefox/${xpi}"}]}}}
           EOF
+          node scripts/build-privacy-page.mjs site
 
       - name: Upload the site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

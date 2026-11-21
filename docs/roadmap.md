@@ -25,14 +25,13 @@ The scroll list is one shared module, and the Announcements and People widgets u
 The paged widgets that stay on the steady pager are Recent Grades and To-do.
 Each of them needs only an adapter for the shared list: a function that loads a page, a row and its filters.
 
-## 3. File viewer
+## 3. File viewer (built)
 
 - Files open in a resizable pane docked beside Canvas.
 - Tabs hold several files at once.
 - PDFs render with a bundled PDF.js, with search, and each file remembers its page and zoom.
 - Images, text, audio and video use the browser's own players in the pane.
-- Word, PowerPoint and other documents use Canvas's own document viewer inside the pane.
-- "Open in new tab" is the fallback when a file cannot load in the pane.
+- Word, PowerPoint and other files that the pane cannot show get a card with "Download" and "Open in Canvas".
 - Files the student submitted open in the pane from the assignment page and the submission details, with a download button.
 - A test on a live Canvas comes first, to confirm that the extension can fetch file data on real schools.
 - File access check (built, see decision 23):
@@ -43,7 +42,7 @@ Each of them needs only an adapter for the shared list: a function that loads a 
   - It makes a plain-text report with no names, tokens or query strings.
   - The viewer waits for that report.
 
-## 4. One assignment view
+## 4. One assignment view (built)
 
 - Canvas lists the same assignments on two tabs: Grades shows the score, the rubric and the feedback, and Assignments is where a student turns work in.
 - From Grades a student cannot turn anything in, and the submission details page holds only files and comments.
@@ -52,7 +51,8 @@ Each of them needs only an adapter for the shared list: a function that loads a 
   The student can compare the rows with their pages, which helps when teachers name assignments badly.
 - A file link in the pane opens in the file pane, and closing the file shows the assignment pane again.
 - The Grades page keeps Canvas's own look.
-- The classic assignment page shows the score, rubric, feedback and submitted files below its description.
+- On the classic assignment page, the Submission box shows links to submitted files and any available similarity scores.
+  With the File viewer on, a file link opens the file in the pane.
 - The tool reuses the docked pane of the file viewer, so it comes after it.
 
 ## 5. Dark mode

@@ -31,7 +31,6 @@ Signed-off-by: Your Name <you@example.com>
 
 Use your real name.
 To add a missing sign-off to your last commit, run `git commit --amend -s --no-edit`.
-A pull request with a commit that has no sign-off cannot be merged.
 
 ## Set up
 
@@ -79,21 +78,22 @@ Run these commands, in this order:
 3. `npm run typecheck` runs the TypeScript check.
 4. `npm test` runs the unit tests with Vitest.
 5. `npm run test:scripts` runs the tests for the build checks.
-6. `npm run check` builds all browsers, then runs the six build checks below.
+6. `npm run check` builds all browsers, runs `npm run build:e2e`, then runs the seven build checks below.
 7. `npm run lint:webext` runs `web-ext lint` on the Firefox build.
 8. `npm run test:e2e` runs the end-to-end tests in Chromium with Playwright, against a fake Canvas site.
 9. `npm run test:firefox` runs the Firefox smoke test with Selenium and geckodriver.
 
 You can also run each build check alone:
 
-| Command                    | What it does                                                                                    |
-| -------------------------- | ----------------------------------------------------------------------------------------------- |
-| `npm run check:size`       | Fails if an entry point is over its size limit (see "Project rules")                            |
-| `npm run check:urls`       | Fails if the build contains a URL that is not in `scripts/url-allowlist.json`                   |
-| `npm run check:manifest`   | Checks the permissions and browser settings in each built manifest                              |
-| `npm run check:fetch`      | Fails if a built bundle other than the background script and the file pane script calls `fetch` |
-| `npm run check:storage`    | Fails if a script that runs in web pages uses the storage of the extension                      |
-| `npm run check:file-check` | Fails if a store build holds any part of the file access check                                  |
+| Command                        | What it does                                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `npm run check:size`           | Fails if an entry point is over its size limit (see "Project rules")                            |
+| `npm run check:urls`           | Fails if the build contains a URL that is not in `scripts/url-allowlist.json`                   |
+| `npm run check:manifest`       | Checks the permissions and browser settings in each built manifest                              |
+| `npm run check:fetch`          | Fails if a built bundle other than the background script and the file pane script calls `fetch` |
+| `npm run check:storage`        | Fails if a script that runs in web pages uses the storage of the extension                      |
+| `npm run check:file-check`     | Fails if a store build holds any part of the file access check                                  |
+| `npm run check:test-only-code` | Fails if a store build holds a test-only marker                                                 |
 
 CI runs the same checks on Linux on every pull request.
 CI also checks types, runs the unit tests and the tests for the build checks, and runs `npm run check` on macOS 15 and Windows 2025.
@@ -118,7 +118,7 @@ Before each release, a person runs the [live checklist](docs/live-checklist.md) 
 - Each entry point must stay under 45 KB after gzip, except these:
   `inpage.js` 52 KB, `background.js` 48 KB, the detector 2 KB, `viewer.js` 15 KB, `submission-frame.js` 4 KB and `viewer.html` 1.5 MB (with PDF.js).
   The limits apply to the store builds.
-- Do not add runtime dependencies besides Preact.
+- The runtime dependencies are Preact and `pdfjs-dist`.
 - Use TypeScript in strict mode.
 - Tests must be deterministic: no real clock, no network and no retries.
   A flaky test is a bug, so fix its cause.
