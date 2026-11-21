@@ -65,11 +65,11 @@ export function createBackgroundDataOwner(
   return createDataOwner(backgroundDataDeps(extra));
 }
 
-/**
- * Wires the browser events that refresh or reset the data: the browser start, a window that
- * gains focus, a change of the saved address and a change of host access. Call it once,
- * synchronously, at the top level of the background. Returns a function that removes them.
- */
+/*
+Wires the browser events that refresh or reset the data: the browser start, a window that
+gains focus, a change of the saved address and a change of host access. Call it once,
+synchronously, at the top level of the background. In tests, the returned function removes them.
+*/
 export function wireDataTriggers(owner: DataOwner): () => void {
   const report = (step: string) => (error: unknown) => logFailure(step, error);
   const onStartup = (): void => {
@@ -154,6 +154,7 @@ export function wireDataTriggers(owner: DataOwner): () => void {
   const stopAccess = onAccessChanged(() => {
     owner.accessChanged().catch(report('access change'));
   });
+  if (import.meta.env.MODE !== 'test') return () => undefined;
   return () => {
     browser.runtime.onConnect.removeListener(onConnect);
     browser.alarms.onAlarm.removeListener(onAlarm);

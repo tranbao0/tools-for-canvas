@@ -61,10 +61,10 @@ async function handleInstalled(reason: 'install' | 'update'): Promise<void> {
   await openWelcome(false);
 }
 
-/**
- * Wires the install and update handler. Call it once, synchronously, at the top level of the
- * background. Returns a function that removes the listener.
- */
+/*
+Wires the install and update handler. Call it once, synchronously, at the top level of the
+background. In tests, the returned function removes the listener.
+*/
 export function wireInstall(): () => void {
   // The browser ignores the returned promise. A test waits for it.
   const listener = (details: Browser.runtime.InstalledDetails): Promise<void> | undefined => {
@@ -72,5 +72,6 @@ export function wireInstall(): () => void {
     return handleInstalled(details.reason).catch((error: unknown) => logFailure('install', error));
   };
   browser.runtime.onInstalled.addListener(listener);
+  if (import.meta.env.MODE !== 'test') return () => undefined;
   return () => browser.runtime.onInstalled.removeListener(listener);
 }

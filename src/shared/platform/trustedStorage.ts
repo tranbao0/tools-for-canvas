@@ -318,8 +318,22 @@ function remoteVault(): Vault {
   };
 }
 
+function backgroundVaultAccess(): Vault {
+  // The background installs the vault before it starts any work that uses storage.
+  return {
+    get: (key, access) => backgroundVault!.get(key, access),
+    set: (key, value, access) => backgroundVault!.set(key, value, access),
+    keys: () => backgroundVault!.keys(),
+  };
+}
+
 /** Firefox uses its background owner; Chrome and Edge keep their locked storage.local. */
-const defaultVault: Vault | null = import.meta.env.BROWSER === 'firefox' ? remoteVault() : null;
+const defaultVault: Vault | null =
+  import.meta.env.BROWSER === 'firefox'
+    ? import.meta.env.ENTRYPOINT === 'background'
+      ? backgroundVaultAccess()
+      : remoteVault()
+    : null;
 
 /**
  * Locks `storage.local` to trusted contexts on Chrome and Edge, so no content script can read or

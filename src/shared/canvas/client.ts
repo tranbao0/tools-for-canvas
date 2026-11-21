@@ -149,31 +149,8 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
           : request,
       );
     };
-    /** Retries a rate limit answer at most `maxRetries` times. The last answer ends the request. */
-    const retryAtMost = (request: CanvasRequest, maxRetries: number): Promise<CanvasResponse> => {
-      let retries = 0;
-      let lastError: unknown;
-      return withRateLimitRetry(
-        () =>
-          attempt(request).catch((error: unknown) => {
-            lastError = error;
-            throw error;
-          }),
-        async (ms) => {
-          if (retries >= maxRetries) throw lastError;
-          retries += 1;
-          await sleep(ms);
-        },
-      );
-    };
     const send = (request: CanvasRequest): Promise<CanvasResponse> =>
-      limit(
-        () =>
-          request.maxRetries === undefined
-            ? withRateLimitRetry(() => attempt(request))
-            : retryAtMost(request, request.maxRetries),
-        priority,
-      );
+      limit(() => withRateLimitRetry(() => attempt(request), sleep, request.maxRetries), priority);
 
     const getObject = async <T>(url: string): Promise<T> =>
       expectObject<T>((await send({ method: 'GET', url })).data, url);
@@ -224,7 +201,7 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
     const ownSubmission = (courseId: string, assignmentId: string) =>
       getObject<Record<string, unknown>>(
-        apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`, []),
+        `${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/self`,
       );
 
     const listStatusBatch = async (
@@ -240,7 +217,7 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
     return {
       getAssignmentRecord: (courseId, assignmentId) =>
-        getObject(apiUrl(`${assignmentsPath(courseId)}/${pathId(assignmentId)}`, [])),
+        getObject(`${assignmentsPath(courseId)}/${pathId(assignmentId)}`),
       markRubricCommentsRead: (courseId, assignmentId, userId) => {
         const url = `${assignmentsPath(courseId)}/${pathId(assignmentId)}/submissions/${pathId(userId)}/rubric_assessments/read`;
         // Canvas's page sends this once and drops it on a failure, so one retry is enough.

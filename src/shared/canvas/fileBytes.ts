@@ -134,19 +134,6 @@ export const fileReadFacts = new WeakMap<Uint8Array, FileReadFacts>();
 
 /** Fetches the file with the student's session, follows the redirect and returns all bytes. */
 export async function fetchFileBytes(options: FileBytesOptions): Promise<Uint8Array> {
-  let facts: FileReadFacts | undefined;
-  const bytes = await readFileBytes({
-    ...options,
-    onResponse: (value) => {
-      facts = value;
-      options.onResponse?.(value);
-    },
-  });
-  if (facts) fileReadFacts.set(bytes, facts);
-  return bytes;
-}
-
-async function readFileBytes(options: FileBytesOptions): Promise<Uint8Array> {
   const { signal, onProgress } = options;
   const maxBytes = options.maxBytes ?? MAX_FILE_BYTES;
   const fetchImpl = options.fetchImpl ?? globalFetch;
@@ -223,6 +210,7 @@ async function readFileBytes(options: FileBytesOptions): Promise<Uint8Array> {
         throw new FileBytesError('too_large', 'The file is too large');
       onProgress?.(whole.length, whole.length);
       await confirmed();
+      fileReadFacts.set(whole, facts);
       return whole;
     }
     if (total !== null) target = new Uint8Array(total);
@@ -274,12 +262,17 @@ async function readFileBytes(options: FileBytesOptions): Promise<Uint8Array> {
     throw failure;
   }
   await confirmed();
-  if (target !== null) return loaded === target.length ? target : target.slice(0, loaded);
-  const bytes = new Uint8Array(loaded);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
+  let bytes: Uint8Array;
+  if (target !== null) {
+    bytes = loaded === target.length ? target : target.slice(0, loaded);
+  } else {
+    bytes = new Uint8Array(loaded);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
   }
+  if (facts) fileReadFacts.set(bytes, facts);
   return bytes;
 }

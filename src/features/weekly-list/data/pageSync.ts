@@ -35,10 +35,10 @@ async function notifyTabsOf(origin: string): Promise<void> {
   );
 }
 
-/**
- * Wires the change events to the message. Call it once, synchronously, at the top level of the
- * background. Returns a function that removes the listeners.
- */
+/*
+Wires the change events to the message. Call it once, synchronously, at the top level of the
+background. In tests, the returned function removes the listeners.
+*/
 export function wirePageSync(): () => void {
   const origins = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -70,6 +70,7 @@ export function wirePageSync(): () => void {
     onChange,
   );
   const stopOrigin = canvasOriginItem.watch((origin, previous) => schedule(origin, previous));
+  if (import.meta.env.MODE !== 'test') return () => undefined;
   return () => {
     stopItems();
     stopOrigin();

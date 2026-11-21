@@ -6,11 +6,9 @@
  * and actions, and learn about new data from the change marker in `storage.local`.
  */
 import {
-  isAssignmentDetailsMessage,
-  isAssignmentOwnerMessage,
+  isAssignmentMessage,
   type AssignmentDetailsMessage,
   type AssignmentOwnerMessage,
-  isRubricReadMessage,
   type RubricReadMessage,
 } from '../../assignment-view/protocol';
 import { isFixMessage, type FixMessage } from '../../dashboard-fixes/protocol';
@@ -398,31 +396,27 @@ export function isDataAction(value: unknown): value is DataAction {
 }
 
 export function isGetStateMessage(value: unknown): value is GetStateMessage {
-  return hasType(value, 'weekrow:get-state') && isSurfaceRequest(value['request']);
+  return hasType(value, 'weekrow:get-state') && isDataMessage(value);
 }
 
 export function isRefreshMessage(value: unknown): value is RefreshMessage {
-  return (
-    hasType(value, 'weekrow:refresh') &&
-    isString(value['reason']) &&
-    REFRESH_REASONS.includes(value['reason'])
-  );
+  return hasType(value, 'weekrow:refresh') && isDataMessage(value);
 }
 
 export function isAnnouncementFeedMessage(value: unknown): value is AnnouncementFeedMessage {
-  return hasType(value, 'weekrow:announcement-feed') && isAnnouncementFeedRequest(value['request']);
+  return hasType(value, 'weekrow:announcement-feed') && isDataMessage(value);
 }
 
 export function isActionMessage(value: unknown): value is ActionMessage {
-  return hasType(value, 'weekrow:action') && isDataAction(value['action']);
+  return hasType(value, 'weekrow:action') && isDataMessage(value);
 }
 
 export function isAcceptOfferMessage(value: unknown): value is AcceptOfferMessage {
-  return hasType(value, 'weekrow:accept-offer') && isNonEmptyString(value['origin']);
+  return hasType(value, 'weekrow:accept-offer') && isDataMessage(value);
 }
 
 export function isPageContextMessage(value: unknown): value is PageContextMessage {
-  return hasType(value, 'weekrow:page-context');
+  return hasType(value, 'weekrow:page-context') && isDataMessage(value);
 }
 
 export function isPageChangedMessage(value: unknown): value is PageChangedMessage {
@@ -430,19 +424,19 @@ export function isPageChangedMessage(value: unknown): value is PageChangedMessag
 }
 
 export function isSaveSettingsMessage(value: unknown): value is SaveSettingsMessage {
-  return hasType(value, 'weekrow:save-settings') && isSettings(value['settings']);
+  return hasType(value, 'weekrow:save-settings') && isDataMessage(value);
 }
 
 export function isMarkNoteSeenMessage(value: unknown): value is MarkNoteSeenMessage {
-  return hasType(value, 'weekrow:mark-note-seen') && value['note'] === 'firstDone';
+  return hasType(value, 'weekrow:mark-note-seen') && isDataMessage(value);
 }
 
 export function isOpenPageMessage(value: unknown): value is OpenPageMessage {
-  return hasType(value, 'weekrow:open-page') && value['page'] === 'welcome';
+  return hasType(value, 'weekrow:open-page') && isDataMessage(value);
 }
 
 export function isCanvasDetectedMessage(value: unknown): value is CanvasDetectedMessage {
-  return hasType(value, 'weekrow:canvas-detected') && isNonEmptyString(value['origin']);
+  return hasType(value, 'weekrow:canvas-detected') && isDataMessage(value);
 }
 
 export function isCanvasPageLoadedMessage(value: unknown): value is CanvasPageLoadedMessage {
@@ -450,25 +444,35 @@ export function isCanvasPageLoadedMessage(value: unknown): value is CanvasPageLo
 }
 
 export function isDataMessage(value: unknown): value is DataMessage {
-  return (
-    (hasType(value, 'weekrow:grade-visibility') &&
-      isGradeWidgetId(value['widgetId']) &&
-      isCanvasId(value['courseId']) &&
-      isCanvasId(value['userId']) &&
-      typeof value['visible'] === 'boolean') ||
-    isGetStateMessage(value) ||
-    isAnnouncementFeedMessage(value) ||
-    isRefreshMessage(value) ||
-    isActionMessage(value) ||
-    isAcceptOfferMessage(value) ||
-    isPageContextMessage(value) ||
-    isSaveSettingsMessage(value) ||
-    isMarkNoteSeenMessage(value) ||
-    isOpenPageMessage(value) ||
-    isCanvasDetectedMessage(value) ||
-    isAssignmentDetailsMessage(value) ||
-    isAssignmentOwnerMessage(value) ||
-    isRubricReadMessage(value) ||
-    isFixMessage(value)
-  );
+  if (!isObject(value)) return false;
+  switch (value['type']) {
+    case 'weekrow:grade-visibility':
+      return (
+        isGradeWidgetId(value['widgetId']) &&
+        isCanvasId(value['courseId']) &&
+        isCanvasId(value['userId']) &&
+        typeof value['visible'] === 'boolean'
+      );
+    case 'weekrow:get-state':
+      return isSurfaceRequest(value['request']);
+    case 'weekrow:announcement-feed':
+      return isAnnouncementFeedRequest(value['request']);
+    case 'weekrow:refresh':
+      return isString(value['reason']) && REFRESH_REASONS.includes(value['reason']);
+    case 'weekrow:action':
+      return isDataAction(value['action']);
+    case 'weekrow:accept-offer':
+    case 'weekrow:canvas-detected':
+      return isNonEmptyString(value['origin']);
+    case 'weekrow:page-context':
+      return true;
+    case 'weekrow:save-settings':
+      return isSettings(value['settings']);
+    case 'weekrow:mark-note-seen':
+      return value['note'] === 'firstDone';
+    case 'weekrow:open-page':
+      return value['page'] === 'welcome';
+    default:
+      return isAssignmentMessage(value) || isFixMessage(value);
+  }
 }

@@ -344,10 +344,10 @@ export const browserRouterHost: RouterHost = {
   injectInpageIntoOrigin,
 };
 
-/**
- * Adds the data router to `runtime.onMessage`. Call it once, synchronously, at the top level of
- * the background. Returns a function that removes the listener.
- */
+/*
+Adds the data router to `runtime.onMessage`. Call it once, synchronously, at the top level of
+the background. In tests, the returned function removes the listener.
+*/
 export function wireDataRouter(owner: DataOwner, host: RouterHost = browserRouterHost): () => void {
   const listener = (
     message: unknown,
@@ -363,5 +363,6 @@ export function wireDataRouter(owner: DataOwner, host: RouterHost = browserRoute
     return true;
   };
   browser.runtime.onMessage.addListener(listener);
+  if (import.meta.env.MODE !== 'test') return () => undefined;
   return () => browser.runtime.onMessage.removeListener(listener);
 }

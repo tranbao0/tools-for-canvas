@@ -29,16 +29,17 @@ function isRateLimited(error: unknown): error is CanvasError {
   return error instanceof CanvasError && error.kind === 'rate_limited';
 }
 
-/** Runs `attempt`, and retries it up to 3 times when Canvas answers with a rate limit. Other errors fail at once. */
+// Retries Canvas rate limits. Other errors end the request.
 export async function withRateLimitRetry<T>(
   attempt: () => Promise<T>,
   wait: Sleep = sleep,
+  maxRetries = MAX_RATE_LIMIT_RETRIES,
 ): Promise<T> {
   for (let retry = 0; ; retry += 1) {
     try {
       return await attempt();
     } catch (error) {
-      if (!isRateLimited(error) || retry >= MAX_RATE_LIMIT_RETRIES) throw error;
+      if (!isRateLimited(error) || retry >= maxRetries) throw error;
       await wait(rateLimitDelayMs(retry));
     }
   }

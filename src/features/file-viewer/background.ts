@@ -251,21 +251,15 @@ export function routeViewerMessage(
       return { canvasOrigin: origin };
     })();
   }
+  if (typeof message !== 'object' || message === null || !('type' in message)) return null;
+  const type = String(message.type);
+  const ordered =
+    /^viewer:(?:tabs-(?:get|open|undo|clear|close|activate)|position-(?:get|set))$/.test(type);
   if (
-    typeof message !== 'object' ||
-    message === null ||
-    !('type' in message) ||
+    !ordered &&
     ![
       'viewer:file',
-      'viewer:position-get',
-      'viewer:position-set',
       'viewer:module-item',
-      'viewer:tabs-get',
-      'viewer:tabs-open',
-      'viewer:tabs-undo',
-      'viewer:tabs-clear',
-      'viewer:tabs-close',
-      'viewer:tabs-activate',
       'viewer:permission',
       'viewer:session',
       'viewer:fetch-allowed',
@@ -273,7 +267,7 @@ export function routeViewerMessage(
       'viewer:confirm-cookie',
       'viewer:inject-frames',
       FRAME_OPEN,
-    ].includes(String(message.type))
+    ].includes(type)
   )
     return null;
   const request = message as Record<string, unknown>;
@@ -473,12 +467,7 @@ export function routeViewerMessage(
   };
   // The reads and writes of the tabs of one browser tab run in the order they arrive, so the last
   // write that arrives is the last one stored.
-  return tabId !== undefined &&
-    /^viewer:(?:tabs-(?:get|open|undo|clear|close|activate)|position-(?:get|set))$/.test(
-      String(request['type']),
-    )
-    ? enqueue(tabId, attempt)
-    : attempt();
+  return tabId !== undefined && ordered ? enqueue(tabId, attempt) : attempt();
 }
 
 const queues = new Map<number, Promise<unknown>>();

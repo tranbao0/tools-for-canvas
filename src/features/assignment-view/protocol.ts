@@ -1,5 +1,5 @@
 import { isCanvasId } from '../../shared/canvas/ids';
-import { hasType } from '../../shared/platform/shape';
+import { hasType, isObject } from '../../shared/platform/shape';
 
 export interface AssignmentDetailsMessage {
   type: 'assignment:details';
@@ -8,11 +8,7 @@ export interface AssignmentDetailsMessage {
 }
 
 export function isAssignmentDetailsMessage(value: unknown): value is AssignmentDetailsMessage {
-  return (
-    hasType(value, 'assignment:details') &&
-    isCanvasId(value['courseId']) &&
-    isCanvasId(value['assignmentId'])
-  );
+  return hasType(value, 'assignment:details') && isAssignmentMessage(value);
 }
 
 /**
@@ -27,11 +23,7 @@ export interface AssignmentOwnerMessage {
 }
 
 export function isAssignmentOwnerMessage(value: unknown): value is AssignmentOwnerMessage {
-  return (
-    hasType(value, 'assignment:owner') &&
-    isCanvasId(value['courseId']) &&
-    isCanvasId(value['assignmentId'])
-  );
+  return hasType(value, 'assignment:owner') && isAssignmentMessage(value);
 }
 
 /**
@@ -57,12 +49,26 @@ export interface RubricReadMessage {
 }
 
 export function isRubricReadMessage(value: unknown): value is RubricReadMessage {
-  return (
-    hasType(value, 'assignment:rubric-read') &&
-    isCanvasId(value['courseId']) &&
-    isCanvasId(value['assignmentId']) &&
-    isCanvasId(value['userId'])
-  );
+  return hasType(value, 'assignment:rubric-read') && isAssignmentMessage(value);
+}
+
+export function isAssignmentMessage(
+  value: unknown,
+): value is AssignmentDetailsMessage | AssignmentOwnerMessage | RubricReadMessage {
+  if (!isObject(value)) return false;
+  switch (value['type']) {
+    case 'assignment:details':
+    case 'assignment:owner':
+      return isCanvasId(value['courseId']) && isCanvasId(value['assignmentId']);
+    case 'assignment:rubric-read':
+      return (
+        isCanvasId(value['courseId']) &&
+        isCanvasId(value['assignmentId']) &&
+        isCanvasId(value['userId'])
+      );
+    default:
+      return false;
+  }
 }
 
 export interface AssignmentFile {

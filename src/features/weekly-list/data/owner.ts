@@ -423,9 +423,9 @@ export interface DataOwner {
   originChanged(origin: string | null): Promise<void>;
   /** A host permission was granted or removed. */
   accessChanged(): Promise<void>;
-  /** Resolves when no round, write or storage write is running or queued. */
+  // In tests, resolves when all rounds and writes finish.
   settled(): Promise<void>;
-  /** Stops every timer, as when the worker that hosts the owner stops. */
+  // In tests, stops every timer to simulate a worker shutdown.
   dispose(): void;
 }
 
@@ -657,14 +657,16 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   const statusesInFlight = new Set<string>();
   /** Courses whose names did not load. The next round tries them again. */
   const statusesFailed = new Set<string>();
-  const tasks = new Set<Promise<unknown>>();
+  const tasks = import.meta.env.MODE === 'test' ? new Set<Promise<unknown>>() : null;
   /** The load of the Announcements list that runs now, by the courses it asks for. */
   let announcementLoad: { key: string } | null = null;
 
   function track(promise: Promise<unknown>): void {
     const tracked = promise.catch((error: unknown) => deps.log('data task', error));
-    tasks.add(tracked);
-    void tracked.finally(() => tasks.delete(tracked));
+    if (tasks !== null) {
+      tasks.add(tracked);
+      void tracked.finally(() => tasks.delete(tracked));
+    }
   }
 
   function nextId(): number {
@@ -4134,6 +4136,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   }
 
   async function settled(): Promise<void> {
+    if (tasks === null) return;
     for (;;) {
       await Promise.all([runner, chains.writes, chains.creates, persistChain, ...tasks]);
       if (!running && !anyPending() && pendingWrites === 0 && tasks.size === 0) {
@@ -4158,10 +4161,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
       const stamp = writeStamp();
       switch (reason) {
         case 'visible':
-        case 'timer': {
-          const retryAt = await applyTrigger(reason, stamp);
-          return identityHolds(stamp) ? { retryAt } : NO_RETRY;
-        }
+        case 'timer':
         case 'midnight': {
           const retryAt = await applyTrigger(reason, stamp);
           return identityHolds(stamp) ? { retryAt } : NO_RETRY;
@@ -4297,8 +4297,10 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     settled,
 
     dispose() {
-      clearSessionWork();
-      cancelDefer();
+      if (import.meta.env.MODE === 'test') {
+        clearSessionWork();
+        cancelDefer();
+      }
     },
   };
 }

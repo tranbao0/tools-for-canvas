@@ -27,15 +27,16 @@ export function handleActionClick(tab: Tab, options: ActionClickOptions): Promis
   return openPanel(windowId).catch((error: unknown) => logFailure('panel open', error));
 }
 
-/**
- * Wires the click handler to `action.onClicked`. The `_execute_action` shortcut runs the same
- * handler. Call it once, synchronously, at the top level of the background.
- * Returns a function that removes the listener.
- */
+/*
+Wires the click handler to `action.onClicked`. The `_execute_action` shortcut runs the same
+handler. Call it once, synchronously, at the top level of the background.
+In tests, the returned function removes the listener.
+*/
 export function wireActionClick(options: ActionClickOptions): () => void {
   const listener = (tab: Tab): void => {
     void handleActionClick(tab, options);
   };
   browser.action.onClicked.addListener(listener);
+  if (import.meta.env.MODE !== 'test') return () => undefined;
   return () => browser.action.onClicked.removeListener(listener);
 }

@@ -8,7 +8,7 @@
  * (src/shared/ui/sanitize.ts). A service worker has no `DOMParser`, so it could not sanitize it anyway.
  */
 import { isCanvasId } from '../../shared/canvas/ids';
-import { hasType } from '../../shared/platform/shape';
+import { hasType, isObject } from '../../shared/platform/shape';
 import { isToolsSettings, type ToolsSettings } from '../../shared/settings/tools';
 
 /** In-page script to background: the student changed the tools settings shown in place. */
@@ -230,19 +230,15 @@ export interface PeoplePageReply {
 export const MAX_RANGE_ROWS = 500;
 
 export function isSaveToolsMessage(value: unknown): value is SaveToolsMessage {
-  return hasType(value, 'weekrow:save-tools') && isToolsSettings(value['tools']);
+  return hasType(value, 'weekrow:save-tools') && isFixMessage(value);
 }
 
 export function isDashboardDataMessage(value: unknown): value is DashboardDataMessage {
-  return hasType(value, 'weekrow:dashboard-data');
+  return hasType(value, 'weekrow:dashboard-data') && isFixMessage(value);
 }
 
 export function isAnnouncementMessage(value: unknown): value is AnnouncementMessage {
-  return (
-    hasType(value, 'weekrow:announcement') &&
-    isCanvasId(value['courseId']) &&
-    isCanvasId(value['topicId'])
-  );
+  return hasType(value, 'weekrow:announcement') && isFixMessage(value);
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -264,59 +260,65 @@ function isCourseOrNull(value: unknown): value is string | null {
 }
 
 export function isAnnouncementPageMessage(value: unknown): value is AnnouncementPageMessage {
-  return (
-    hasType(value, 'weekrow:announcement-page') &&
-    isCourseOrNull(value['courseId']) &&
-    (value['read'] === 'unread' || value['read'] === 'read' || value['read'] === 'all') &&
-    typeof value['offset'] === 'number' &&
-    Number.isInteger(value['offset']) &&
-    value['offset'] >= 0 &&
-    value['offset'] <= MAX_ANNOUNCEMENT_OFFSET &&
-    (value['first'] === 10 || value['first'] === 100)
-  );
+  return hasType(value, 'weekrow:announcement-page') && isFixMessage(value);
 }
 
 export function isPeoplePageMessage(value: unknown): value is PeoplePageMessage {
-  return (
-    hasType(value, 'weekrow:people-page') &&
-    isCourseOrNull(value['courseId']) &&
-    (value['role'] === 'all' || value['role'] === 'teacher' || value['role'] === 'ta') &&
-    typeof value['offset'] === 'number' &&
-    Number.isInteger(value['offset']) &&
-    value['offset'] >= 0 &&
-    value['offset'] <= MAX_PEOPLE_OFFSET &&
-    value['first'] === PEOPLE_PAGE_SIZE
-  );
+  return hasType(value, 'weekrow:people-page') && isFixMessage(value);
 }
 
 export function isAnnouncementMarkMessage(value: unknown): value is AnnouncementMarkMessage {
-  return (
-    hasType(value, 'weekrow:announcement-mark') &&
-    isCanvasId(value['courseId']) &&
-    isCanvasId(value['topicId']) &&
-    isCanvasId(value['userId']) &&
-    typeof value['read'] === 'boolean'
-  );
+  return hasType(value, 'weekrow:announcement-mark') && isFixMessage(value);
 }
 
 export function isAnnouncementRangeMessage(value: unknown): value is AnnouncementRangeMessage {
-  return (
-    hasType(value, 'weekrow:announcement-range') &&
-    isCourseOrNull(value['courseId']) &&
-    isCalendarDate(value['from']) &&
-    isCalendarDate(value['to']) &&
-    value['from'] <= value['to']
-  );
+  return hasType(value, 'weekrow:announcement-range') && isFixMessage(value);
 }
 
 export function isFixMessage(value: unknown): value is FixMessage {
-  return (
-    isSaveToolsMessage(value) ||
-    isDashboardDataMessage(value) ||
-    isAnnouncementMessage(value) ||
-    isAnnouncementPageMessage(value) ||
-    isAnnouncementMarkMessage(value) ||
-    isAnnouncementRangeMessage(value) ||
-    isPeoplePageMessage(value)
-  );
+  if (!isObject(value)) return false;
+  switch (value['type']) {
+    case 'weekrow:save-tools':
+      return isToolsSettings(value['tools']);
+    case 'weekrow:dashboard-data':
+      return true;
+    case 'weekrow:announcement':
+      return isCanvasId(value['courseId']) && isCanvasId(value['topicId']);
+    case 'weekrow:announcement-page':
+      return (
+        isCourseOrNull(value['courseId']) &&
+        (value['read'] === 'unread' || value['read'] === 'read' || value['read'] === 'all') &&
+        typeof value['offset'] === 'number' &&
+        Number.isInteger(value['offset']) &&
+        value['offset'] >= 0 &&
+        value['offset'] <= MAX_ANNOUNCEMENT_OFFSET &&
+        (value['first'] === 10 || value['first'] === 100)
+      );
+    case 'weekrow:announcement-mark':
+      return (
+        isCanvasId(value['courseId']) &&
+        isCanvasId(value['topicId']) &&
+        isCanvasId(value['userId']) &&
+        typeof value['read'] === 'boolean'
+      );
+    case 'weekrow:announcement-range':
+      return (
+        isCourseOrNull(value['courseId']) &&
+        isCalendarDate(value['from']) &&
+        isCalendarDate(value['to']) &&
+        value['from'] <= value['to']
+      );
+    case 'weekrow:people-page':
+      return (
+        isCourseOrNull(value['courseId']) &&
+        (value['role'] === 'all' || value['role'] === 'teacher' || value['role'] === 'ta') &&
+        typeof value['offset'] === 'number' &&
+        Number.isInteger(value['offset']) &&
+        value['offset'] >= 0 &&
+        value['offset'] <= MAX_PEOPLE_OFFSET &&
+        value['first'] === PEOPLE_PAGE_SIZE
+      );
+    default:
+      return false;
+  }
 }
