@@ -281,7 +281,7 @@ describe('dashboardData', () => {
 
     const data = await h.owner.dashboardData();
 
-    expect(data).toMatchObject({ courses: [] });
+    expect(data).toMatchObject({ courses: [], sessionCleared: true });
     expect((await sessionCacheItem.getValue())?.session?.profile.id).not.toBe(IDS.user);
   });
 
@@ -292,7 +292,28 @@ describe('dashboardData', () => {
     vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
     vi.spyOn(h.canvas, 'checkCacheUser').mockRejectedValueOnce(canvasError('unauthorized', 401));
 
-    expect(await h.owner.dashboardData()).toMatchObject({ courses: [] });
+    expect(await h.owner.dashboardData()).toMatchObject({ courses: [], sessionCleared: true });
+  });
+
+  it('reports sign-out only in the request cookie store', async () => {
+    const h = await loaded();
+    vi.mocked(h.deps.surfaceUsesRequestStore).mockImplementation(async (id) => id !== 9);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(null);
+    expect(await h.owner.dashboardData(ORIGIN, 3)).toEqual({
+      origin: ORIGIN,
+      courses: [],
+      sessionCleared: true,
+    });
+    expect(await h.owner.dashboardData(ORIGIN, 9)).toEqual({ origin: ORIGIN, courses: [] });
+  });
+
+  it('does not report sign-out when a different cookie cannot be checked', async () => {
+    const h = await loaded();
+    await vi.advanceTimersByTimeAsync(31_000);
+    vi.mocked(h.deps.sessionFingerprint).mockResolvedValue('unconfirmed-session');
+    h.canvas.fail('getSelf', canvasError('network'));
+    expect(await h.owner.dashboardData()).toEqual({ origin: ORIGIN, courses: [] });
+    expect((await sessionCacheItem.getValue())?.session?.profile.id).toBe(IDS.user);
   });
 
   it('shows a course that the student hid from the weekly list', async () => {
@@ -451,6 +472,23 @@ describe('dashboardGradeVisibility', () => {
     expect(result.userId).toBeUndefined();
     expect(result.gradeVisibilities).toBeNull();
   });
+
+  it.each([null, 'session-b'])(
+    'drops a visibility reply after the cookie changes to %s',
+    async (cookie) => {
+      const h = await loaded();
+      vi.spyOn(h.canvas, 'withPriority').mockReturnValue(h.canvas);
+      h.canvas.getWidgetGradeVisibility = async () => {
+        vi.mocked(h.deps.sessionFingerprint).mockResolvedValue(cookie);
+        return { gradeVisibilities: {}, showGrades: {} };
+      };
+      expect(await h.owner.dashboardGradeVisibility()).toEqual({
+        origin: ORIGIN,
+        courses: [],
+        gradeVisibilities: null,
+      });
+    },
+  );
 
   it('returns unknown preferences after five seconds', async () => {
     const h = await loaded();

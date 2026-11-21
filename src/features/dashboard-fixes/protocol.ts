@@ -131,6 +131,8 @@ export interface DashboardCourse {
 
 export interface DashboardData {
   userId?: string;
+  // A confirmed sign-out or account change cleared the session.
+  sessionCleared?: true;
   /** The Canvas address, so the in-page script can check the links it builds. */
   origin: string;
   courses: DashboardCourse[];

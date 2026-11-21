@@ -2,7 +2,7 @@ import { browser } from 'wxt/browser';
 import { BROWSER_KIND } from '../platform/browserKind';
 import { createTrustedItem, removeMirror } from '../platform/trustedStorage';
 
-/** Hosted Canvas at sjsu.instructure.com uses canvas_session (owner's live check, 2026-10-30). */
+// Canvas sets canvas_session or _normandy_session for a browser sign-in.
 export const SESSION_COOKIE_NAMES = ['canvas_session', '_normandy_session'] as const;
 
 /**

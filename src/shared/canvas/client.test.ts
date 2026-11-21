@@ -1175,6 +1175,23 @@ describe('widget grade visibility', () => {
     });
   });
 
+  it('rejects GraphQL errors even when the preference is null', async () => {
+    recordAll(() => ({
+      errors: [{ message: 'Unavailable' }],
+      data: { legacyNode: { widgetDashboardConfig: null } },
+    }));
+    await expect(testClient().getWidgetGradeVisibility!('5')).rejects.toThrow(
+      'No widget preferences',
+    );
+  });
+
+  it('honors the request guard before reading preferences', async () => {
+    const requests = recordAll(() => ({ data: { legacyNode: { widgetDashboardConfig: null } } }));
+    const client = testClient().withGuard(async () => false);
+    await expect(client.getWidgetGradeVisibility!('5')).rejects.toMatchObject({ kind: 'refused' });
+    expect(requests).toHaveLength(0);
+  });
+
   it('rejects an unreadable preference so callers can keep grades hidden', async () => {
     recordAll(() => ({ errors: [{ message: 'Unavailable' }] }));
     await expect(testClient().getWidgetGradeVisibility!('5')).rejects.toThrow(
@@ -1183,7 +1200,7 @@ describe('widget grade visibility', () => {
   });
 });
 
-it('starts one five-second visibility timer at request start and reuses it for retries', async () => {
+it('starts a five-second visibility timer for every attempt in the requested priority slot', async () => {
   vi.useFakeTimers();
   const timeout = vi.spyOn(AbortSignal, 'timeout');
   let release!: () => void;
@@ -1215,7 +1232,7 @@ it('starts one five-second visibility timer at request start and reuses it for r
     const busy = client.getProfile();
     await vi.advanceTimersByTimeAsync(0);
     const queued = client.getProfile();
-    const pending = client.getWidgetGradeVisibility!('5');
+    const pending = client.withPriority(() => 'high').getWidgetGradeVisibility!('5');
     await vi.advanceTimersByTimeAsync(6000);
     expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([12000]);
     release();
@@ -1224,9 +1241,9 @@ it('starts one five-second visibility timer at request start and reuses it for r
     await pending;
     await queued;
     expect(order[1]).toBe('visibility');
-    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([12000, 5000]);
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([12000, 5000, 5000, 5000]);
     expect(signals).toHaveLength(3);
-    expect(timeout.mock.calls.filter(([ms]) => ms === 5000)).toHaveLength(1);
+    expect(new Set(signals).size).toBe(3);
     expect(signals[0]!.aborted).toBe(false);
   } finally {
     timeout.mockRestore();
@@ -1269,6 +1286,47 @@ describe('widget grade visibility timers', () => {
     });
     return { client, release: () => release(), started: () => started };
   }
+
+  it.each([0, 6000])('caps rate-limit attempts with %s ms spent in the queue', async (queuedMs) => {
+    vi.useFakeTimers();
+    const timeout = fakeAbortTimeout();
+    let release!: () => void;
+    const attempts: number[] = [];
+    const start = Date.now();
+    const client = createCanvasClient({
+      origin: ORIGIN,
+      getCsrfToken: async () => CSRF_TOKEN,
+      maxConcurrency: 1,
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (!String(input).includes('graphql')) {
+          if (release === undefined) await new Promise<void>((resolve) => (release = resolve));
+          return new Response('{}');
+        }
+        const signal = input instanceof Request ? input.signal : init!.signal!;
+        signal.throwIfAborted();
+        attempts.push(Date.now() - start);
+        return new Response('{}', { status: 429 });
+      }) as typeof fetch,
+    });
+    try {
+      const busy = client.getProfile();
+      await vi.advanceTimersByTimeAsync(0);
+      const outcome = catchError(client.withPriority(() => 'high').getWidgetGradeVisibility!('5'));
+      let availableAt: number | undefined;
+      const next = client.getProfile().then(() => (availableAt = Date.now() - start));
+      await vi.advanceTimersByTimeAsync(queuedMs);
+      release();
+      await busy;
+      await vi.advanceTimersByTimeAsync(12000 - queuedMs);
+      expect(attempts).toEqual(queuedMs === 0 ? [0, 1000, 3000, 7000] : [6000, 7000, 9000]);
+      expect(availableAt).toBe(queuedMs === 0 ? 7000 : 12000);
+      await outcome;
+      await next;
+    } finally {
+      timeout.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 
   it('aborts a request five seconds after it starts, not five seconds after it was created', async () => {
     vi.useFakeTimers();
