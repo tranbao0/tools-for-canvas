@@ -9,7 +9,8 @@ import {
 import { sendToFailingRouter } from '../../../../tests/fixtures/router-reply';
 import { submissionDetailsPage } from '../../../../tests/fixtures/submission-page';
 import type { AssignmentDetailsMessage, AssignmentReport, RubricReadMessage } from '../protocol';
-import type { FeedbackRequest } from './feedbackPane';
+import { createFeedbackPane, FEEDBACK_HOST_ID, type FeedbackRequest } from './feedbackPane';
+import * as paneIdentity from '../../file-viewer/paneIdentity';
 import { removeStaleView } from './stale';
 import { createSubmissionView, type SubmissionView } from './submission';
 
@@ -104,6 +105,12 @@ const host = () => document.getElementById('av-submission-details');
 const root = () => host()?.shadowRoot;
 const boxHost = () => document.getElementById('av-submission-box');
 const boxRoot = () => boxHost()?.shadowRoot;
+function clickFeedback(index = 0): void {
+  const button = boxRoot()!.querySelectorAll('[data-action=feedback]')[index]!;
+  const event = new MouseEvent('click', { bubbles: true, composed: true });
+  Object.defineProperty(event, 'isTrusted', { value: true });
+  button.dispatchEvent(event);
+}
 const container = () => document.querySelector('.submission-details-container')!;
 const CANVAS_BUTTON = '.ic-Action-header__Secondary>a[href$="#submit"]';
 const ownLinks = () => [...document.querySelectorAll('a[data-av-own]')];
@@ -201,6 +208,137 @@ describe('the own submission', () => {
     await settle();
     boxRoot()!.querySelector<HTMLButtonElement>('[data-action=feedback]')!.click();
     expect(openFeedback).not.toHaveBeenCalled();
+  });
+
+  it('uses the injected identity check before passing on a feedback address', async () => {
+    const identity = vi.fn(async (token?: string) =>
+      token === undefined
+        ? { verdict: 'yes' as const, token: '0:42' }
+        : { verdict: 'unknown' as const },
+    );
+    start('42', '101', '12', identity);
+    await settle();
+    clickFeedback();
+    await settle();
+    expect(identity).toHaveBeenLastCalledWith('0:42');
+    expect(openFeedback).toHaveBeenCalledWith(expect.objectContaining({ identity: 'unknown' }));
+  });
+
+  describe('feedback across identity checks', () => {
+    const yes = { verdict: 'yes', token: '0:42' } as const;
+    const unknown = { verdict: 'unknown' } as const;
+    const second = '/api/v1/canvadoc_session?blob=second';
+    const third = '/api/v1/canvadoc_session?blob=third';
+
+    function setupFeedback() {
+      send.mockResolvedValue(
+        reply((details) => {
+          details.submission.attachments = [
+            ...(details.submission.attachments ?? []),
+            { id: '502', display_name: 'two.pdf', size: 10, preview_url: second },
+            { id: '503', display_name: 'three.pdf', size: 10, preview_url: third },
+          ];
+        }),
+      );
+      let watcher: (confirmed: boolean) => void;
+      let confirmed = true;
+      vi.spyOn(paneIdentity, 'watchPaneIdentity').mockImplementation((show) => {
+        watcher = show;
+        show(confirmed);
+        return () => undefined;
+      });
+      const pane = createFeedbackPane({
+        doc: document,
+        theme: () => 'light',
+        width: () => 480,
+        saveWidth: () => undefined,
+      });
+      openFeedback.mockImplementation(pane.open);
+      closeFeedback.mockImplementation(pane.close);
+      const source = vi.spyOn(HTMLIFrameElement.prototype, 'src', 'set');
+      const identity = vi.fn<typeof paneIdentity.checkPaneIdentity>().mockResolvedValue(yes);
+      start('42', '101', '12', identity);
+      return {
+        feedbackHost: () => document.getElementById(FEEDBACK_HOST_ID),
+        holdWatcher: () => {
+          confirmed = false;
+        },
+        confirmWatcher: () => watcher(true),
+        identity,
+        pane,
+        source,
+      };
+    }
+
+    it('covers the stale dock and waits for confirmation before loading another signed address', async () => {
+      const { feedbackHost, holdWatcher, confirmWatcher, identity, source } = setupFeedback();
+      await settle();
+      clickFeedback();
+      await settle();
+      expect(feedbackHost()?.getAttribute('data-identity')).toBe('yes');
+      expect(source).toHaveBeenCalledWith(`${ORIGIN}${SESSION_PATH}`);
+      source.mockClear();
+
+      holdWatcher();
+      identity.mockResolvedValueOnce(unknown);
+      clickFeedback(1);
+      await settle();
+      expect(feedbackHost()?.getAttribute('data-identity')).toBe('unknown');
+      expect(source).not.toHaveBeenCalled();
+
+      confirmWatcher();
+      expect(source).toHaveBeenCalledExactlyOnceWith(`${ORIGIN}${second}`);
+    });
+
+    it('discards a reply for a file that a newer click replaces', async () => {
+      const { identity, source } = setupFeedback();
+      await settle();
+      clickFeedback();
+      await settle();
+      let resolve!: (result: paneIdentity.PaneVerdict) => void;
+      identity.mockReturnValueOnce(
+        new Promise((done) => {
+          resolve = done;
+        }),
+      );
+      source.mockClear();
+
+      clickFeedback(1);
+      clickFeedback(2);
+      await settle();
+      resolve(yes);
+      await settle();
+      expect(source).toHaveBeenCalledExactlyOnceWith(`${ORIGIN}${third}`);
+    });
+
+    it.each(['close', 'switch account'] as const)(
+      'discards a pending reply after %s',
+      async (action) => {
+        const { identity, pane, source, confirmWatcher } = setupFeedback();
+        await settle();
+        clickFeedback();
+        await settle();
+        expect(pane.isOpen).toBe(true);
+        let resolve!: (result: paneIdentity.PaneVerdict) => void;
+        identity.mockReturnValueOnce(
+          new Promise((done) => {
+            resolve = done;
+          }),
+        );
+        source.mockClear();
+        openFeedback.mockClear();
+
+        clickFeedback(1);
+        if (action === 'close') pane.close();
+        else view.resetStudent();
+        confirmWatcher();
+        resolve(yes);
+        await settle();
+        expect(pane.isOpen).toBe(false);
+        expect(openFeedback).not.toHaveBeenCalled();
+        expect(source).not.toHaveBeenCalled();
+      },
+    );
   });
 
   it('opens the feedback with the checked session address for a trusted click', async () => {

@@ -190,20 +190,11 @@ test('Chromium refuses a pane frame that a script makes, and the ports that the 
   await requestsQuiet(page, canvas.requests, background);
   await page.evaluate(() => {
     const target = document.querySelector<HTMLIFrameElement>('#hostile')!;
-    // It tries every first message that a pane would take, and file requests behind them.
-    for (const first of [
-      null,
-      { type: 'secret', secret: 'a'.repeat(64) },
-      { type: 'secret', secret: '' },
-      { type: 'open-file', fileId: '43' },
-    ]) {
-      const channel = new MessageChannel();
-      channel.port1.onmessage = (event) => window.__spy.ports.push(JSON.stringify(event.data));
-      target.contentWindow!.postMessage({ type: 'viewer-connect' }, '*', [channel.port2]);
-      if (first) channel.port1.postMessage(first);
-      channel.port1.postMessage({ type: 'open-file', fileId: '43' });
-      channel.port1.postMessage({ type: 'theme', theme: 'dark' });
-    }
+    const channel = new MessageChannel();
+    channel.port1.onmessage = (event) => window.__spy.ports.push(JSON.stringify(event.data));
+    target.contentWindow!.postMessage({ type: 'viewer-connect', nonce: '1'.repeat(32) }, '*', [
+      channel.port2,
+    ]);
   });
   await requestsQuiet(page, canvas.requests, background);
   const spy = await page.evaluate(() => window.__spy);
@@ -228,8 +219,7 @@ test('a script that listens for the hello cannot take the port or learn the secr
   background,
 }) => {
   const canvas = await openCoursePage(context, page, background);
-  // The listener runs in the main world before the pane opens. It answers every hello with its
-  // own port, a wrong secret and a request for another file, to the window that said hello.
+  // The main-world listener offers its own port to the pane and sends an invalid page proof.
   const install = () =>
     page.evaluate(() => {
       window.__spy = { messages: [], ports: [] };
@@ -237,14 +227,17 @@ test('a script that listens for the hello cannot take the port or learn the secr
         window.__spy.messages.push(JSON.stringify(event.data));
         const data = event.data as { type?: unknown } | null;
         if (data?.type !== 'viewer-hello' || !event.source) return;
-        for (const secret of ['0'.repeat(64), 'f'.repeat(64)]) {
-          const channel = new MessageChannel();
-          channel.port1.onmessage = (answer) =>
-            window.__spy.ports.push(JSON.stringify(answer.data));
-          (event.source as Window).postMessage({ type: 'viewer-connect' }, '*', [channel.port2]);
-          channel.port1.postMessage({ type: 'secret', secret });
+        const channel = new MessageChannel();
+        channel.port1.onmessage = (answer) => {
+          window.__spy.ports.push(JSON.stringify(answer.data));
+          channel.port1.postMessage({ type: 'page-proof', proof: '0'.repeat(64) });
           channel.port1.postMessage({ type: 'open-file', fileId: '43' });
-        }
+        };
+        (event.source as Window).postMessage(
+          { type: 'viewer-connect', nonce: '2'.repeat(32) },
+          '*',
+          [channel.port2],
+        );
       });
     });
   await openFirstFile(page, 'Read notes', install);
@@ -255,7 +248,13 @@ test('a script that listens for the hello cannot take the port or learn the secr
   const spy = await page.evaluate(() => window.__spy);
   expect(spy.messages.some((message) => message.includes('viewer-hello'))).toBe(true);
   expect(spy.messages.join('')).not.toMatch(/[0-9a-f]{32}/);
-  expect(spy.ports).toEqual([]);
+  await expect
+    .poll(async () => page.evaluate(() => window.__spy.ports))
+    .toEqual([
+      expect.stringMatching(
+        /^\{"type":"pane-proof","proof":"[0-9a-f]{64}","nonce":"[0-9a-f]{32}"\}$/,
+      ),
+    ]);
   await expect(real.locator('.fv-tab')).toHaveCount(1);
   expect(canvas.requests.filter((request) => /\/files\/43/.test(request.path))).toEqual([]);
 });

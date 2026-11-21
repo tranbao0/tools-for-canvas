@@ -9,11 +9,15 @@ window.innerWidth = 1600;
 const URL_ONE = 'https://school.instructure.com/api/v1/canvadoc_session?blob=a&hmac=b';
 const URL_TWO = 'https://school.instructure.com/api/v1/canvadoc_session?blob=c&hmac=d';
 
-const identity = vi.hoisted(() => ({ show: (_yes: boolean) => undefined as void }));
+const identity = vi.hoisted(() => ({
+  confirmed: true,
+  show: (_yes: boolean) => undefined as void,
+}));
 let pane: FeedbackPane;
 const saveWidth = vi.fn<(width: number) => void>();
 
 beforeEach(() => {
+  identity.confirmed = true;
   document.documentElement.removeAttribute('style');
   document.body.innerHTML = '';
   const write = process.stderr.write.bind(process.stderr) as (chunk: unknown) => boolean;
@@ -48,6 +52,20 @@ describe('the feedback pane', () => {
     identity.show(true);
     expect(source).toHaveBeenCalledWith(URL_TWO);
     source.mockRestore();
+  });
+
+  it('keeps the signed address out of the frame when the click is unconfirmed', () => {
+    const source = vi.spyOn(HTMLIFrameElement.prototype, 'src', 'set');
+    pane.open({ title: 'one.pdf', url: URL_ONE });
+    expect(host()?.getAttribute('data-identity')).toBe('yes');
+    source.mockClear();
+    identity.confirmed = false;
+    const request = { title: 'two.pdf', url: URL_TWO, identity: 'unknown' as const };
+    pane.open(request);
+    expect(source).not.toHaveBeenCalled();
+    expect(host()?.getAttribute('data-identity')).toBe('unknown');
+    identity.show(true);
+    expect(source).toHaveBeenCalledExactlyOnceWith(URL_TWO);
   });
 
   it('shows another session in the same frame', () => {
@@ -152,7 +170,7 @@ describe('the feedback pane in full view', () => {
 vi.mock('../../file-viewer/paneIdentity', () => ({
   watchPaneIdentity: (show: (yes: boolean) => void) => {
     identity.show = show;
-    show(true);
+    show(identity.confirmed);
     return () => undefined;
   },
   checkPaneIdentity: async () => ({ verdict: 'yes', token: '0:42' }),

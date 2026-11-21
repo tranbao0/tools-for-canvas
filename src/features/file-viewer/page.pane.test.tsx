@@ -31,7 +31,7 @@ vi.mock('./channel', async (original) => ({
   ...(await original<typeof import('./channel')>()),
   acceptPaneHello: (event: MessageEvent) =>
     (event.data as { type?: string })?.type === 'viewer-hello' ? 'chrome-extension://x' : null,
-  validPaneReady: () => true,
+  answerPaneProof: async () => 'a'.repeat(64),
 }));
 vi.mock('./paneIdentity', () => ({
   watchPaneIdentity: (show: (yes: boolean) => void) => {

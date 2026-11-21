@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { viewerProof } from './channel';
 import { createDock, filePaneOpen, hideFilePane } from './dock';
 import { tabIntentReply } from './tabIntent.fixture';
 import { listenViewerHello, startViewer } from './page';
@@ -118,6 +119,53 @@ describe('the page script', () => {
     document.body.innerHTML = '';
   });
 
+  it('sends no port messages to an extension frame before it proves the session', async () => {
+    prepare();
+    let root: ShadowRoot | undefined;
+    const attach = Element.prototype.attachShadow;
+    vi.spyOn(Element.prototype, 'attachShadow').mockImplementation(function (this: Element, init) {
+      const made = attach.call(this, init);
+      if (this.id === 'tools-file-viewer') root = made;
+      return made;
+    });
+    const candidate = {
+      postMessage: vi.fn(),
+      close: vi.fn(),
+      onmessage: null as ((event: { data: unknown }) => void) | null,
+    };
+    vi.stubGlobal(
+      'MessageChannel',
+      class {
+        port1 = candidate;
+        port2 = {};
+      },
+    );
+    try {
+      await startViewer();
+      click(true);
+      await vi.waitFor(() => expect(root?.querySelector('iframe')).toBeTruthy());
+      const frame = root!.querySelector('iframe')!;
+      const connect = vi.fn();
+      Object.defineProperty(frame, 'contentWindow', { value: { postMessage: connect } });
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          source: frame.contentWindow,
+          origin: 'chrome-extension://other',
+          data: { type: 'viewer-hello', extensionId: 'my-extension' },
+        }),
+      );
+      expect(connect).toHaveBeenCalledOnce();
+      expect(candidate.postMessage).not.toHaveBeenCalled();
+      candidate.onmessage!({
+        data: { type: 'pane-proof', proof: '0'.repeat(64), nonce: '1'.repeat(32) },
+      });
+      await vi.waitFor(() => expect(candidate.close).toHaveBeenCalledOnce());
+      expect(candidate.postMessage).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each([
     { synced: false, covered: false, reconnect: false },
     { synced: true, covered: false, reconnect: false },
@@ -188,7 +236,8 @@ describe('the page script', () => {
         }
         if (synced) {
           const frame = root!.querySelector('iframe')!;
-          Object.defineProperty(frame, 'contentWindow', { value: { postMessage: vi.fn() } });
+          const connect = vi.fn();
+          Object.defineProperty(frame, 'contentWindow', { value: { postMessage: connect } });
           window.dispatchEvent(
             new MessageEvent('message', {
               source: frame.contentWindow,
@@ -196,7 +245,20 @@ describe('the page script', () => {
               data: { type: 'viewer-hello', extensionId: 'my-extension' },
             }),
           );
-          port.onmessage!({ data: { type: 'ready', secret: SECRET } });
+          const [{ nonce }] = connect.mock.calls[0]!;
+          const paneNonce = 'b'.repeat(32);
+          const data = {
+            type: 'pane-proof',
+            proof: await viewerProof('pane', SECRET, nonce),
+            nonce: paneNonce,
+          };
+          await port.onmessage!({ data });
+          await port.onmessage!({ data });
+          expect(
+            postMessage.mock.calls.filter(([message]) => message.type === 'page-proof'),
+          ).toEqual([
+            [{ type: 'page-proof', proof: await viewerProof('page', SECRET, paneNonce) }],
+          ]);
           if (writing) await vi.waitFor(() => expect(releaseWrite).toBeDefined());
           else
             await vi.waitFor(() =>

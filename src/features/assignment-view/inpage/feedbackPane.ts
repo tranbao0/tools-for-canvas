@@ -34,6 +34,7 @@ export interface FeedbackRequest {
   /** A checked session address (see `sessionUrl`). */
   url: string;
   identityToken?: string;
+  identity?: 'unknown';
 }
 
 export interface FeedbackPaneOptions {
@@ -55,6 +56,7 @@ export interface FeedbackPane {
 export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
   const { doc } = options;
   let dock: Dock | undefined;
+  let confirmed = false;
   let current: FeedbackRequest | undefined;
   let frame: HTMLIFrameElement | undefined;
   let title: HTMLElement | undefined;
@@ -71,6 +73,8 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
   };
 
   function shut(): void {
+    current = undefined;
+    confirmed = false;
     if (!dock) return;
     stopWatching?.();
     stopWatching = undefined;
@@ -99,19 +103,26 @@ export function createFeedbackPane(options: FeedbackPaneOptions): FeedbackPane {
       return dock !== undefined;
     },
     open(request) {
+      if (
+        dock &&
+        (request.identity === 'unknown' || current?.identityToken !== request.identityToken)
+      )
+        shut();
       current = request;
       if (dock) {
         hideFilePane(true);
         sync();
-        if (dock.host.getAttribute('data-identity') === 'yes') show(request);
+        if (confirmed) show(request);
         return;
       }
       const created = createCardDock({
         role: 'feedback',
         onClose: shut,
         identityToken: request.identityToken,
-        onIdentityChange(confirmed) {
-          if (confirmed && current) show(current);
+        onIdentityChange(yes) {
+          if (dock !== created) return;
+          confirmed = yes;
+          if (yes && current) show(current);
         },
         id: FEEDBACK_HOST_ID,
         label: 'Feedback',

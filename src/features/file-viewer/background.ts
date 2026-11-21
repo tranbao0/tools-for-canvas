@@ -6,6 +6,7 @@ import {
   fileReadFacts,
   FileBytesError,
 } from '../../shared/canvas/fileBytes';
+import { originMatchPattern } from '../../shared/platform/address';
 import { BROWSER_KIND } from '../../shared/platform/browserKind';
 import {
   clearPositions,
@@ -670,8 +671,12 @@ export function wireViewerRouter(
     get: async (key) => (await browser.storage.session.get(key))[key],
     set: (key, value) => browser.storage.session.set({ [key]: value }),
     // File redirects can use hosts selected by Canvas, so check the full file host grant.
-    permission: (origin) =>
-      browser.permissions.contains({ origins: [`${origin}/*`, 'https://*/*'] }),
+    async permission(origin) {
+      const pattern = originMatchPattern(origin);
+      return (
+        pattern !== null && browser.permissions.contains({ origins: [pattern, 'https://*/*'] })
+      );
+    },
     tabUrl: async (tabId) => (await browser.tabs.get(tabId).catch(() => undefined))?.url ?? null,
     frameUrl: async (tabId, frameId, documentId) => {
       // A document id names the document that sent the message. Firefox before 153 has none.
