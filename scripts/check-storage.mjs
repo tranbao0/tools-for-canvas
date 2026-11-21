@@ -43,7 +43,10 @@ export function findStorageUses(text) {
 if (import.meta.main) {
   await runForTargets('Storage check', async (dir, target) => {
     const problems = [];
-    for (const file of PAGE_SCRIPTS) {
+    const scripts = target.startsWith('firefox')
+      ? [...PAGE_SCRIPTS, 'viewer-frame.js']
+      : PAGE_SCRIPTS;
+    for (const file of scripts) {
       const text = await readFile(path.join(dir, file), 'utf8').catch(() => null);
       if (text === null) {
         problems.push(`${file} is missing, so its storage use is not checked`);
@@ -53,8 +56,7 @@ if (import.meta.main) {
         problems.push(`${file} uses the extension storage: ...${use}`);
       }
     }
-    if (problems.length === 0)
-      console.log(`  ok   ${target}: ${PAGE_SCRIPTS.join(' and ')} use none`);
+    if (problems.length === 0) console.log(`  ok   ${target}: ${scripts.join(' and ')} use none`);
     return problems;
   });
 }

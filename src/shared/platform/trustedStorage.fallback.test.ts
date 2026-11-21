@@ -1,10 +1,68 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
-import { indexedDbVault, sessionVault } from './trustedStorage';
+import { createTrustedItem, indexedDbVault, sessionVault } from './trustedStorage';
 
 afterEach(() => {
   fakeBrowser.reset();
+  Object.assign(fakeBrowser.extension, { inIncognitoContext: false });
   vi.unstubAllGlobals();
+});
+
+const origin = 'https://school.edu';
+const itemOptions = { key: 'canvasOrigin', fallback: (): string | null => null };
+
+function fallbackItem(privateBrowsing: boolean) {
+  Object.assign(fakeBrowser.extension, { inIncognitoContext: privateBrowsing });
+  const open = vi.fn(() => {
+    throw new DOMException('IndexedDB unavailable', 'InvalidStateError');
+  });
+  vi.stubGlobal('indexedDB', { open });
+  return createTrustedItem(itemOptions, indexedDbVault(sessionVault()));
+}
+
+it.each([true, false])(
+  'keeps fallback writes in the session (private: %s)',
+  async (privateBrowsing) => {
+    const item = fallbackItem(privateBrowsing);
+    await item.setValue(origin);
+    expect(await fakeBrowser.storage.session.get(null)).toEqual({
+      'trustedVault:canvasOrigin': origin,
+    });
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({});
+  },
+);
+
+it.each([true, false])(
+  'reports a session change that matches a stale mirror (private: %s)',
+  async (privateBrowsing) => {
+    await fakeBrowser.storage.local.set({ canvasOrigin: origin });
+    const item = fallbackItem(privateBrowsing);
+    const listener = vi.fn();
+    const stop = item.watch(listener);
+    expect(await item.getValue()).toBeNull();
+
+    await item.setValue(origin);
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledWith(origin, null));
+
+    await fakeBrowser.storage.local.set({ canvasOrigin: 'https://other.edu' });
+    await item.setValue(null);
+    await vi.waitFor(() =>
+      expect(listener.mock.calls).toEqual([
+        [origin, null],
+        [null, origin],
+      ]),
+    );
+    expect(await fakeBrowser.storage.local.get(null)).toEqual({
+      canvasOrigin: 'https://other.edu',
+    });
+    stop();
+  },
+);
+
+it('does not open IndexedDB in permanent private browsing', async () => {
+  const item = fallbackItem(true);
+  await item.setValue(origin);
+  expect(indexedDB.open).not.toHaveBeenCalled();
 });
 
 it.each(['throw', 'error'])(

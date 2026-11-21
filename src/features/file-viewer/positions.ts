@@ -1,52 +1,17 @@
 import { createTrustedRecords } from '../../shared/platform/trustedStorage';
 import { isTabId } from './model';
-import { MIN_ZOOM, MAX_ZOOM } from './pdf/zoom';
+import { validPosition, type SavedZoom, type ViewerPosition } from './positionFormat';
 
-export type SavedZoom = 'fit-width' | 'fit-page' | number;
-export interface ViewerPosition {
-  page: number;
-  zoom: SavedZoom;
-  at: number;
-}
-
-export function validPosition(page: unknown, zoom: unknown): boolean {
-  return (
-    typeof page === 'number' &&
-    Number.isSafeInteger(page) &&
-    page >= 1 &&
-    (zoom === 'fit-width' ||
-      zoom === 'fit-page' ||
-      (typeof zoom === 'number' && Number.isFinite(zoom) && zoom >= MIN_ZOOM && zoom <= MAX_ZOOM))
-  );
-}
+export {
+  parsePositionReply,
+  type PositionReply,
+  validPosition,
+  type SavedZoom,
+  type ViewerPosition,
+} from './positionFormat';
 
 export function positionKey(origin: string, student: string, file: string): string {
   return JSON.stringify([origin, student, file]);
-}
-
-function validKey(key: string): boolean {
-  try {
-    const parts: unknown = JSON.parse(key);
-    if (!Array.isArray(parts) || parts.length !== 3) return false;
-    const [origin, student, file] = parts as unknown[];
-    return (
-      typeof origin === 'string' &&
-      new URL(origin).origin === origin &&
-      new URL(origin).protocol === 'https:' &&
-      typeof student === 'string' &&
-      student.length > 0 &&
-      isTabId(file)
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** The Canvas address and the student of a position key, or `null` for a key that is not one. */
-function keyOwner(key: string): { origin: string; student: string } | null {
-  if (!validKey(key)) return null;
-  const [origin, student] = JSON.parse(key) as string[];
-  return { origin: origin!, student: student! };
 }
 
 /** A complete position from a stored value, or `undefined` for a value that is not one. */
@@ -87,8 +52,17 @@ export async function readPosition(
  */
 export async function keepOnlyStudent(origin: string, student: string): Promise<void> {
   const foreign = (await records.ids()).filter((id) => {
-    const owner = keyOwner(id);
-    return owner === null || owner.origin !== origin || owner.student !== student;
+    try {
+      const parts: unknown = JSON.parse(id);
+      if (!Array.isArray(parts) || parts.length !== 3) return true;
+      const [savedOrigin, savedStudent, file] = parts as unknown[];
+      if (savedOrigin !== origin || savedStudent !== student || !student || !isTabId(file))
+        return true;
+      const url = new URL(origin);
+      return url.origin !== origin || url.protocol !== 'https:';
+    } catch {
+      return true;
+    }
   });
   await records.remove(foreign);
 }
@@ -120,37 +94,17 @@ export async function savePosition(
   await records.remove(ids.filter((id) => !newest.has(id)));
 }
 
-/** The key that held the whole map of positions in an earlier build. */
+// The key for the legacy position map.
 const OLD_MAP_KEY = 'viewerPositions';
 
-/** Removes the key that holds the whole map of positions, which an earlier build wrote. */
+// Removes the legacy position map from storage.
 export function removeOldPositionMap(): Promise<void> {
   return records.removeKey(OLD_MAP_KEY);
 }
 
-/** Removes all saved positions, and the whole map of an earlier build if one is left. */
+// Removes all saved positions and the legacy position map.
 export async function clearPositions(): Promise<void> {
   await Promise.all([records.remove(await records.ids()), removeOldPositionMap()]);
-}
-
-export interface PositionReply {
-  position: ViewerPosition | null;
-  /** The token that a save must carry. */
-  token: string;
-}
-
-/** Reads the answer of `viewer:position-get`, or `null` when the answer is not one. */
-export function parsePositionReply(reply: unknown): PositionReply | null {
-  if (typeof reply !== 'object' || reply === null) return null;
-  const { position, token } = reply as { position?: unknown; token?: unknown };
-  if (typeof token !== 'string' || token === '') return null;
-  if (typeof position !== 'object' || position === null) return { position: null, token };
-  const { page, zoom, at } = position as Partial<ViewerPosition>;
-  if (typeof page !== 'number' || !validPosition(page, zoom)) return { position: null, token };
-  return {
-    position: { page, zoom: zoom as SavedZoom, at: typeof at === 'number' ? at : 0 },
-    token,
-  };
 }
 
 let tail: Promise<unknown> = Promise.resolve();

@@ -1,30 +1,35 @@
-/**
- * Storage with checks against ordinary web pages and content scripts. See docs/design.md, decisions 5 and 20.
- *
- * The detector runs in every https page, so a compromised page process could use the world of
- * the extension's content script to write the settings, the notes or the saved address, if
- * content scripts could write `storage.local`.
- * - Chrome and Edge lock `storage.local` to trusted contexts, so content scripts can neither read
- *   nor write it. The items stay in `storage.local`.
- * - Firefox cannot lock it. The shipped code opens IndexedDB only in the background. Verified extension
- *   pages use a runtime message; embedded pane frames have no access to this API. If IndexedDB
- *   fails with InvalidStateError or the context is private, the vault uses storage.session.
- *   A compromised Firefox page process can reach the database through an extension-origin
- *   frame and can reach storage.session. These stores do not stop that threat.
- *   `storage.local` holds a mirror for extension pages to watch. Nothing trusts that mirror:
- *   a mirror that differs from the vault is repaired, and every read comes from the vault.
- * Every read also normalizes the value, so a bad value in either place never breaks the extension.
- */
+/*
+Storage with checks against ordinary web pages and content scripts. See docs/design.md, decisions 5 and 20.
+
+The detector runs in every https page, so a compromised page process could use the world of
+the extension's content script to write the settings, the notes or the saved address, if
+content scripts could write `storage.local`.
+- Chrome and Edge lock `storage.local` to trusted contexts, so content scripts can neither read
+  nor write it. The items stay in `storage.local`.
+- Firefox cannot lock it. The shipped code opens IndexedDB only in the background. Verified extension
+  pages use a runtime message; embedded pane frames have no access to this API. If IndexedDB
+  fails with InvalidStateError or the context is private, the vault uses storage.session.
+  A compromised Firefox page process can reach the database through an extension-origin
+  frame and can reach storage.session. These stores do not stop that threat.
+  With IndexedDB, `storage.local` holds a mirror for extension pages to watch. Nothing trusts it:
+  a mirror that differs from the vault is repaired, and every read comes from the vault.
+Every read also normalizes the value, so a bad value in either place never breaks the extension.
+*/
 import { browser, type Browser } from 'wxt/browser';
 import { BROWSER_KIND } from './browserKind';
 import { defineItem, sameValue, type StorageItem } from './storageItem';
 
+// A vault operation sets this flag when it uses session storage.
+interface VaultAccess {
+  session?: true;
+}
+
 /** Where the trusted items live when `storage.local` cannot be locked. */
 export interface Vault {
   /** The stored value, or `null` or `undefined` when there is none. */
-  get(key: string): Promise<unknown>;
-  /** Stores the value. `null` removes the key. */
-  set(key: string, value: unknown): Promise<void>;
+  get(key: string, access?: VaultAccess): Promise<unknown>;
+  // Stores the value. A null value removes the key.
+  set(key: string, value: unknown, access?: VaultAccess): Promise<void>;
   /** Every key in the vault. */
   keys(): Promise<string[]>;
 }
@@ -44,10 +49,10 @@ export interface TrustedItemOptions<T> {
   mirror?: boolean;
 }
 
-/**
- * Makes a trusted item. With no vault, `storage.local` holds the item. With a vault, the vault
- * holds it, and `storage.local` mirrors it.
- */
+/*
+Makes a trusted item. With no vault, `storage.local` holds the item. With a vault, the vault
+holds it, and `storage.local` mirrors writes to IndexedDB.
+*/
 export function createTrustedItem<T>(
   options: TrustedItemOptions<T>,
   vault: Vault | null = defaultVault,
@@ -56,17 +61,14 @@ export function createTrustedItem<T>(
   const local = defineItem<T>(`local:${key}`, fallback, normalize);
   if (vault === null) return local;
   const clean = (value: unknown): T =>
-    value === undefined || value === null
-      ? fallback()
-      : normalize === undefined
-        ? (value as T)
-        : normalize(value);
-  const read = async (): Promise<T> => clean(await vault.get(key));
+    value == null ? fallback() : normalize ? normalize(value) : (value as T);
+  const read = async (access?: VaultAccess): Promise<T> => clean(await vault.get(key, access));
   return {
     getValue: read,
     async setValue(value) {
-      await vault.set(key, value);
-      if (mirror) await local.setValue(value);
+      const access: VaultAccess = {};
+      await vault.set(key, value, access);
+      if (mirror && !access.session) await local.setValue(value);
     },
     watch(listener) {
       // Nothing mirrors the item, so there is no change to see, and the repair below would copy
@@ -74,32 +76,38 @@ export function createTrustedItem<T>(
       if (!mirror) return () => undefined;
       // The value that the watcher knows. It starts as the vault's value, never the mirror's,
       // because a page can write the mirror.
-      let known: T | undefined;
-      let hasKnown = false;
-      const started = read().then(
-        (value) => {
-          if (!hasKnown) {
-            known = value;
-            hasKnown = true;
-          }
-        },
-        () => undefined,
-      );
-      return local.watch(() => {
+      let known: T;
+      const started = read()
+        .catch(fallback)
+        .then((value) => {
+          known = value;
+        });
+      const sessionKey = SESSION_VAULT_PREFIX + key;
+      const changed: Parameters<typeof browser.storage.onChanged.addListener>[0] = (
+        changes,
+        area,
+      ) => {
+        const session = area === 'session';
+        if (!session && area !== 'local') return;
+        const change = changes[session ? sessionKey : key];
+        if (!change || sameValue(change.oldValue ?? null, change.newValue ?? null)) return;
         void (async () => {
           await started;
-          const authoritative = await read();
-          if (!sameValue(await local.getValue(), authoritative)) {
+          const access: VaultAccess = {};
+          const authoritative = await read(access);
+          if (Boolean(access.session) !== session) return;
+          if (!session && !sameValue(await local.getValue(), authoritative)) {
             // Something else wrote the mirror. The vault is right, and the repair is no change.
             await local.setValue(authoritative);
             return;
           }
-          const before = hasKnown ? (known as T) : fallback();
+          const before = known;
           known = authoritative;
-          hasKnown = true;
           if (!sameValue(authoritative, before)) listener(authoritative, before);
         })().catch(() => undefined);
-      });
+      };
+      browser.storage.onChanged.addListener(changed);
+      return () => browser.storage.onChanged.removeListener(changed);
     },
   };
 }
@@ -115,66 +123,66 @@ export async function removeMirror(key: string, vault: Vault | null = defaultVau
 
 const VAULT_DATABASE = 'weekrow-trusted';
 const VAULT_STORE = 'values';
+const SESSION_VAULT_PREFIX = 'trustedVault:';
 
 /** The vault in the IndexedDB of the extension origin. Pages of other origins cannot open it. */
 export function indexedDbVault(fallback?: Vault): Vault {
-  let opened: Promise<IDBDatabase | null> | null = null;
+  let opened: Promise<IDBDatabase | null> | undefined =
+    fallback && browser.extension.inIncognitoContext ? Promise.resolve(null) : undefined;
   function open(): Promise<IDBDatabase | null> {
-    opened ??= new Promise<IDBDatabase>((resolve, reject) => {
+    return (opened ??= new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(VAULT_DATABASE, 1);
       request.onupgradeneeded = () => request.result.createObjectStore(VAULT_STORE);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error ?? new Error('IndexedDB did not open'));
     }).catch((error: unknown) => {
-      if (
-        fallback &&
-        (browser.extension.inIncognitoContext ||
-          (error instanceof DOMException && error.name === 'InvalidStateError'))
-      )
+      if (fallback && error instanceof DOMException && error.name === 'InvalidStateError')
         return null;
-      opened = null;
+      opened = undefined;
       throw error;
-    });
-    return opened;
+    }));
   }
   async function run<T>(
     mode: IDBTransactionMode,
     work: (store: IDBObjectStore) => IDBRequest<T>,
     temporary: () => Promise<T>,
+    access?: VaultAccess,
   ): Promise<T> {
     const database = await open();
-    if (database === null) return temporary();
+    if (database === null) {
+      if (access) access.session = true;
+      return temporary();
+    }
     return new Promise<T>((resolve, reject) => {
       const transaction = database.transaction(VAULT_STORE, mode);
       const request = work(transaction.objectStore(VAULT_STORE));
       transaction.oncomplete = () => resolve(request.result);
-      transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB failed'));
-      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB aborted'));
+      transaction.onerror = transaction.onabort = () =>
+        reject(transaction.error ?? new Error('IndexedDB transaction failed'));
     });
   }
   return {
-    async keys() {
-      const found = await run<IDBValidKey[]>(
-        'readonly',
-        (store) => store.getAllKeys(),
-        () => fallback!.keys(),
-      );
-      return found.filter((key): key is string => typeof key === 'string');
-    },
-    get: (key) =>
+    keys: async () =>
+      (
+        await run(
+          'readonly',
+          (store) => store.getAllKeys(),
+          () => fallback!.keys(),
+        )
+      ).filter((key): key is string => typeof key === 'string'),
+    get: (key, access) =>
       run<unknown>(
         'readonly',
         (store) => store.get(key),
         () => fallback!.get(key),
+        access,
       ),
-    async set(key, value) {
+    async set(key, value, access) {
       await run<unknown>(
         'readwrite',
-        (store) =>
-          (value === null || value === undefined
-            ? store.delete(key)
-            : store.put(value, key)) as IDBRequest,
+        (store) => (value == null ? store.delete(key) : store.put(value, key)) as IDBRequest,
         () => fallback!.set(key, value),
+        access,
       );
     },
   };
@@ -182,19 +190,22 @@ export function indexedDbVault(fallback?: Vault): Vault {
 
 /** Ordinary Firefox content scripts have no session API; a compromised process can reach it. */
 export function sessionVault(): Vault {
-  const prefix = 'trustedVault:';
   return {
-    async get(key) {
-      return (await browser.storage.session.get(prefix + key))[prefix + key];
+    async get(key, access) {
+      if (access) access.session = true;
+      const name = SESSION_VAULT_PREFIX + key;
+      return (await browser.storage.session.get(name))[name];
     },
-    async set(key, value) {
-      if (value === null || value === undefined) await browser.storage.session.remove(prefix + key);
-      else await browser.storage.session.set({ [prefix + key]: value });
+    async set(key, value, access) {
+      if (access) access.session = true;
+      const name = SESSION_VAULT_PREFIX + key;
+      if (value == null) await browser.storage.session.remove(name);
+      else await browser.storage.session.set({ [name]: value });
     },
     async keys() {
       return Object.keys(await browser.storage.session.get(null))
-        .filter((key) => key.startsWith(prefix))
-        .map((key) => key.slice(prefix.length));
+        .filter((key) => key.startsWith(SESSION_VAULT_PREFIX))
+        .map((key) => key.slice(SESSION_VAULT_PREFIX.length));
     },
   };
 }
@@ -208,11 +219,13 @@ export function orderedVault(vault: Vault): Vault {
     return result;
   };
   return {
-    get: (key) => enqueue(() => vault.get(key)),
-    set: (key, value) => enqueue(() => vault.set(key, value)),
+    get: (key, access) => enqueue(() => vault.get(key, access)),
+    set: (key, value, access) => enqueue(() => vault.set(key, value, access)),
     keys: () => enqueue(() => vault.keys()),
   };
 }
+
+type VaultReply = VaultAccess & { value: unknown };
 
 type VaultSender = Pick<Browser.runtime.MessageSender, 'id' | 'url'> & {
   origin?: string;
@@ -221,7 +234,7 @@ type VaultSender = Pick<Browser.runtime.MessageSender, 'id' | 'url'> & {
 
 /** Firefox verifies addon_child against the extension principal and process in ConduitsParent. */
 export function vaultMessageHandler(vault: Vault, extensionId: string, extensionOrigin: string) {
-  return (message: unknown, sender: VaultSender): Promise<{ value: unknown }> | undefined => {
+  return (message: unknown, sender: VaultSender): Promise<VaultReply> | undefined => {
     if (typeof message !== 'object' || message === null) return undefined;
     const request = message as Record<string, unknown>;
     if (request['type'] !== 'trusted-vault') return undefined;
@@ -232,32 +245,25 @@ export function vaultMessageHandler(vault: Vault, extensionId: string, extension
         sender.origin !== extensionOrigin
       )
         throw new Error('Only a verified extension page may use the vault');
-      const operation = request['operation'];
-      const fields =
-        operation === 'keys'
-          ? ['type', 'operation']
-          : operation === 'get'
-            ? ['type', 'operation', 'key']
-            : operation === 'set'
-              ? ['type', 'operation', 'key', 'value']
-              : [];
+      const { operation, key, value } = request;
+      const keys = operation === 'keys';
       if (
-        Object.keys(request).some((key) => !fields.includes(key)) ||
-        (operation !== 'keys' && typeof request['key'] !== 'string')
+        (!keys && typeof key !== 'string') ||
+        Object.keys(request).some(
+          (field) =>
+            field !== 'type' &&
+            field !== 'operation' &&
+            !(field === 'key' && !keys) &&
+            !(field === 'value' && operation === 'set'),
+        )
       )
         throw new Error('Invalid vault request');
-      const key = request['key'] as string;
-      switch (operation) {
-        case 'keys':
-          return { value: await vault.keys() };
-        case 'get':
-          return { value: await vault.get(key) };
-        case 'set':
-          await vault.set(key, request['value']);
-          return { value: null };
-        default:
-          throw new Error('Invalid vault operation');
-      }
+      if (keys) return { value: await vault.keys() };
+      const reply: VaultReply = { value: null };
+      if (operation === 'get') reply.value = await vault.get(key as string, reply);
+      else if (operation === 'set') await vault.set(key as string, value, reply);
+      else throw new Error('Invalid vault request');
+      return reply;
     })();
   };
 }
@@ -278,7 +284,11 @@ export function wireTrustedVault(): void {
 }
 
 function remoteVault(): Vault {
-  const request = async (operation: string, fields: Record<string, unknown> = {}) => {
+  const request = async (
+    operation: string,
+    fields: Record<string, unknown> = {},
+    access?: VaultAccess,
+  ) => {
     const message = { type: 'trusted-vault', operation, ...fields };
     let reply: unknown;
     try {
@@ -289,20 +299,20 @@ function remoteVault(): Vault {
       reply = await browser.runtime.sendMessage(message);
     }
     if (typeof reply !== 'object' || reply === null || !('value' in reply))
-      throw new Error('The vault did not answer');
+      throw new Error('Invalid vault reply');
+    if (access && (reply as VaultReply).session === true) access.session = true;
     return reply.value;
   };
   return {
-    get: (key) => (backgroundVault ? backgroundVault.get(key) : request('get', { key })),
-    async set(key, value) {
-      if (backgroundVault) await backgroundVault.set(key, value);
-      else await request('set', { key, value });
+    get: (key, access) => backgroundVault?.get(key, access) ?? request('get', { key }, access),
+    async set(key, value, access) {
+      await (backgroundVault?.set(key, value, access) ?? request('set', { key, value }, access));
     },
     async keys() {
       if (backgroundVault) return backgroundVault.keys();
       const keys = await request('keys');
       if (!Array.isArray(keys) || !keys.every((key): key is string => typeof key === 'string'))
-        throw new Error('Invalid vault keys');
+        throw new Error('Invalid vault reply');
       return keys;
     },
   };
@@ -370,13 +380,6 @@ export function createTrustedRecords<T>(
     if (vault === null) await browser.storage.local.remove([...names]);
     else await Promise.all(names.map((name) => vault.set(name, null)));
   };
-  /** The stored values of these keys, read together. */
-  const readMany = async (names: readonly string[]): Promise<Record<string, unknown>> => {
-    if (vault === null) return browser.storage.local.get([...names]);
-    return Object.fromEntries(
-      await Promise.all(names.map(async (name) => [name, await vault.get(name)] as const)),
-    );
-  };
   return {
     ids: async () => (await keys()).map(idOf),
     async get(id) {
@@ -384,10 +387,13 @@ export function createTrustedRecords<T>(
     },
     async all() {
       const names = await keys();
-      const values = await readMany(names);
       const result = new Map<string, T>();
-      for (const key of names) {
-        const record = parse(values[key]);
+      const values =
+        vault === null
+          ? await browser.storage.local.get(names)
+          : await Promise.all(names.map((name) => vault.get(name)));
+      for (const [index, key] of names.entries()) {
+        const record = parse(Array.isArray(values) ? values[index] : values[key]);
         if (record !== undefined) result.set(idOf(key), record);
       }
       return result;
