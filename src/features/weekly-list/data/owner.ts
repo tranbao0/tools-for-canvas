@@ -618,6 +618,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   /** Grows when the address changes or the data is cleared, so old async work is dropped. */
   let generation = 0;
   let identityVersion = 0;
+  let clearedDashboardSite = -1;
   let siteVersion = 0;
   let lastMarker = 0;
 
@@ -1002,20 +1003,26 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     announcementLoad = null;
   }
 
+  function clearStudentData(previous: SessionCache, failure: Failure | null): void {
+    generation += 1;
+    identityVersion += 1;
+    clearSessionWork();
+    cache = { ...clearData(previous), failure };
+    clearedDashboardSite = siteVersion;
+    lateVisibility = undefined;
+    void userDataCleared();
+    persist();
+  }
+
   /**
    * Another user signed in to Canvas. Nothing of the old user may stay: no item, ring, course
    * choice, pending write or undo. The new user's session then loads from scratch.
    */
   async function dropUserData(): Promise<void> {
     if (cache === null) return;
-    generation += 1;
-    identityVersion += 1;
-    clearSessionWork();
     requested.clear();
     cancelDefer();
-    cache = { ...clearData(cache), failure: null };
-    void userDataCleared();
-    persist();
+    clearStudentData(cache, null);
     scheduleForcedFull();
     await bump();
   }
@@ -1099,13 +1106,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
    */
   function signOut(failure: Failure): void {
     if (cache === null) return;
-    generation += 1;
-    identityVersion += 1;
-    clearSessionWork();
-    cache = { ...clearData(cache), failure };
-    void userDataCleared();
-    // Whoever calls this, the next person to open a surface must not see the old list.
-    persist();
+    clearStudentData(cache, failure);
     bumpLater();
   }
 
@@ -2990,47 +2991,40 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<DashboardData> {
     await ready();
     const origin = checkedOrigin;
+    const base: DashboardData = { origin: origin ?? '', courses: [] };
     const stamp = writeStamp();
+    if (origin === null || origin !== knownOrigin || !(await surfaceMayRead(tabId))) return base;
     if (
-      origin === null ||
-      origin !== knownOrigin ||
-      cache === null ||
-      cache.session === null ||
-      !(await surfaceMayRead(tabId)) ||
-      !identityHolds(stamp) ||
-      !(await signedInStudentOwnsCache()) ||
-      !identityHolds(stamp)
+      identityHolds(stamp) &&
+      cache?.session &&
+      (await signedInStudentOwnsCache()) &&
+      identityHolds(stamp)
     ) {
-      return { origin: origin ?? '', courses: [] };
+      const session = cache.session;
+      return {
+        origin,
+        userId: session.profile.id,
+        ...(lateVisibility && isCurrent(lateVisibility.stamp) ? lateVisibility.value : null),
+        courses: dashboardCourses(session.courses, session.colors, session.profile.id),
+      };
     }
-    const session = cache.session;
-    return {
-      origin,
-      userId: session.profile.id,
-      ...(lateVisibility?.origin === origin &&
-      lateVisibility.userId === session.profile.id &&
-      lateVisibility.generation === generation
-        ? {
-            ...lateVisibility.value,
-            ...(lateVisibility.token === undefined
-              ? {}
-              : { visibilityToken: lateVisibility.token }),
-          }
-        : {}),
-      courses: dashboardCourses(session.courses, session.colors, session.profile.id),
-    };
+    if (
+      cache?.session == null &&
+      (cache?.failure?.kind === 'signed_out' ||
+        clearedDashboardSite === siteVersion ||
+        (await readFingerprint(origin)) === null) &&
+      stamp.siteVersion === siteVersion &&
+      cache?.session == null
+    ) {
+      base.sessionCleared = true;
+    }
+    return base;
   }
 
-  /** The id of the newest grade visibility read, so an older read never publishes late. */
+  // Only the newest grade visibility read can publish a late result.
   let visibilityRead = 0;
   let lateVisibility:
-    | {
-        origin: string;
-        userId: string;
-        generation: number;
-        token: string | undefined;
-        value: WidgetGradePreferences;
-      }
+    | { stamp: WriteStamp; value: WidgetGradePreferences & Pick<DashboardData, 'visibilityToken'> }
     | undefined;
 
   /**
@@ -3427,47 +3421,31 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   ): Promise<DashboardData> {
     await ready();
     const origin = checkedOrigin;
-    const base: DashboardData = { origin: origin ?? '', courses: [] };
-    if (origin !== knownOrigin) return { ...base, gradeVisibilities: null };
-    let stamp = writeStamp();
-    // A tab in another cookie store gets nothing and touches nothing, so it cannot cancel the
-    // late result of a read that a valid tab started.
-    if (!(await surfaceMayRead(tabId)) || !identityHolds(stamp))
-      return { ...base, gradeVisibilities: null };
+    const base: DashboardData = { origin: origin ?? '', courses: [], gradeVisibilities: null };
+    if (origin === null || origin !== knownOrigin) return base;
+    const entry = writeStamp();
+    if (!(await surfaceMayRead(tabId)) || !identityHolds(entry)) return base;
     const readId = ++visibilityRead;
     lateVisibility = undefined;
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      // The read is for the student whom the sign-in check confirms now, never for the student
-      // of an older cache.
-      const confirmed =
-        origin !== null && cache?.session != null && (await signedInStudentOwnsCache());
-      if (!identityHolds(stamp)) return { ...base, gradeVisibilities: null };
-      stamp = writeStamp();
+      if (!(await signedInStudentOwnsCache()) || !identityHolds(entry)) return base;
+      const stamp = writeStamp();
       const userId = stamp.userId;
-      const read =
-        confirmed && origin !== null
-          ? apiFor(origin).withPriority(() => 'high').getWidgetGradeVisibility
-          : null;
-      if (!identityHolds(stamp) || !confirmed || origin === null || userId === null || !read) {
-        return { ...base, gradeVisibilities: null };
-      }
-      const gradeVisibilities = await Promise.race([
-        read(userId).then(async (raw) => {
-          const value = await confirmedPreferences(origin, stamp, raw);
-          if (
-            value !== null &&
-            timedOut &&
-            readId === visibilityRead &&
-            isCurrent(stamp) &&
-            identityHolds(stamp)
-          ) {
-            lateVisibility = { origin, userId, generation: stamp.gen, token, value };
-            await bump();
-          }
-          return value;
-        }),
+      const read = apiFor(origin).withPriority(() => 'high').getWidgetGradeVisibility;
+      if (userId === null || !read) return base;
+      const preferences = await Promise.race([
+        cookieBound(async () => confirmedPreferences(origin, stamp, await read(userId))).then(
+          async (value) => {
+            if (value === DROPPED || !isCurrent(stamp)) return null;
+            if (value && timedOut && readId === visibilityRead) {
+              lateVisibility = { stamp, value: { ...value, visibilityToken: token } };
+              await bump();
+            }
+            return value;
+          },
+        ),
         new Promise<null>((resolve) => {
           timer = setTimeout(() => {
             timedOut = true;
@@ -3475,11 +3453,9 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
           }, 5000);
         }),
       ]);
-      return gradeVisibilities === null || !isCurrent(stamp)
-        ? { ...base, gradeVisibilities: null }
-        : { ...base, userId, ...gradeVisibilities };
+      return preferences && isCurrent(stamp) ? { ...base, userId, ...preferences } : base;
     } catch {
-      return { ...base, gradeVisibilities: null };
+      return base;
     } finally {
       clearTimeout(timer);
     }

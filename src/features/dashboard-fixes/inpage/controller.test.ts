@@ -95,6 +95,59 @@ describe('createFixesEngine', () => {
     expect(copies()).toBe(before);
   });
 
+  it('removes student data after sign-out and ignores an older visibility reply', async () => {
+    drawPeopleWidget();
+    let signedOut = false;
+    let finish!: (value: unknown) => void;
+    send.mockImplementation(async (message) => {
+      if (message.type === 'weekrow:dashboard-data') {
+        if (message.includeGradeVisibility) return new Promise((resolve) => (finish = resolve));
+        return signedOut ? { origin: ORIGIN, courses: [], sessionCleared: true } : DATA;
+      }
+      if (message.type === 'weekrow:announcement-page' || message.type === 'weekrow:people-page') {
+        return {
+          userId: DATA.userId,
+          count: 1,
+          total: 1,
+          hasNext: false,
+          items: [
+            {
+              id: '1',
+              title: 'Student announcement',
+              courseId: '101',
+              courseName: 'BIO 110',
+              postedAt: null,
+              author: null,
+              read: false,
+              name: 'Student instructor',
+              avatarUrl: null,
+              enrollments: [{ courseId: '101', courseName: 'BIO 110', role: 'teacher' }],
+            },
+          ],
+        };
+      }
+      return undefined;
+    });
+    engine.setSettings({ ...ON, peopleList: true });
+    engine.setActive(true);
+    await settle();
+    const copies = '[data-wr-card], [data-wr-list]';
+    expect(document.querySelectorAll('[data-wr-card]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-wr-list]')).toHaveLength(2);
+    for (const list of document.querySelectorAll('[data-wr-list]')) {
+      expect(list.shadowRoot?.querySelectorAll('article')).toHaveLength(1);
+    }
+
+    signedOut = true;
+    engine.reload();
+    await settle();
+    expect(document.querySelectorAll(copies)).toHaveLength(0);
+    finish(DATA);
+    await settle();
+    expect(document.querySelectorAll(copies)).toHaveLength(0);
+    expect(dataRequests()).toHaveLength(3);
+  });
+
   it('draws cached fixes while the preference request stays pending', async () => {
     send.mockImplementation(async (message) => {
       if (message.type === 'weekrow:dashboard-data' && message.includeGradeVisibility) {
@@ -172,6 +225,40 @@ describe('createFixesEngine', () => {
     send.mockResolvedValue({ ...DATA, showGrades: { 'course-grades-widget': true } });
     await settle(2000);
     expect(document.querySelector('[data-testid="course-107-grade"]')?.textContent).toBe('95%');
+  });
+
+  it('hides a visible copy during a global hide and retries stale preferences only three times', async () => {
+    const stale = {
+      ...DATA,
+      gradeVisibilities: { 'course-grades-widget': { '107': true } },
+    };
+    let finish!: (value: unknown) => void;
+    send.mockResolvedValue(stale);
+    engine.setSettings(ON);
+    engine.setActive(true);
+    await settle();
+    const grade = () => document.querySelector('[data-testid="course-107-grade"]')?.textContent;
+    expect(grade()).toBe('95%');
+
+    send.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    document
+      .querySelector('[data-testid="hide-all-grades-checkbox"]')!
+      .setAttribute('data-testid', 'show-all-grades-checkbox');
+    await settle();
+    expect(grade()).toBe('•••');
+    finish(stale);
+    await settle();
+    expect(grade()).toBe('•••');
+
+    for (const delay of [2000, 5000, 15000]) {
+      const before = dataRequests().length;
+      await settle(delay);
+      expect(dataRequests()).toHaveLength(before + 1);
+      expect(grade()).toBe('•••');
+    }
+    await settle(60000);
+    expect(dataRequests()).toHaveLength(6);
+    expect(grade()).toBe('•••');
   });
 
   it('stops after three retries and never overlaps reads', async () => {

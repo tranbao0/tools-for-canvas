@@ -347,25 +347,32 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
 
       getWidgetGradeVisibility: async (userId) => {
         const overall = AbortSignal.timeout(12000);
-        const response = await limit(() => {
-          const signal = AbortSignal.any([overall, AbortSignal.timeout(5000)]);
-          return withRateLimitRetry(() =>
-            transport({
-              method: 'POST',
-              url: GRAPHQL_PATH,
-              signal,
-              body: {
-                query:
-                  'query WidgetGradeVisibility($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
-                variables: { id: userId },
+        const response = await limit(
+          () =>
+            withRateLimitRetry(
+              () => {
+                overall.throwIfAborted();
+                return attempt({
+                  method: 'POST',
+                  url: GRAPHQL_PATH,
+                  signal: AbortSignal.any([overall, AbortSignal.timeout(5000)]),
+                  body: {
+                    query:
+                      'query WidgetGradeVisibility($id: ID!) { legacyNode(_id: $id, type: User) { ... on User { widgetDashboardConfig } } }',
+                    variables: { id: userId },
+                  },
+                });
               },
-            }),
-          );
-        }, 'high');
+              (ms) => sleep(ms, overall),
+            ),
+          priority,
+        );
         const body = response.data as {
+          errors?: unknown;
           data?: { legacyNode?: { widgetDashboardConfig?: string | null } };
         };
-        if (!body.data?.legacyNode) throw new Error('No widget preferences');
+        if ((Array.isArray(body.errors) && body.errors.length > 0) || !body.data?.legacyNode)
+          throw new Error('No widget preferences');
         // A student who never changed the widgets has no saved preference. The reply cannot say
         // whose record that is, so the caller decides what a missing preference means.
         const saved = body.data.legacyNode.widgetDashboardConfig;
@@ -376,25 +383,24 @@ export function createCanvasClient(options: CanvasClientOptions): CanvasApi {
             { gradeVisibilities?: Record<string, boolean>; showGrades?: boolean }
           >;
         };
-        const entries = Object.entries(config.filters ?? {}).map(([id, value]) => {
+        const gradeVisibilities: [string, Record<string, boolean>][] = [];
+        const showGrades: [string, boolean][] = [];
+        for (const [id, value] of Object.entries(config.filters ?? {})) {
           const visibility = value.gradeVisibilities ?? {};
           if (
             !isJsonObject(visibility) ||
             Object.values(visibility).some((item) => typeof item !== 'boolean')
           )
-            throw new Error('Invalid grade visibility');
-          return [id, visibility] as const;
-        });
-        const showGrades = Object.fromEntries(
-          Object.entries(config.filters ?? {})
-            .filter(([, value]) => value.showGrades !== undefined)
-            .map(([id, value]) => {
-              if (value.showGrades !== undefined && typeof value.showGrades !== 'boolean')
-                throw new Error('Invalid main grade visibility');
-              return [id, value.showGrades as boolean];
-            }),
-        );
-        return { gradeVisibilities: Object.fromEntries(entries), showGrades };
+            throw new Error('Invalid widget preferences');
+          gradeVisibilities.push([id, visibility]);
+          if (value.showGrades === undefined) continue;
+          if (typeof value.showGrades !== 'boolean') throw new Error('Invalid widget preferences');
+          showGrades.push([id, value.showGrades]);
+        }
+        return {
+          gradeVisibilities: Object.fromEntries(gradeVisibilities),
+          showGrades: Object.fromEntries(showGrades),
+        };
       },
 
       getSelf: async () => getObject<UserSelf>('/api/v1/users/self'),

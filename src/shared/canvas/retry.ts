@@ -5,7 +5,20 @@ export const BACKOFF_BASE_MS = 1_000;
 
 export type Sleep = (ms: number) => Promise<void>;
 
-export const sleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
+    function abort() {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
 
 /** The wait before retry number `retry` (0 for the first retry): 1 s, 2 s, 4 s. */
 export function rateLimitDelayMs(retry: number): number {

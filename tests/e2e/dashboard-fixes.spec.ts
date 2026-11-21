@@ -1460,6 +1460,31 @@ test('match the dark read filter colors', async ({ context, page }, testInfo) =>
 /** The wait for a result that depends on a read of the owner, which may take 5 s under load. */
 const READ_WAIT = 20_000;
 
+test('sign-out removes copied grades, announcements, open messages and people', async ({
+  context,
+  page,
+}) => {
+  const { canvas } = await serveScenario(context, PAGE, EIGHT_COURSES);
+  await addCsrfCookie(context, canvas.origin);
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await openCanvasPage(page, canvas.origin, '/?fixture_course_work=second&fixture_people=1');
+  const copied = page.locator('[data-wr-card]');
+  const people = page.getByTestId('widget-people-widget').locator('[data-wr-list] article');
+  await expect(copied).toHaveCount(2);
+  await expect(people.first()).toBeAttached();
+  await articles(page).first().getByRole('button', { name: 'Read more' }).click();
+  await expect(message(page)).toContainText('Science Hall 214');
+
+  await context.clearCookies({ name: 'canvas_session' });
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+  await expect(copied).toHaveCount(0);
+  await expect(articles(page)).toHaveCount(0);
+  await expect(message(page)).toHaveCount(0);
+  await expect(people).toHaveCount(0);
+  await expect(page.locator(NATIVE_ITEM).first()).toBeVisible();
+});
+
 test.describe('course grades', () => {
   test('show a card for every course, with N/A for a hidden total', async ({ context, page }) => {
     await open(context, page, { scenario: EIGHT_COURSES });

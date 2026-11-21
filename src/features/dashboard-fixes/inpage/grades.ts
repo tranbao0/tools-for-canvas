@@ -91,9 +91,11 @@ function showNote(card: HTMLElement, id: string, text: string): void {
 export function gradesFix(store: GradeVisibilityStore = { observed: new Map() }): Fix {
   let doc: Document | null = null;
   /** What each grid shows. It stays out of the page, where a script could read the grades. */
-  const signatures = new WeakMap<Element, string>();
-  const nativeStates = new WeakMap<Element, { hidden: boolean; values: Map<string, boolean> }>();
+  let signatures = new WeakMap<Element, string>();
+  let nativeStates = new WeakMap<Element, { hidden: boolean; values: Map<string, boolean> }>();
   const { observed } = store;
+  const pendingHide = new Set<string>();
+  const nativeToggles = new Map<string, boolean>();
   let saving = false;
   let nativeChangedAt = -Infinity;
   let lifetime = 0;
@@ -321,6 +323,9 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
       observed.set(widgetId, overrides);
     }
     const previous = nativeStates.get(found.widget);
+    if (!found.gradesHidden) pendingHide.delete(widgetId);
+    else if (nativeToggles.get(widgetId) === false) pendingHide.add(widgetId);
+    nativeToggles.set(widgetId, found.gradesHidden);
     const values = new Map<string, boolean>();
     for (const card of native) {
       const id = cardCourseId(card);
@@ -329,7 +334,8 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
         const visible = grade.textContent !== HIDDEN_GRADE;
         values.set(id, visible);
         if (
-          visible !== !found.gradesHidden ||
+          (visible !== !found.gradesHidden &&
+            (!pendingHide.has(widgetId) || previous?.values.get(id) !== visible)) ||
           (previous?.hidden === found.gradesHidden &&
             previous.values.has(id) &&
             previous.values.get(id) !== visible)
@@ -365,13 +371,23 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     observeNative(found);
     const overrides = observed.get(widgetId);
     if (saving) return;
+    const main = context.data.showGrades?.[widgetId];
+    const coursesVisible = visibility?.[widgetId];
+    if (
+      pendingHide.has(widgetId) &&
+      visibility != null &&
+      main !== true &&
+      !courses.some(
+        (course) => coursesVisible?.[course.id] === true && overrides?.get(course.id) !== true,
+      )
+    ) {
+      pendingHide.delete(widgetId);
+    }
     const hidden = (id: string): boolean =>
       visibility == null ||
       overrides?.get(id) === false ||
-      !(
-        visibility[widgetId]?.[id] ??
-        (context.data?.showGrades?.[widgetId] !== false && !found.gradesHidden)
-      );
+      (pendingHide.has(widgetId) && overrides?.get(id) !== true) ||
+      !(coursesVisible?.[id] ?? (main !== false && !found.gradesHidden));
     const signature = JSON.stringify([
       inEditMode(context.doc),
       template === undefined ? null : looksOf(template),
@@ -418,6 +434,15 @@ export function gradesFix(store: GradeVisibilityStore = { observed: new Map() })
     remove() {
       lifetime++;
       saving = false;
+      if (store.userId === undefined) {
+        pendingHide.clear();
+        nativeToggles.clear();
+        nativeStates = new WeakMap();
+        signatures = new WeakMap();
+        nativeChangedAt = -Infinity;
+        notes.clear();
+        focusCourse = undefined;
+      }
       clearTimeout(noteTimer);
       noteTimer = undefined;
       doc?.removeEventListener('click', blockWhileSaving, true);

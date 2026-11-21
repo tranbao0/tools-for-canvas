@@ -76,6 +76,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   let active = false;
   let stopped = false;
   let data: DashboardData | null = null;
+  let sessionCleared = false;
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let style: HTMLStyleElement | null = null;
@@ -171,17 +172,20 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         ([id, visible]) => nativeVisibility.has(id) && nativeVisibility.get(id) !== visible,
       );
     if (enabled('allCourseGrades') && toggleState && (toggles !== toggleState || configChanged)) {
-      if (reading) {
-        visibilitySeq += 1;
-        readToken = '';
-      }
+      visibilitySeq += 1;
+      readToken = '';
       wantRead = true;
       resetRetry();
+      if (toggles !== toggleState) {
+        visibility = null;
+        showGrades = undefined;
+        if (data) data = { ...data, gradeVisibilities: null, showGrades };
+      }
     }
     toggleState = toggles;
     nativeVisibility = nextNative;
     for (const key of keys) {
-      if (enabled(key)) {
+      if (enabled(key) && (!sessionCleared || key === 'steadyPager')) {
         applied.add(key);
         guard(key, () => fixes[key].apply(context));
       } else if (applied.delete(key)) {
@@ -268,12 +272,13 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     if (!enabled('allCourseGrades') || reading || retryTimer !== null || retryAttempt >= 3) return;
     const disagrees = findGradeWidgets(doc).some((found) => {
       const id = (found.widget.getAttribute('data-testid') ?? '').replace(/^widget-/, '');
+      const contrary = found.gradesHidden;
       return (
-        !found.gradesHidden &&
+        (contrary && showGrades?.[id] === true) ||
         data?.courses.some(
           (course) =>
-            gradeStore.observed.get(id)?.get(course.id) !== false &&
-            (showGrades?.[id] === false || visibility?.[id]?.[course.id] === false),
+            gradeStore.observed.get(id)?.get(course.id) !== contrary &&
+            (showGrades?.[id] === contrary || visibility?.[id]?.[course.id] === contrary),
         )
       );
     });
@@ -340,6 +345,17 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   doc.addEventListener('visibilitychange', onVisibilityChange);
   doc.defaultView?.addEventListener('focus', onVisibilityChange);
 
+  function clearStudent(): void {
+    gradeStore.userId = undefined;
+    gradeStore.observed.clear();
+    markBlind();
+    for (const key of keys) {
+      if (key === 'steadyPager') continue;
+      applied.delete(key);
+      guard(key, () => fixes[key].remove());
+    }
+  }
+
   function load(): void {
     for (const key of applied) {
       if (key !== 'allCourseGrades') fixes[key].reload?.();
@@ -352,21 +368,24 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         if (seq !== loadSeq) return;
         const next = reply as DashboardData | undefined;
         if (typeof next?.origin !== 'string' || !Array.isArray(next.courses)) return;
-        // A reply without a user id is a failed sign-in check, or a tab of another cookie store.
-        // It says nothing about the student, so with no course it leaves the last courses alone.
-        if (next.userId === undefined && next.courses.length === 0 && data !== null) return;
+        if (next.sessionCleared) {
+          sessionCleared = true;
+          clearStudent();
+          data = null;
+          schedule(0);
+          return;
+        }
+        if (
+          next.userId === undefined &&
+          next.courses.length === 0 &&
+          (data !== null || sessionCleared)
+        )
+          return;
         if (next.userId !== undefined && next.userId !== gradeStore.userId) {
-          const changed = gradeStore.userId !== undefined;
+          if (gradeStore.userId !== undefined) clearStudent();
+          else markBlind();
           gradeStore.userId = next.userId;
-          // What the page showed before a student was confirmed belongs to no confirmed student.
-          if (changed) {
-            fixes.allCourseGrades.remove();
-            gradeStore.observed.clear();
-            // The announcements, their messages and their marks belong to the first student.
-            fixes.announcementsInPlace.remove();
-            fixes.peopleList.remove();
-          }
-          markBlind();
+          sessionCleared = false;
         }
         // The result of a read that ended late counts only for the read that is the last one since
         // the last blind moment, and only for the confirmed student.
