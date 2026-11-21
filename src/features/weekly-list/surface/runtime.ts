@@ -1,19 +1,17 @@
-/**
- * The runtime behind one surface: the side panel, an extension page or the in-page list.
- * See docs/design.md, decisions 4, 6, 9, 10, 11, 18 and 19.
- *
- * It implements the `Actions` contract by sending messages to the data owner, keeps the view
- * state of the surface (week and course filter), holds the Undo notice, and runs the 5-minute
- * and midnight timers while the surface is visible. The side panel and the in-page list also
- * hold the data of the settings they show in place. It never fetches Canvas.
- *
- * The Undo notice has no timer. The reply to an action carries what Undo needs, and the runtime
- * keeps it while the notice shows. The notice ends when the student acts again, closes it, or
- * the surface goes away, and also when the state is no longer ready or belongs to another user.
- * For a task delete, the runtime then tells the data owner, which sends the delayed DELETE.
- *
- * The replies come from the data owner in the same extension, and a request that the router
- * rejects has no reply at all, so the runtime checks only that a reply exists.
+/*
+The runtime behind one surface: the side panel, an extension page or the in-page list.
+See docs/design.md, decisions 4, 6, 9, 10, 11, 18 and 19.
+
+It implements the `Actions` contract by sending messages to the data owner, keeps the week and
+course filter, and runs the 5-minute and midnight timers while the surface is visible.
+The side panel and the in-page list also hold the data of the settings they show in place.
+
+The Undo notice has no timer.
+It ends when the student acts again, closes it, or leaves the surface, or when the session ends.
+Ending a task delete notice within its session tells the data owner to send the delayed DELETE.
+
+Replies come from the data owner in the same extension.
+A request that the router rejects has no reply.
  */
 import {
   MAX_ACTION_KEYS,
@@ -211,7 +209,8 @@ function isTabSurface(surface: RequestSurface): surface is 'panel' | 'inpage' {
 
 export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions): SurfaceRuntime {
   let base: SurfaceState = { kind: 'loading' };
-  let identity: ActionIdentity | null = null;
+  // Keep the last known identity through loading and load errors.
+  let sessionIdentity: ActionIdentity | null = null;
   /** The span the student last asked for. A shown span can lag behind it while a span loads. */
   let spanOffset = 0;
   let settings: Settings | null = null;
@@ -234,7 +233,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   let tabChosenAt = 0;
   let feedSeq = 0;
   let feedApplied = 0;
-  /** Counts writes, so only the reply to the newest write shows its Undo notice. */
+  // New writes and session boundaries invalidate earlier notice replies.
   let writeSeq = 0;
   let requestSeq = 0;
   let appliedSeq = 0;
@@ -316,6 +315,14 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
    */
   const marking = new Map<string, { done: boolean }>();
 
+  function clearSessionWrites(): void {
+    sessionIdentity = null;
+    notice = null;
+    pendingWrites.clear();
+    marking.clear();
+    writeSeq += 1;
+  }
+
   function applySettings(value: Settings): void {
     if (settings !== null && sameSettings(settings, value)) return;
     const changed = followSpan(value);
@@ -374,20 +381,15 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     ) {
       courseFilter = undefined;
     }
-    const noticed = notice?.data[0] ?? notice?.retry;
     if (
-      noticed !== undefined &&
-      reply.kind === 'ready' &&
-      (reply.userId !== noticed.userId ||
-        reply.origin !== noticed.origin ||
-        // The DELETE of the task is out or on its way, so Undo cannot bring the task back. A
-        // reply to a request that went out before the notice cannot say.
-        (noticed.kind === 'delete' &&
-          seq > noticeSeq &&
-          !reply.openDeletes.includes(noticed.noteId)))
-    ) {
-      notice = null;
-    }
+      reply.kind === 'signed_out' ||
+      reply.kind === 'not_set_up' ||
+      reply.kind === 'no_access' ||
+      (sessionIdentity !== null &&
+        (('origin' in reply && reply.origin !== sessionIdentity.origin) ||
+          (reply.userId !== undefined && reply.userId !== sessionIdentity.userId)))
+    )
+      clearSessionWrites();
     // The feed belongs to one student on one Canvas, like the notice. Another student, a
     // sign-out or another address drops it, and the new student starts with Tasks (decision 24).
     if (feed !== null && staleFeed(feed, reply)) {
@@ -395,11 +397,17 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       listTab = 'tasks';
     }
     if (reply.kind === 'ready') {
+      sessionIdentity = { userId: reply.userId, origin: reply.origin };
+      const deletion = notice?.data[0];
+      // Only a request sent after the notice can confirm that its DELETE started.
+      if (
+        deletion?.kind === 'delete' &&
+        seq > noticeSeq &&
+        !reply.openDeletes.includes(deletion.noteId)
+      )
+        notice = null;
       for (const [token, pending] of pendingWrites) {
-        if (pending.action.userId !== reply.userId || pending.action.origin !== reply.origin) {
-          pendingWrites.delete(token);
-          if (notice?.retry?.seq === token) notice = null;
-        } else if (
+        if (
           reply.pendingWrites !== undefined &&
           pending.acknowledged !== undefined &&
           seq > pending.acknowledged &&
@@ -436,10 +444,6 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         } else pendingWrites.delete(token);
       }
     }
-    identity =
-      reply.kind === 'ready' && reply.userId !== undefined
-        ? { userId: reply.userId, origin: reply.origin }
-        : null;
     base = reply;
     followCourses(reply);
     scheduleMidnight();
@@ -551,7 +555,12 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     input: DataActionInput,
     shows?: UndoInfo['kind'],
   ): Promise<ActionReply | undefined> {
-    const source = 'userId' in input && 'origin' in input ? (input as ActionIdentity) : identity;
+    const source =
+      'userId' in input && 'origin' in input
+        ? (input as ActionIdentity)
+        : base.kind === 'ready'
+          ? sessionIdentity
+          : null;
     if (source === null)
       return Promise.resolve(
         input.kind === 'createTask' ? { undo: null, created: false } : { undo: null },
@@ -580,15 +589,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
             : first;
         const data = replies.flatMap((r) => (r?.undo ? [r.undo] : []));
         if (data.length > 0 && shows !== undefined && notice?.retry?.seq !== action.seq) {
-          // A newer write or a stopped surface ends this notice before it shows.
-          if (
-            isWrite &&
-            pending !== undefined &&
-            seq === writeSeq &&
-            !stopped &&
-            (base.kind !== 'ready' ||
-              (identity?.userId === action.userId && identity.origin === action.origin))
-          ) {
+          if (isWrite && pending !== undefined && seq === writeSeq && !stopped) {
             const count = data.flatMap((d) => (d.kind === 'overrides' ? d.entries : [null])).length;
             const first = data[0];
             const target =
@@ -925,6 +926,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     stop() {
       if (stopped) return;
       endUndo();
+      clearSessionWrites();
       started = false;
       stopped = true;
       stopTimers();

@@ -765,27 +765,6 @@ describe('actions', () => {
     },
   );
 
-  it.each([
-    ['signed_out', { kind: 'signed_out', origin: ORIGIN, isFirefox: false, offer: null }],
-    ['loading', { kind: 'loading' }],
-    ['the address form', { kind: 'not_set_up', offer: null, savedOrigin: ORIGIN }],
-  ] as const)('keeps the notice when the state is %s', async (_name, other) => {
-    const { fake, runtime } = await started(undoHost());
-    runtime.actions.setDone('assignment:1', true);
-    await settle();
-    const base = fake.reply;
-    fake.reply = (message) => (message.type === 'weekrow:get-state' ? other : base(message));
-
-    fake.changed();
-    await settle();
-
-    expect(runtime.state().kind).toBe(other.kind);
-    fake.reply = base;
-    fake.changed();
-    await settle();
-    expect(runtime.state()).toMatchObject({ kind: 'ready', undo: DONE_INFO });
-  });
-
   it('keeps the notice while another week loads', async () => {
     const { fake, runtime } = await started(undoHost());
     runtime.actions.setDone('assignment:1', true);
@@ -2183,20 +2162,21 @@ describe('write identity', () => {
     expect(sentActions(fake.sent)).toEqual([]);
   });
 
-  it.each(Object.keys(UNDO_DATA).flatMap((kind) => Object.keys(NO_ROWS).map((to) => [kind, to])))(
-    'undoes with the identity saved in the notice (%s) when the state is %s',
-    async (kind, to) => {
-      const { fake, runtime, move } = await withNotice(kind);
-      await move(NO_ROWS[to] as StateReply);
-      runtime.actions.undo();
-      await settle();
-      expect(sentActions(fake.sent).at(-1)).toMatchObject({
-        kind: kind === 'restore' ? 'restore' : kind,
-        userId: USER,
-        origin: ORIGIN,
-      });
-    },
-  );
+  it.each(
+    Object.keys(UNDO_DATA).flatMap((kind) =>
+      ['loading', 'cant_load', 'no_courses'].map((to) => [kind, to]),
+    ),
+  )('undoes with the identity saved in the notice (%s) when the state is %s', async (kind, to) => {
+    const { fake, runtime, move } = await withNotice(kind);
+    await move(NO_ROWS[to] as StateReply);
+    runtime.actions.undo();
+    await settle();
+    expect(sentActions(fake.sent).at(-1)).toMatchObject({
+      kind: kind === 'restore' ? 'restore' : kind,
+      userId: USER,
+      origin: ORIGIN,
+    });
+  });
 
   it.each(Object.keys(UNDO_DATA))(
     'ends the notice (%s) when the state moves to another student, and then sends no Undo',
@@ -2210,7 +2190,7 @@ describe('write identity', () => {
     },
   );
 
-  it.each(['loading', 'signed_out'] as const)(
+  it.each(['loading', 'cant_load'] as const)(
     'drops row identity in %s but keeps delete notice identity',
     async (kind) => {
       const { fake, runtime, move } = await withNotice('cancelDelete');
@@ -2467,6 +2447,16 @@ it('retries a late failure with the original student and Canvas', async () => {
 });
 
 describe('write outcome events', () => {
+  const signedOut: StateReply = {
+    kind: 'signed_out',
+    origin: ORIGIN,
+    isFirefox: false,
+    offer: null,
+  };
+  const otherOrigin = 'https://other.canvas.test';
+  const noCourses: StateReply = { kind: 'no_courses', origin: ORIGIN, offer: null, allCourses: [] };
+  const cantLoad: StateReply = { kind: 'cant_load', origin: ORIGIN, offer: null, offline: false };
+
   async function start() {
     const fake = fakeHost();
     let failures: string[] = [];
@@ -2526,6 +2516,121 @@ describe('write outcome events', () => {
     expect(runtime.state().undo).toBeNull();
     runtime.stop();
   });
+
+  const boundaries: [string, StateReply][] = [
+    ['sign-out', signedOut],
+    ['setup', { kind: 'not_set_up', offer: null }],
+    ['loss of access', { kind: 'no_access', origin: ORIGIN, offer: null }],
+    ['a ready state on another Canvas', readyFor(USER, { origin: otherOrigin })],
+    ['no courses on another Canvas', { ...noCourses, origin: otherOrigin }],
+    ['a load error on another Canvas', { ...cantLoad, origin: otherOrigin }],
+    ['a ready state for another student', readyFor('other-student')],
+    ['no courses for another student', { ...noCourses, userId: 'other-student' }],
+  ];
+
+  describe.each(['Undo', 'Retry'] as const)('%s notice', (label) => {
+    it.each(boundaries)('clears on %s and discards the pending write', async (_name, next) => {
+      const { fake, runtime, fail } = await start();
+      runtime.actions.setDone('assignment:1', true);
+      await settle();
+      const token = sentActions(fake.sent)[0]!.seq!;
+      if (label === 'Retry') await fail(token);
+      expect(runtime.state().undo?.kind).toBe(label === 'Retry' ? 'not_restored' : 'done');
+
+      const reply = fake.reply;
+      fake.reply = (message) => (message.type === 'weekrow:get-state' ? next : reply(message));
+      fake.changed();
+      await settle();
+      expect(runtime.state().kind).toBe(next.kind);
+      expect(runtime.state().undo ?? null).toBeNull();
+
+      fake.reply = reply;
+      await fail(token);
+      expect(runtime.state().undo).toBeNull();
+      runtime.stop();
+    });
+
+    it.each([{ kind: 'loading' } as const, cantLoad])(
+      'keeps the notice and pending write during $kind on the same Canvas',
+      async (next) => {
+        const { fake, runtime, fail } = await start();
+        runtime.actions.setDone('assignment:1', true);
+        await settle();
+        const token = sentActions(fake.sent)[0]!.seq!;
+        if (label === 'Retry') await fail(token);
+        const notice = runtime.state().undo;
+        expect(notice?.kind).toBe(label === 'Retry' ? 'not_restored' : 'done');
+
+        const reply = fake.reply;
+        fake.reply = (message) => (message.type === 'weekrow:get-state' ? next : reply(message));
+        fake.changed();
+        await settle();
+        expect(runtime.state()).toMatchObject({ kind: next.kind, undo: notice });
+
+        fake.reply = reply;
+        await fail(token);
+        expect(runtime.state().undo).toMatchObject({ failure: 'done' });
+        runtime.stop();
+      },
+    );
+
+    it('clears when the surface opens again', async () => {
+      const { fake, runtime, fail } = await start();
+      runtime.actions.setDone('assignment:1', true);
+      await settle();
+      const token = sentActions(fake.sent)[0]!.seq!;
+      if (label === 'Retry') await fail(token);
+      expect(runtime.state().undo?.kind).toBe(label === 'Retry' ? 'not_restored' : 'done');
+
+      runtime.stop();
+      const reopened = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+      reopened.start();
+      await fail(token);
+      expect(reopened.state()).toMatchObject({ kind: 'ready', undo: null });
+      reopened.stop();
+    });
+  });
+
+  it.each(['setDone', 'restore'] as const)(
+    'ignores a late %s reply after sign-out',
+    async (kind) => {
+      const { fake, runtime, fail } = await start();
+      const reply = fake.reply;
+      let answer!: (reply: unknown) => void;
+      let state: StateReply | undefined;
+      fake.reply = (message) => {
+        if (message.type === 'weekrow:get-state' && state !== undefined) return state;
+        if (message.type === 'weekrow:action' && message.action.kind === kind)
+          return new Promise((resolve) => {
+            answer = resolve;
+          });
+        return reply(message);
+      };
+      runtime.actions.setDone('assignment:1', true);
+      if (kind === 'restore') {
+        await settle();
+        runtime.actions.undo();
+      }
+      const token = sentActions(fake.sent)[0]!.seq!;
+      state = signedOut;
+      fake.changed();
+      await settle();
+      const seen: SurfaceState[] = [];
+      runtime.subscribe((visible) => seen.push(visible));
+      answer(
+        kind === 'setDone'
+          ? reply(fake.sent.find((message) => message.type === 'weekrow:action')!)
+          : { undo: null, refused: true },
+      );
+      await settle();
+      expect(seen.some((visible) => visible.undo != null)).toBe(false);
+      expect(runtime.state().undo ?? null).toBeNull();
+      state = undefined;
+      await fail(token);
+      expect(runtime.state().undo).toBeNull();
+      runtime.stop();
+    },
+  );
 
   it('clears the failure immediately when retry waits for a reply', async () => {
     const { fake, runtime, fail } = await start();
