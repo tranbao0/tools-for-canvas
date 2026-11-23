@@ -800,30 +800,47 @@ describe('routeDataMessage', () => {
     expect(host.openWelcomePrompt).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, 'doc-9'])(
-    'shares a pending injection and retries after failure for %s',
-    async (documentId) => {
-      const pending = Promise.withResolvers<void>();
-      host.injectInpage.mockReturnValueOnce(pending.promise);
-      const refresh = Promise.withResolvers<void>();
-      owner.pageLoaded.mockReturnValueOnce(refresh.promise);
-      const message = { type: 'weekrow:canvas-detected', origin: SAVED };
-      const sender = { ...CONTENT_SCRIPT, documentId };
-      const report = () => routeDataMessage(owner, message, sender, host);
-      const replies = Promise.allSettled([report(), report()]);
+  it('starts a separate injection for a reload when the browser gives no document id', async () => {
+    const firstInjection = Promise.withResolvers<void>();
+    host.injectInpage.mockReturnValueOnce(firstInjection.promise);
+    const message = { type: 'weekrow:canvas-detected', origin: SAVED };
+    const firstReply = routeDataMessage(owner, message, CONTENT_SCRIPT, host);
+    await Promise.resolve();
+    expect(host.injectInpage).toHaveBeenCalledExactlyOnceWith(3, SAVED, undefined);
+
+    const reloadReply = routeDataMessage(owner, message, CONTENT_SCRIPT, host);
+    try {
       await Promise.resolve();
-      pending.reject(new Error('no access'));
-      try {
-        expect(await replies).toMatchObject([{ status: 'rejected' }, { status: 'rejected' }]);
-        expect(host.injectInpage).toHaveBeenCalledTimes(1);
-        expect(owner.pageLoaded).toHaveBeenCalledExactlyOnceWith(SAVED, 3);
-        await expect(report()).resolves.toEqual({ ok: true });
-        expect(host.injectInpage).toHaveBeenCalledTimes(2);
-      } finally {
-        refresh.resolve();
-      }
-    },
-  );
+      expect(host.injectInpage).toHaveBeenCalledTimes(2);
+      await expect(reloadReply).resolves.toEqual({ ok: true });
+    } finally {
+      firstInjection.resolve();
+      await Promise.all([firstReply, reloadReply]);
+    }
+    await expect(firstReply).resolves.toEqual({ ok: true });
+  });
+
+  it('shares a pending injection for one document and retries after failure', async () => {
+    const pending = Promise.withResolvers<void>();
+    host.injectInpage.mockReturnValueOnce(pending.promise);
+    const refresh = Promise.withResolvers<void>();
+    owner.pageLoaded.mockReturnValueOnce(refresh.promise);
+    const message = { type: 'weekrow:canvas-detected', origin: SAVED };
+    const sender = { ...CONTENT_SCRIPT, documentId: 'doc-9' };
+    const report = () => routeDataMessage(owner, message, sender, host);
+    const replies = Promise.allSettled([report(), report()]);
+    await Promise.resolve();
+    pending.reject(new Error('no access'));
+    try {
+      expect(await replies).toMatchObject([{ status: 'rejected' }, { status: 'rejected' }]);
+      expect(host.injectInpage).toHaveBeenCalledTimes(1);
+      expect(owner.pageLoaded).toHaveBeenCalledExactlyOnceWith(SAVED, 3);
+      await expect(report()).resolves.toEqual({ ok: true });
+      expect(host.injectInpage).toHaveBeenCalledTimes(2);
+    } finally {
+      refresh.resolve();
+    }
+  });
 
   it('puts no script into a tab of another Canvas than the saved one', async () => {
     // The owner keeps the saved address and stores an offer for the panel.

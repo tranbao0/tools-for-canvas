@@ -725,7 +725,8 @@ The extension links to Canvas by itself and works right after install, with no s
     Every `scripting.executeScript` call sets `injectImmediately: true`.
   - The detector accepts only a successful reply and retries a rejected, empty or unanswered report at most twice.
     Each attempt waits at most 4 seconds, with delays of 250 and 500 milliseconds before the retries.
-    Concurrent reports from the same tab and document share the pending injection.
+    Concurrent reports share a pending injection when the browser gives them the same tab and document IDs.
+    Each report starts its own injection when the browser gives no document ID.
     A failed injection is available to retry.
   - CI checks the detector's start time, the immediate injection option and the detector's 2 KB gzip limit.
 

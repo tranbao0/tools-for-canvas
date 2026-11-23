@@ -104,13 +104,16 @@ async function answerDetection(
   const detection = await owner.canvasDetected(origin);
   if (detection === 'saved') {
     const { tabId, documentId } = sender;
-    const key = `${tabId}:${documentId ?? origin}`;
-    let injection = pendingInjections.get(key);
+    const key = documentId === undefined ? undefined : `${tabId}:${documentId}`;
+    let injection = key === undefined ? undefined : pendingInjections.get(key);
     if (injection === undefined) {
-      injection = host.injectInpage(tabId, origin, documentId).finally(() => {
-        pendingInjections.delete(key);
-      });
-      pendingInjections.set(key, injection);
+      injection = host.injectInpage(tabId, origin, documentId);
+      if (key !== undefined) {
+        injection = injection.finally(() => {
+          pendingInjections.delete(key);
+        });
+        pendingInjections.set(key, injection);
+      }
       void owner
         .pageLoaded(origin, tabId)
         .catch((error: unknown) => logFailure('page load', error));
