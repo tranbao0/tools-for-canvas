@@ -177,8 +177,8 @@ function checkContentScripts(manifest, fileExists) {
         problems.push(`the detector has ${field}, which the manifest must not set`);
       }
     }
-    if (script.run_at !== 'document_idle') {
-      problems.push(`the detector run_at is ${show(script.run_at)}, expected "document_idle"`);
+    if (script.run_at !== 'document_start') {
+      problems.push(`the detector run_at is ${show(script.run_at)}, expected "document_start"`);
     }
     for (const file of [...(script.js ?? []), ...(script.css ?? [])]) {
       if (!fileExists(file)) problems.push(`content script file ${file} is missing`);

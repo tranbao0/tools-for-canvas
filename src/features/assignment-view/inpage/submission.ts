@@ -389,10 +389,11 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
    * on the link stays.
    */
   function setUpPage(): void {
-    if (style) return;
+    const head = doc.head;
+    if (style || !head) return;
     style = doc.createElement('style');
     style.setAttribute(OWN, '');
-    doc.head.append(style);
+    head.append(style);
     pageRules = SHOW_RIGHT_SIDE;
     const canvasButton = doc.querySelector(SUBMIT_BUTTON);
     if (canvasButton && isCanvasId(options.courseId) && isCanvasId(options.assignmentId)) {

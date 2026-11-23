@@ -81,10 +81,12 @@ describe('wireInstall', () => {
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 1 },
       files: [DETECTOR_FILE],
+      injectImmediately: true,
     });
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 2 },
       files: [DETECTOR_FILE],
+      injectImmediately: true,
     });
     expect(create).not.toHaveBeenCalled();
   });
@@ -119,6 +121,7 @@ describe('wireInstall', () => {
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 2 },
       files: [DETECTOR_FILE],
+      injectImmediately: true,
     });
     expect(create).not.toHaveBeenCalled();
   });

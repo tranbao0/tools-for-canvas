@@ -92,13 +92,9 @@ export function senderPageOrigin(sender: SenderInfo): string | null {
   }
 }
 
-/**
- * Answers a detector report. The owner saves the address or stores the offer. The in-page script
- * goes into the sender tab only when the page origin is the saved address after that, so a page
- * that is not the saved Canvas never gets it. A Canvas that needs the student's answer, because
- * no address is saved and its host is not saved by itself, opens the welcome page once per
- * browser session, where the student answers the offer.
- */
+const pendingInjections = new Map<string, Promise<void>>();
+
+// A report can retry while the same document is still receiving its scripts.
 async function answerDetection(
   owner: DataOwner,
   origin: string,
@@ -107,7 +103,19 @@ async function answerDetection(
 ): Promise<OkReply> {
   const detection = await owner.canvasDetected(origin);
   if (detection === 'saved') {
-    await host.injectInpage(sender.tabId, origin, sender.documentId);
+    const { tabId, documentId } = sender;
+    const key = `${tabId}:${documentId ?? origin}`;
+    let injection = pendingInjections.get(key);
+    if (injection === undefined) {
+      injection = host.injectInpage(tabId, origin, documentId).finally(() => {
+        pendingInjections.delete(key);
+      });
+      pendingInjections.set(key, injection);
+      void owner
+        .pageLoaded(origin, tabId)
+        .catch((error: unknown) => logFailure('page load', error));
+    }
+    await injection;
   } else if (detection === 'confirm') {
     await host.openWelcomePrompt().catch((error: unknown) => logFailure('welcome page', error));
   }
@@ -193,10 +201,10 @@ export function routeDataMessage(
       return allowed.then((origin) => owner.announcementFeed(request, sender.tab?.id, origin));
     }
     case 'weekrow:page-context':
-      return allowed.then(async (): Promise<PageContextReply> => ({
-        settings: await host.readSettings(),
-        tools: await host.readTools(),
-      }));
+      return allowed.then(async (): Promise<PageContextReply> => {
+        const [settings, tools] = await Promise.all([host.readSettings(), host.readTools()]);
+        return { settings, tools };
+      });
     case 'weekrow:save-settings':
       return allowed.then(() => host.saveSettings(message.settings)).then(ok);
     case 'weekrow:save-tools':

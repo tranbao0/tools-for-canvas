@@ -96,6 +96,24 @@ describe('a Canvas page found by the detector', () => {
     },
   );
 
+  it('recognizes the saved address while the session cache is still loading', async () => {
+    const h = await createHarness();
+    const cache = Promise.withResolvers<null>();
+    const read = vi.spyOn(h.deps.store.cache, 'getValue').mockReturnValueOnce(cache.promise);
+    const detected = vi.fn();
+    const detection = h.owner.canvasDetected(ORIGIN).then(detected);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(read).toHaveBeenCalled();
+      expect(detected).toHaveBeenCalledWith('saved');
+    } finally {
+      cache.resolve(null);
+      await detection;
+      read.mockRestore();
+      await h.owner.resumeDeletes();
+    }
+  });
+
   it('stores no offer for the saved address, which shows the list', async () => {
     const h = await createHarness();
 

@@ -45,7 +45,8 @@ const DASHBOARD_PATH = /^\/(?:dashboard\/?)?$/;
 const ASSIGNMENT_VIEW_PATH =
   /^\/courses\/\d+(?:~\d+)?\/assignments(?:\/\d+(?:~\d+)?(?:\/submissions\/\d+(?:~\d+)?)?)?\/?$/;
 
-type PageScript = typeof INPAGE_FILE | typeof DASHBOARD_FILE | typeof ASSIGNMENT_VIEW_FILE;
+type PageScript =
+  typeof INPAGE_FILE | typeof DASHBOARD_FILE | typeof ASSIGNMENT_VIEW_FILE | typeof VIEWER_FILE;
 
 /**
  * The page scripts for a tab: the list script, the fixes script on the dashboard, and the
@@ -55,11 +56,11 @@ type PageScript = typeof INPAGE_FILE | typeof DASHBOARD_FILE | typeof ASSIGNMENT
  */
 function pageScripts(url: string): PageScript[] {
   const path = parseUrl(url)?.pathname ?? '';
-  const view = isAdapterPath(path) || ASSIGNMENT_VIEW_PATH.test(path);
+  const adapter = isAdapterPath(path);
   return [
-    INPAGE_FILE,
+    ...(adapter ? ([INPAGE_FILE] as const) : []),
     ...(DASHBOARD_PATH.test(path) ? ([DASHBOARD_FILE] as const) : []),
-    ...(view ? ([ASSIGNMENT_VIEW_FILE] as const) : []),
+    ...(adapter || ASSIGNMENT_VIEW_PATH.test(path) ? ([ASSIGNMENT_VIEW_FILE] as const) : []),
   ];
 }
 
@@ -85,11 +86,14 @@ export async function injectInpage(
   if (tab.url === undefined || parseUrl(tab.url)?.origin !== origin) {
     throw new Error('The tab no longer shows the page that was reported');
   }
-  const tools = await toolsSettingsItem.getValue();
+  const files = pageScripts(tab.url);
+  if ((await toolsSettingsItem.getValue()).fileViewer) files.push(VIEWER_FILE);
+  if (files.length === 0) return;
   await browser.scripting.executeScript({
     target:
       documentId === undefined ? { tabId, frameIds: [0] } : { tabId, documentIds: [documentId] },
-    files: [...pageScripts(tab.url), ...(tools.fileViewer ? ([VIEWER_FILE] as const) : [])],
+    files,
+    injectImmediately: true,
   });
 }
 
@@ -118,6 +122,7 @@ export async function injectViewerIntoOrigin(origin: string): Promise<number[]> 
     await browser.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       files: [VIEWER_FILE],
+      injectImmediately: true,
     });
   });
   return injected.map((tab) => tab.id);
@@ -247,7 +252,11 @@ export async function injectInpageIntoOrigin(origin: string): Promise<number[]> 
 export async function injectDetectorIntoOpenTabs(): Promise<InjectedTab[]> {
   const tabs = await browser.tabs.query({ url: HTTPS_TABS });
   return runInTabs(tabs, 'detector injection', (tabId) =>
-    browser.scripting.executeScript({ target: { tabId }, files: [DETECTOR_FILE] }),
+    browser.scripting.executeScript({
+      target: { tabId },
+      files: [DETECTOR_FILE],
+      injectImmediately: true,
+    }),
   );
 }
 
@@ -265,6 +274,7 @@ export async function anyAutoSavedCanvasTab(tabs: readonly InjectedTab[]): Promi
         const results = await browser.scripting.executeScript({
           target: { tabId: tab.id },
           func: isCanvasDocument,
+          injectImmediately: true,
         });
         return results.some((result) => result.result === true);
       } catch {

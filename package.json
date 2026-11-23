@@ -40,11 +40,12 @@
     "check:size": "node scripts/check-size.mjs",
     "check:urls": "node scripts/check-urls.mjs",
     "check:manifest": "node scripts/check-manifest.mjs",
+    "check:inject": "node scripts/check-inject.mjs",
     "check:fetch": "node scripts/check-fetch.mjs",
     "check:storage": "node scripts/check-storage.mjs",
     "check:test-only-code": "node scripts/check-test-only-code.mjs",
     "check:file-check": "node scripts/check-file-check.mjs",
-    "check": "npm run build && npm run build:e2e && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:fetch && npm run check:storage && npm run check:file-check && npm run check:test-only-code",
+    "check": "npm run build && npm run build:e2e && npm run check:size && npm run check:urls && npm run check:manifest && npm run check:inject && npm run check:fetch && npm run check:storage && npm run check:file-check && npm run check:test-only-code",
     "test:firefox:private-tabs": "node tests/firefox/private-tabs.mjs",
     "build:firefox-test": "node scripts/build.mjs firefox firefox-test zip"
   },

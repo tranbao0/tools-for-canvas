@@ -52,20 +52,29 @@ describe('the built files', () => {
 describe('injectInpage', () => {
   it('leaves the viewer script out when its switch is off', async () => {
     await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    tabUrls.set(7, 'https://canvas.school.edu/courses/5');
     await injectInpage(7, 'https://canvas.school.edu');
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },
-      files: [INPAGE_FILE],
+      injectImmediately: true,
+      files: [INPAGE_FILE, ASSIGNMENT_VIEW_FILE],
     });
+  });
+
+  it('injects nothing when the page needs no script and the viewer is off', async () => {
+    await toolsSettingsItem.setValue({ ...DEFAULT_TOOLS_SETTINGS, fileViewer: false });
+    await injectInpage(7, 'https://canvas.school.edu');
+    expect(scripting.executeScript).not.toHaveBeenCalled();
   });
   const ORIGIN = 'https://canvas.school.edu';
 
-  it('runs the in-page script in the top frame of the tab', async () => {
+  it('runs the viewer alone in the top frame on Calendar', async () => {
     await injectInpage(7, ORIGIN);
 
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },
-      files: [INPAGE_FILE, '/viewer.js'],
+      files: ['/viewer.js'],
+      injectImmediately: true,
     });
   });
 
@@ -78,6 +87,7 @@ describe('injectInpage', () => {
 
       expect(scripting.executeScript).toHaveBeenCalledWith({
         target: { tabId: 7, frameIds: [0] },
+        injectImmediately: true,
         files: [INPAGE_FILE, DASHBOARD_FILE, ASSIGNMENT_VIEW_FILE, '/viewer.js'],
       });
     },
@@ -90,7 +100,8 @@ describe('injectInpage', () => {
 
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },
-      files: [INPAGE_FILE, '/viewer.js'],
+      injectImmediately: true,
+      files: ['/viewer.js'],
     });
   });
 
@@ -99,7 +110,8 @@ describe('injectInpage', () => {
 
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, documentIds: ['doc-1'] },
-      files: [INPAGE_FILE, '/viewer.js'],
+      injectImmediately: true,
+      files: ['/viewer.js'],
     });
   });
 
@@ -169,8 +181,8 @@ describe('injectViewerIntoOrigin', () => {
     expect(await injectViewerIntoOrigin('https://canvas.school.edu')).toEqual([1, 3]);
 
     expect(scripting.executeScript.mock.calls.map(([details]) => details)).toEqual([
-      { target: { tabId: 1, frameIds: [0] }, files: ['/viewer.js'] },
-      { target: { tabId: 3, frameIds: [0] }, files: ['/viewer.js'] },
+      { target: { tabId: 1, frameIds: [0] }, files: ['/viewer.js'], injectImmediately: true },
+      { target: { tabId: 3, frameIds: [0] }, files: ['/viewer.js'], injectImmediately: true },
     ]);
   });
 
@@ -216,10 +228,12 @@ describe('injectDetectorIntoOpenTabs', () => {
     expect(query).toHaveBeenCalledWith({ url: 'https://*/*' });
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 1 },
+      injectImmediately: true,
       files: [DETECTOR_FILE],
     });
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 2 },
+      injectImmediately: true,
       files: [DETECTOR_FILE],
     });
     expect(scripting.executeScript).toHaveBeenCalledTimes(2);
@@ -259,6 +273,7 @@ describe('anyAutoSavedCanvasTab', () => {
     expect(await anyAutoSavedCanvasTab(tabs)).toBe(true);
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 1 },
+      injectImmediately: true,
       func: isCanvasDocument,
     });
   });
@@ -489,7 +504,8 @@ describe('the assignment view script', () => {
     await injectInpage(7, 'https://canvas.school.edu');
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },
-      files: [INPAGE_FILE, ASSIGNMENT_VIEW_FILE, '/viewer.js'],
+      files: [ASSIGNMENT_VIEW_FILE, '/viewer.js'],
+      injectImmediately: true,
     });
   });
 
@@ -508,7 +524,8 @@ describe('the assignment view script', () => {
     await injectInpage(7, 'https://canvas.school.edu');
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },
-      files: [INPAGE_FILE, '/viewer.js'],
+      files: ['/viewer.js'],
+      injectImmediately: true,
     });
   });
 
@@ -529,7 +546,8 @@ describe('the assignment view script', () => {
     await injectInpage(7, 'https://canvas.school.edu');
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7, frameIds: [0] },
-      files: [INPAGE_FILE, ASSIGNMENT_VIEW_FILE, '/viewer.js'],
+      files: [ASSIGNMENT_VIEW_FILE, '/viewer.js'],
+      injectImmediately: true,
     });
   });
 });

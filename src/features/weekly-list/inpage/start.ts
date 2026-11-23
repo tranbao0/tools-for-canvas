@@ -1,19 +1,4 @@
-/**
- * The in-page entry flow for the content script. See docs/design.md, decisions 4, 5, 11 and 18.
- *
- * 1. Read the saved Canvas origin. The detector and the background save it, not this script.
- *    Neither this script nor any other content script can read or write the extension's storage.
- * 2. Tell the background that a Canvas page loaded, when the page is the saved Canvas.
- * 3. Keep the list in line with the saved address. While the page origin is the saved address,
- *    wait for the page's anchors and mount the list. Otherwise remove it and give the page its
- *    native To Do back. The student cannot turn the list off: a minimized list is a slim bar
- *    that the list itself draws (design decision 18).
- *
- * Every path removes a list that an earlier copy of the script left on the page, so a page that
- * gets no list never keeps a frozen one with a hidden native To Do.
- */
-import { browser } from 'wxt/browser';
-import type { CanvasPageLoadedMessage } from '../data/protocol';
+// The page follows the saved Canvas address and waits for the anchors that hold the list.
 import { logFailure } from '../../../shared/platform/log';
 import { mountWhenReady, removeStaleMount, type InpageMount, type MountOptions } from './mount';
 
@@ -62,19 +47,6 @@ export function attempt(step: string, run: () => void): void {
     run();
   } catch (error) {
     logFailure(step, error);
-  }
-}
-
-/**
- * Tells the background that a page of the saved Canvas loaded, so that it refreshes the planner
- * items (decision 11, "Refresh triggers"). A missing or stopped background is not an error here.
- */
-async function announceCanvasPageLoaded(origin: string): Promise<void> {
-  const message: CanvasPageLoadedMessage = { type: 'weekrow:canvas-page-loaded', origin };
-  try {
-    await browser.runtime.sendMessage(message);
-  } catch {
-    // The background may be updating. The next page load or a focus change refreshes instead.
   }
 }
 
@@ -149,7 +121,6 @@ export async function startInpage(
   // A change that arrives while a read runs is newer than the read.
   const resolved = await choices.origin.getValue();
   if (saved === undefined) saved = resolved;
-  if (isSavedCanvasOrigin(origin, resolved)) void announceCanvasPageLoaded(origin);
   sync();
   return controller;
 }

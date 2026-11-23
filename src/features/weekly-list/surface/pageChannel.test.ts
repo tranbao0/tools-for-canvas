@@ -66,6 +66,22 @@ describe('the choices of the page', () => {
     expect(await channel.settings.getValue()).toEqual(DARK);
   });
 
+  it('shares one read for concurrent startup callers and reads again for a later caller', async () => {
+    const { channel, sent, answerTools } = setup(DARK);
+    answerTools(COLORS_OFF);
+    expect(
+      await Promise.all([
+        channel.choices.origin.getValue(),
+        channel.settings.getValue(),
+        channel.tools.getValue(),
+      ]),
+    ).toEqual([SCHOOL, DARK, COLORS_OFF]);
+    expect(sent).toEqual([{ type: 'weekrow:page-context' }]);
+    await channel.choices.origin.getValue();
+    expect(sent).toHaveLength(2);
+    channel.stop();
+  });
+
   it('give no origin when the background refuses, as for a page that is not the saved Canvas', async () => {
     const { channel } = setup('refuse');
 
@@ -363,12 +379,29 @@ describe('a change that comes before the first read finishes', () => {
       /** Finishes the reads with these numbers (0 is the first read that started). */
       finish: async (...order: number[]) => {
         for (const index of order) {
-          finishers[index]?.();
+          const finish = finishers[index];
+          expect(finish, `Reply for page-context read ${index}`).toBeDefined();
+          finish!();
           await settle();
         }
       },
     };
   }
+
+  it('gives a change listener a fresh reply while an older read is pending', async () => {
+    const { channel, shown, start, change, finish } = slowSetup(OFF);
+    const readAfterChange = vi.fn(() => channel.tools.getValue());
+    channel.watchChanges(readAfterChange);
+
+    change(ON);
+    expect(readAfterChange).toHaveBeenCalledTimes(1);
+    await finish(1);
+    expect(await readAfterChange.mock.results[0]!.value).toEqual(ON);
+
+    await finish(0);
+    await start;
+    expect(shown.tools).toEqual(ON);
+  });
 
   it('ends on the newer value when the newer read finishes first', async () => {
     const { shown, start, change, finish } = slowSetup(OFF);
@@ -431,8 +464,7 @@ describe('a change that comes before the first read finishes', () => {
     ]);
 
     change(ON);
-    // The reads 1, 2 and 3 are the start reads of the settings, the origin and the tools.
-    await finish(4, 1, 2, 3);
+    await finish(1, 0);
     await start;
 
     expect(onSettings).not.toHaveBeenCalled();
@@ -441,15 +473,13 @@ describe('a change that comes before the first read finishes', () => {
 
   it('waits for every caller of a start before it tells the watchers', async () => {
     const { channel, shown, start, change, finish } = slowSetup(OFF);
-    // The read 0 is the tools read of the setup. The reads 1 and 2 are two more callers.
+    change(OFF);
     const more = Promise.all([channel.choices.origin.getValue(), channel.settings.getValue()]);
 
     change(ON);
-    // The change read finishes first, and the start reads one by one: no event may come while a
-    // caller still waits, or the start value of that caller would cover it.
-    await finish(3, 0, 1);
+    await finish(2, 0);
     expect(shown.calls).toEqual([]);
-    await finish(2);
+    await finish(1);
     await Promise.all([start, more]);
 
     expect(shown.calls).toEqual([ON]);

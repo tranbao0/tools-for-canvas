@@ -96,7 +96,8 @@ function ownedRoots(doc: Document, pathname: string): Element[] {
     );
   }
   for (const id of STALE_PANE_IDS) ownNode(doc, id, isPanePlace)?.remove();
-  const roots = new Set<Element>([doc.head]);
+  const roots = new Set<Element>();
+  if (doc.head) roots.add(doc.head);
   if (SUBMISSION_PAGE.test(pathname)) {
     ownNode(doc, 'av-submission-details', isHostPlace)?.remove();
     const buttons = doc.querySelector('.ic-Action-header__Secondary');

@@ -8,12 +8,6 @@ import type { DataMessage } from '../data/protocol';
 import { DEFAULT_SETTINGS } from '../model/types';
 import { createPageChannel } from './pageChannel';
 
-/**
- * The start of the page scripts against the real page channel. A start watches first and then
- * reads at once, and it applies what it read when the last read has finished. A change of the
- * address or of a switch in the middle of that must still end in the state of the newest value.
- */
-
 const ORIGIN = 'https://school.instructure.com';
 
 /** What the background answers: the page is the saved Canvas or is refused, and the switches. */
@@ -57,10 +51,12 @@ function background(mode: 'atSend' | 'atFinish', initial: Store, other: () => un
       store = { ...store, ...patch };
       handler({ type: 'weekrow:changed' });
     },
-    /** Lets the page-context reads with these numbers finish (0 is the first that started). */
-    finish: async (...order: number[]) => {
+    readCount: () => finishers.length,
+    async finish(...order: number[]) {
       for (const index of order) {
-        finishers[index]?.();
+        const finish = finishers[index];
+        expect(finish, `Reply for page-context read ${index}`).toBeDefined();
+        finish!();
         await vi.advanceTimersByTimeAsync(150);
       }
     },
@@ -78,11 +74,8 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-/** One caller: how to start it, what its end state is, and which read is the change read. */
 interface Caller {
   name: string;
-  /** The page-context reads of the start. The change read has this number. */
-  reads: number;
   draw(): void;
   start(channel: ReturnType<typeof background>['channel']): Promise<{ stop(): void }>;
   other(): unknown;
@@ -95,7 +88,6 @@ interface Caller {
 const CALLERS: Caller[] = [
   {
     name: 'the assignment view',
-    reads: 3,
     draw() {
       document.body.innerHTML = `<div class="ig-list"><div class="ig-row" id="assignment_101"><div class="ig-row__layout"><div class="ig-info"><a class="ig-title" href="${ORIGIN}/courses/12/assignments/101">Essay</a></div></div></div></div>`;
     },
@@ -107,7 +99,6 @@ const CALLERS: Caller[] = [
   },
   {
     name: 'the dashboard fixes',
-    reads: 2,
     draw: () => drawDashboard(),
     start: (channel) => startDashboardFixes({ channel, origin: ORIGIN, pathname: '/' }),
     other: () => dashboardData(),
@@ -122,47 +113,43 @@ const CALLERS: Caller[] = [
 ];
 
 describe.each(CALLERS)('the start of $name', (caller) => {
-  /** The numbers of the start reads, and of the read that the change starts. */
-  const startReads = Array.from({ length: caller.reads }, (_, index) => index);
-  const changeRead = caller.reads;
-
   function setup(mode: 'atSend' | 'atFinish', initial: Store) {
     caller.draw();
     const page = background(mode, initial, caller.other);
     // The start waits for its reads, so it is not awaited before the test lets them finish.
     const started = caller.start(page.channel);
+    expect(page.readCount()).toBe(1);
     return { ...page, started };
   }
 
-  describe('a switch that is turned on during the start', () => {
+  describe('a switch that changes around startup', () => {
     const off = (): Store => caller.store(false, true);
 
-    it('shows the fix when the change comes after two reads and the third finishes with it', async () => {
+    it('shows the fix when the switch turns on after the start reply', async () => {
       const page = setup('atFinish', off());
       await page.finish(0);
       page.change(caller.store(true, true));
-      await page.finish(...startReads.slice(1));
       const controller = await page.started;
-      await page.finish(changeRead);
+      await page.finish(1);
       expect(caller.shown()).toBe(true);
       controller.stop();
     });
 
-    it('shows the fix when the change read finishes before the start reads', async () => {
+    it('shows the fix when the change reply arrives before the start reply', async () => {
       const page = setup('atSend', off());
       page.change(caller.store(true, true));
-      await page.finish(changeRead, ...startReads);
+      await page.finish(1, 0);
       const controller = await page.started;
       expect(caller.shown()).toBe(true);
       controller.stop();
     });
 
-    it('shows the fix when the change read finishes after the start reads', async () => {
+    it('shows the fix when the change reply arrives after the start reply', async () => {
       const page = setup('atSend', off());
       page.change(caller.store(true, true));
-      await page.finish(...startReads);
+      await page.finish(0);
       const controller = await page.started;
-      await page.finish(changeRead);
+      await page.finish(1);
       expect(caller.shown()).toBe(true);
       controller.stop();
     });
@@ -170,23 +157,22 @@ describe.each(CALLERS)('the start of $name', (caller) => {
     it('keeps the fix away while the switch stays off', async () => {
       const page = setup('atSend', off());
       page.change(off());
-      await page.finish(...startReads, changeRead);
+      await page.finish(0, 1);
       const controller = await page.started;
       expect(caller.shown()).toBe(false);
       controller.stop();
     });
   });
 
-  describe('an address that changes during the start', () => {
+  describe('an address that changes after the start reply', () => {
     const on = (saved: boolean): Store => caller.store(true, saved);
 
     it('shows the fix when the address becomes the saved one after the first read', async () => {
       const page = setup('atFinish', on(false));
       await page.finish(0);
       page.change(on(true));
-      await page.finish(...startReads.slice(1));
       const controller = await page.started;
-      await page.finish(changeRead);
+      await page.finish(1);
       expect(caller.shown()).toBe(true);
       controller.stop();
     });
@@ -195,12 +181,11 @@ describe.each(CALLERS)('the start of $name', (caller) => {
       const page = setup('atFinish', on(true));
       await page.finish(0);
       page.change(on(false));
-      await page.finish(...startReads.slice(1));
       const controller = await page.started;
-      await page.finish(changeRead);
+      await page.finish(1);
       // A refused read keeps the address until the read after it is refused too.
       await vi.advanceTimersByTimeAsync(1_000);
-      await page.finish(changeRead + 1, changeRead + 2);
+      await page.finish(2);
       expect(caller.shown()).toBe(false);
       controller.stop();
     });
@@ -217,12 +202,11 @@ describe('the assignment view after its start', () => {
   const on = (): Store => view.store(true, true);
   const off = (): Store => view.store(false, true);
 
-  /** A page whose start has ended with the view shown (reads 0 to 2). */
   async function started(mode: 'atSend' | 'atFinish') {
     view.draw();
     const page = background(mode, on(), view.other);
     const controller = view.start(page.channel);
-    await page.finish(0, 1, 2);
+    await page.finish(0);
     await controller;
     expect(view.shown()).toBe(true);
     return { ...page, controller };
@@ -230,13 +214,12 @@ describe('the assignment view after its start', () => {
 
   it('hears a switch change that a read-only read saw first, then the change read', async () => {
     const page = await started('atFinish');
-    // The read 3 is the read of `saveWidth`. The switch goes off before it ends, and the change
-    // read 4 starts.
+    // The width read sees the switch go off before the change read replies.
     const width = page.channel.tools.getValue();
     page.change(off());
-    await page.finish(3);
-    await width;
-    await page.finish(4);
+    await page.finish(1);
+    expect((await width).assignmentView).toBe(false);
+    await page.finish(2);
     expect(view.shown()).toBe(false);
     (await page.controller).stop();
   });
@@ -245,25 +228,23 @@ describe('the assignment view after its start', () => {
     const page = await started('atFinish');
     const width = page.channel.tools.getValue();
     page.change(off());
-    await page.finish(4);
-    await page.finish(3);
-    await width;
+    await page.finish(2, 1);
+    expect((await width).assignmentView).toBe(false);
     expect(view.shown()).toBe(false);
     (await page.controller).stop();
   });
 
   it('hears a withdrawn address while a read never ends, after the bound of 2 s', async () => {
     const page = await started('atFinish');
-    // The read 3 never ends.
+    // The width read stays pending while the change read and its retry are refused.
     void page.channel.tools.getValue();
     page.change({ ...on(), saved: false });
-    await page.finish(4);
+    await page.finish(2);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(view.shown()).toBe(true);
-    await vi.advanceTimersByTimeAsync(1_200);
-    // The refused read 4 kept the address, and the read after it is refused too.
-    await page.finish(5);
-    await vi.advanceTimersByTimeAsync(2_200);
+    await page.finish(3);
+    expect(view.shown()).toBe(true);
+    await vi.advanceTimersByTimeAsync(900);
     expect(view.shown()).toBe(false);
     (await page.controller).stop();
   });
@@ -272,106 +253,40 @@ describe('the assignment view after its start', () => {
     view.draw();
     const page = background('atSend', off(), view.other);
     const controller = view.start(page.channel);
-    await page.finish(0, 2);
-    // The switch goes on. The tools read of the start (1) still holds the old answer.
     page.change(on());
-    await page.finish(3);
-    await vi.advanceTimersByTimeAsync(2_200);
     await page.finish(1);
+    await vi.advanceTimersByTimeAsync(2_200);
+    await page.finish(0);
     expect(view.shown()).toBe(true);
     (await controller).stop();
   });
 });
 
-/**
- * The start pattern of a page script with a slow last read: the hold bound announces while a
- * caller still waits, and that caller applies its older answer afterwards. The next announce
- * must still bring the newest value over it.
- */
-describe('a start whose last read outlasts the hold bound', () => {
-  const SCHOOL = 'https://school.instructure.com';
+describe.each(CALLERS)('a slow start of $name', (caller) => {
+  it('keeps the switch on after a late start reply applies the old value', async () => {
+    caller.draw();
+    const off = caller.store(false, true);
+    const on = caller.store(true, true);
+    const page = background('atSend', off, caller.other);
 
-  function setup(reads: 'assignment' | 'dashboard') {
-    let stored: ToolsSettings = { ...DEFAULT_TOOLS_SETTINGS, assignmentView: false };
-    const finishers: (() => void)[] = [];
-    let handler: (message: unknown) => void = () => undefined;
-    const channel = createPageChannel({
-      pageOrigin: SCHOOL,
-      send(message: DataMessage) {
-        if (message.type !== 'weekrow:page-context') return Promise.resolve({ ok: true });
-        return new Promise((resolve) =>
-          finishers.push(() =>
-            resolve({ settings: DEFAULT_SETTINGS, tools: structuredClone(stored) }),
-          ),
-        );
-      },
-      listen(next: (message: unknown) => void) {
-        handler = next;
-        return () => undefined;
-      },
-    });
-    const state = { enabled: false };
-    channel.choices.origin.watch(() => undefined);
-    channel.tools.watch((tools) => {
-      state.enabled = tools.assignmentView;
-    });
-    channel.settings.watch(() => undefined);
-    const pending =
-      reads === 'assignment'
-        ? [channel.choices.origin.getValue(), channel.tools.getValue(), channel.settings.getValue()]
-        : [channel.tools.getValue(), channel.choices.origin.getValue()];
-    const toolsAt = reads === 'assignment' ? 1 : 0;
-    const start = Promise.all(pending).then((values) => {
-      state.enabled = (values[toolsAt] as ToolsSettings).assignmentView;
-    });
-    const settle = async () => {
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(0);
-    };
-    return {
-      state,
-      start,
-      settle,
-      async finish(index: number) {
-        finishers[index]!();
-        await settle();
-      },
-      turnOn() {
-        stored = { ...stored, assignmentView: true };
-        handler({ type: 'weekrow:changed' });
-      },
-    };
-  }
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('keeps a switch turned on during the start of the assignment view (H)', async () => {
-    const page = setup('assignment');
+    // Give the watchers a baseline so the change can be announced while the start waits.
+    const baseline = page.channel.choices.origin.getValue();
     await page.finish(0);
-    await page.finish(1);
-    page.turnOn();
-    await page.finish(3);
-    await vi.advanceTimersByTimeAsync(2200);
-    await page.finish(2);
-    await page.start;
-    await page.settle();
-    expect(page.state.enabled).toBe(true);
-  });
+    await baseline;
 
-  it('keeps a switch turned on during the start of the dashboard fixes (H-dash)', async () => {
-    const page = setup('dashboard');
-    await page.finish(0);
-    page.turnOn();
+    const onTools = vi.fn();
+    const unwatch = page.channel.tools.watch(onTools);
+    const start = caller.start(page.channel);
+    page.change(on);
     await page.finish(2);
-    await vi.advanceTimersByTimeAsync(2200);
+    expect(onTools).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2_200);
+    expect(onTools.mock.calls).toEqual([[on.tools]]);
+
     await page.finish(1);
-    await page.start;
-    await page.settle();
-    expect(page.state.enabled).toBe(true);
+    expect(onTools.mock.calls).toEqual([[on.tools], [on.tools]]);
+    expect(caller.shown()).toBe(true);
+    (await start).stop();
+    unwatch();
   });
 });

@@ -701,7 +701,7 @@ The extension links to Canvas by itself and works right after install, with no s
     The extension never stores or sends that value.
 - `action`, with no popup
 - `side_panel` on Chrome and Edge, and `sidebar_action` on Firefox
-- One static content script, the Canvas detector, on `https://*/*` in the top frame only.
+- One static content script, the Canvas detector, runs at `document_start` on `https://*/*` in the top frame only.
 
 **Why:**
 
@@ -715,13 +715,19 @@ The extension links to Canvas by itself and works right after install, with no s
   The store listing and the privacy policy explain why: Canvas runs on many school domains.
 - The detector runs on every https page, so it must stay tiny and harmless:
   - It reads only Canvas markers in the page: `#application.ic-app`, or an inline script that sets both `ENV` and `INST`.
-  - It reads no other page content, sends nothing anywhere, and stops at once on a page that is not Canvas.
-  - On a Canvas page it asks the background to inject the full in-page script with `scripting.executeScript`, so other sites never load the list code.
+  - It watches additions to the document until a Canvas marker and the body appear, or until `DOMContentLoaded`.
+    A page with no Canvas marker sends no report.
+  - On a Canvas page it tells the background which origin it found.
+    The background recognizes the saved address while the session cache loads.
+    On the saved Canvas, the background starts the page-load refresh and injects the scripts for that path.
+    The weekly list script goes into the dashboard and course home pages, where the list can mount.
+    The other scripts go into the pages that use their tools.
+    Every `scripting.executeScript` call sets `injectImmediately: true`.
   - The detector accepts only a successful reply and retries a rejected, empty or unanswered report at most twice.
-    Each attempt waits at most 1.25 seconds, with delays of 250 and 500 milliseconds before the retries.
-    The background reports an injection failure to the detector so it can retry.
-    The existing guard retires any stale copy when a retry injects again.
-  - A CI check keeps the detector under 2 KB gzip.
+    Each attempt waits at most 4 seconds, with delays of 250 and 500 milliseconds before the retries.
+    Concurrent reports from the same tab and document share the pending injection.
+    A failed injection is available to retry.
+  - CI checks the detector's start time, the immediate injection option and the detector's 2 KB gzip limit.
 
 **Seamless first run:**
 
@@ -787,7 +793,9 @@ The extension links to Canvas by itself and works right after install, with no s
 - The background checks every stored value when it reads it, and uses the default for a field that is not valid.
 - The in-page script has no storage access.
   It talks to the background only through messages, and the background answers only the top frame of the saved Canvas:
-  - `page-context` returns the settings and the week the list needs.
+  - `page-context` returns the list settings and the tool switches.
+    The background reads both in parallel, and concurrent reads in a page channel share one pending request.
+    A new change message or write starts a new read cycle.
   - `save-settings` and `mark-note-seen` change only the fields the in-page list can change, with size limits.
   - The background sends `changed` to the Canvas tab when the data or the settings change.
   - The page channel numbers its reads and keeps only the newest answer, so an older reply never overwrites a newer value.
@@ -1455,7 +1463,7 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   A failed reload keeps the old session data unless Canvas refuses access or the user changes.
   With no course in the old data, the reload is all that the round does, so its failure fails the round, and the surface shows "Couldn't load your list" with Retry.
 
-- A "Canvas page loaded" message from the content script, or a window that gains focus, refreshes the planner items of the current-week range only.
+- A detector report from the saved Canvas, or a window that gains focus, refreshes the planner items of the current-week range only.
   This covers sign-in, submissions and done marks made in Canvas itself.
 - A 5-minute timer refreshes the current-week range and everything else: the assignment details of its items, the undated work and the override list.
 - Rounds do not reload the other weeks that the student opened.

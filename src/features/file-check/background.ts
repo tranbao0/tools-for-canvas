@@ -338,6 +338,7 @@ export const browserFileCheckHost: FileCheckHost = {
     const [injected] = await browser.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: scanPage,
+      injectImmediately: true,
       args: [origin],
     });
     return injected?.result;
@@ -346,6 +347,7 @@ export const browserFileCheckHost: FileCheckHost = {
     const [injected] = await browser.scripting.executeScript({
       target: { tabId, frameIds: [0] },
       func: runFrameProbe,
+      injectImmediately: true,
       args: [nonce, PROBE_TIMEOUT_MS, origin],
     });
     return injected?.result;

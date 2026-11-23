@@ -81,6 +81,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   const toolsListeners = new Set<(tools: ToolsSettings) => void>();
   let last: PageContext | null = null;
   let retry: ReturnType<typeof setTimeout> | null = null;
+  let pending: { number: number; result: Promise<PageContext> } | undefined;
 
   /**
    * Asks the background. A refusal means that the page is not the saved Canvas, but a background
@@ -194,9 +195,12 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
    * first read is not lost.
    */
   async function refresh(wanted?: keyof PageContext, final = false): Promise<PageContext> {
-    const number = ++started;
     if (wanted !== undefined) waiting += 1;
-    const next = await read(final);
+    const current = (!final && pending) || { number: ++started, result: read(final) };
+    if (!final) pending = current;
+    const { number, result } = current;
+    const next = await result;
+    if (pending === current) pending = undefined;
     if (number > kept) {
       kept = number;
       if (last !== null) {
@@ -218,6 +222,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
 
   const stopListening = deps.listen((message) => {
     if (!isPageChangedMessage(message)) return;
+    pending = undefined;
     for (const listener of [...changeListeners]) listener();
     // A change can be of the address or the settings, which the page flow follows.
     refresh().catch(() => undefined);
@@ -231,6 +236,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   const settings: PageChannel['settings'] = {
     getValue: async () => (await refresh('settings')).settings,
     async setValue(next) {
+      pending = undefined;
       await deps.send({ type: 'weekrow:save-settings', settings: next });
     },
     watch: (listener) => subscribe(settingsListeners, listener),
@@ -239,6 +245,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   const tools: PageChannel['tools'] = {
     getValue: async () => (await refresh('tools')).tools,
     async setValue(next) {
+      pending = undefined;
       await deps.send({ type: 'weekrow:save-tools', tools: next });
     },
     watch: (listener) => subscribe(toolsListeners, listener),
@@ -256,6 +263,7 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
     settings,
     watchChanges: (listener) => subscribe(changeListeners, listener),
     async markNoteSeen(note) {
+      pending = undefined;
       await deps.send({ type: 'weekrow:mark-note-seen', note });
     },
     stop() {

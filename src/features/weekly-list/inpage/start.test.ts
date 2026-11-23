@@ -71,30 +71,14 @@ describe('isSavedCanvasOrigin', () => {
 });
 
 describe('startInpage', () => {
-  it('still mounts when the background does not answer the page-loaded message', async () => {
-    sendMessage.mockRejectedValueOnce(new Error('Could not establish connection.'));
-    await canvasOriginItem.setValue(CUSTOM);
-    loadPage(document, COURSE_HOME);
-    await start({ origin: CUSTOM, pathname: '/courses/5' });
-
-    expect(sendMessage).toHaveBeenCalledWith({
-      type: 'weekrow:canvas-page-loaded',
-      origin: CUSTOM,
-    });
-    expect(mounts).toHaveLength(1);
-  });
-
-  it('mounts on the saved Canvas and tells the background that the page loaded', async () => {
+  it('mounts on the saved Canvas', async () => {
     await canvasOriginItem.setValue(CUSTOM);
     loadPage(document, COURSE_HOME);
     await start({ origin: CUSTOM, pathname: '/courses/5' });
 
     expect(mounts).toHaveLength(1);
     expect(mounts[0]?.courseId).toBe('5');
-    expect(sendMessage).toHaveBeenCalledWith({
-      type: 'weekrow:canvas-page-loaded',
-      origin: CUSTOM,
-    });
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it('does nothing on a Canvas host that is not the saved address', async () => {

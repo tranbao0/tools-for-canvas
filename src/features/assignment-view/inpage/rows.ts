@@ -210,6 +210,7 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
   /** Adds a button to each assignment row that has none, and forgets the rows that left the page. */
   function pass(): void {
     if (!active || stopped) return;
+    if (style && !style.isConnected) doc.head?.append(style);
     for (const [row, state] of states) {
       if (row.isConnected && state.button.isConnected && state.layout.isConnected) {
         // Canvas can add a control to the layout after the button, and the button stays last.
@@ -272,12 +273,11 @@ export function createRowsEngine(options: RowsOptions): RowsEngine {
       style.id = STYLE_ID;
       style.setAttribute(OWN, '');
       style.textContent = PAGE_CSS;
-      doc.head.append(style);
       pass();
       observer = new MutationObserver((records) => {
         if (isForeign(records)) schedule();
       });
-      observer.observe(doc.body, { childList: true, subtree: true });
+      observer.observe(doc.body ?? doc, { childList: true, subtree: true });
     },
     setOpen(next) {
       shown = next;

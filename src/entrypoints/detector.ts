@@ -2,16 +2,47 @@ import { browser } from 'wxt/browser';
 import type { CanvasDetectedMessage } from '@/features/weekly-list/data/protocol';
 import { isCanvasDocument } from '@/shared/platform/detectCanvas';
 
-/**
- * The Canvas detector (decision 5). The manifest lists it as the one static content script, for
- * the top frame of every https page. It is an unlisted script, not a WXT content script, because
- * the content script wrapper of WXT posts a message with the extension id to every page.
- *
- * It stays tiny and reads only the Canvas markers. On a Canvas page it tells the background the
- * page origin, and the background decides what happens next. On any other page it does nothing.
- */
+function waitForCanvas(): boolean | Promise<boolean> {
+  let hasCanvas = isCanvasDocument();
+  if (document.readyState !== 'loading') return hasCanvas;
+  if (hasCanvas && document.body !== null) return true;
+
+  return new Promise((resolve) => {
+    const observer = new MutationObserver((records) => {
+      hasCanvas ||= document.getElementById('application')?.classList.contains('ic-app') === true;
+      if (!hasCanvas) {
+        for (const record of records) {
+          // The parser can add the text in a separate mutation from its script element.
+          if (isCanvasScript(record.target) || Array.from(record.addedNodes).some(isCanvasScript)) {
+            hasCanvas = true;
+            break;
+          }
+        }
+      }
+      if (hasCanvas && document.body !== null) finish(true);
+    });
+    function finish(found: boolean): void {
+      observer.disconnect();
+      document.removeEventListener('DOMContentLoaded', onLoaded);
+      resolve(found);
+    }
+    function onLoaded(): void {
+      finish(document.body !== null && isCanvasDocument());
+    }
+    observer.observe(document.documentElement ?? document, { childList: true, subtree: true });
+    document.addEventListener('DOMContentLoaded', onLoaded);
+  });
+}
+
+function isCanvasScript(node: Node): boolean {
+  if (!(node instanceof HTMLScriptElement) || node.hasAttribute('src')) return false;
+  const text = node.textContent ?? '';
+  return /(?:^|[\s;])ENV\s*=/.test(text) && /(?:^|[\s;])INST\s*=/.test(text);
+}
+
+// The manifest runs this unlisted script in the top frame of every HTTPS page.
 export default defineUnlistedScript(async () => {
-  if (!isCanvasDocument()) return;
+  if (!(await waitForCanvas())) return;
   const message: CanvasDetectedMessage = {
     type: 'weekrow:canvas-detected',
     origin: location.origin,
@@ -23,7 +54,7 @@ export default defineUnlistedScript(async () => {
       const reply: unknown = await Promise.race([
         browser.runtime.sendMessage(message),
         new Promise((resolve) => {
-          timer = setTimeout(resolve, 1250);
+          timer = setTimeout(resolve, 4000);
         }),
       ]);
       if (typeof reply === 'object' && reply !== null && 'ok' in reply && reply.ok === true) return;

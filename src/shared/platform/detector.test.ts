@@ -28,7 +28,10 @@ beforeEach(() => {
   window.happyDOM.setURL('https://canvas.school.edu/courses/5');
 });
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe('the detector script', () => {
   it('tells the background the page origin on a Canvas page, and nothing else', async () => {
@@ -47,6 +50,56 @@ describe('the detector script', () => {
     await runDetector();
 
     expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a Canvas root added during parsing before DOMContentLoaded', async () => {
+    vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+    const disconnect = vi.spyOn(MutationObserver.prototype, 'disconnect');
+    const running = detector.main();
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    document.body.innerHTML = CANVAS_ROOT;
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    await running;
+  });
+
+  it('waits for the body after an inline Canvas marker arrives', async () => {
+    vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+    const body = document.body;
+    const bodyRead = vi
+      .spyOn(document, 'body', 'get')
+      .mockReturnValue(null as unknown as HTMLElement);
+    const running = detector.main();
+    const script = document.createElement('script');
+    document.head.append(script);
+    script.textContent = 'INST = {}; ENV = {};';
+    await vi.advanceTimersByTimeAsync(10);
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    bodyRead.mockReturnValue(body);
+    body.append(document.createElement('main'));
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    await running;
+  });
+
+  it('stops observing a non-Canvas page at DOMContentLoaded', async () => {
+    vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+    const disconnect = vi.spyOn(MutationObserver.prototype, 'disconnect');
+    const unlisten = vi.spyOn(document, 'removeEventListener');
+    const running = detector.main();
+
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await running;
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(unlisten).toHaveBeenCalledWith('DOMContentLoaded', expect.any(Function));
+    document.body.innerHTML = CANVAS_ROOT;
+    await vi.advanceTimersByTimeAsync(10);
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it('sends nothing on a page that is not Canvas', async () => {
@@ -91,7 +144,7 @@ describe('the detector script', () => {
     const started = Date.now();
     await runDetector();
     expect(sendMessage).toHaveBeenCalledTimes(3);
-    expect(Date.now() - started).toBe(response === 'pending' ? 4500 : 750);
+    expect(Date.now() - started).toBe(response === 'pending' ? 12_750 : 750);
     expect(vi.getTimerCount()).toBe(0);
   });
 

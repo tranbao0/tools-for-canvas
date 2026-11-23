@@ -800,6 +800,31 @@ describe('routeDataMessage', () => {
     expect(host.openWelcomePrompt).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, 'doc-9'])(
+    'shares a pending injection and retries after failure for %s',
+    async (documentId) => {
+      const pending = Promise.withResolvers<void>();
+      host.injectInpage.mockReturnValueOnce(pending.promise);
+      const refresh = Promise.withResolvers<void>();
+      owner.pageLoaded.mockReturnValueOnce(refresh.promise);
+      const message = { type: 'weekrow:canvas-detected', origin: SAVED };
+      const sender = { ...CONTENT_SCRIPT, documentId };
+      const report = () => routeDataMessage(owner, message, sender, host);
+      const replies = Promise.allSettled([report(), report()]);
+      await Promise.resolve();
+      pending.reject(new Error('no access'));
+      try {
+        expect(await replies).toMatchObject([{ status: 'rejected' }, { status: 'rejected' }]);
+        expect(host.injectInpage).toHaveBeenCalledTimes(1);
+        expect(owner.pageLoaded).toHaveBeenCalledExactlyOnceWith(SAVED, 3);
+        await expect(report()).resolves.toEqual({ ok: true });
+        expect(host.injectInpage).toHaveBeenCalledTimes(2);
+      } finally {
+        refresh.resolve();
+      }
+    },
+  );
+
   it('puts no script into a tab of another Canvas than the saved one', async () => {
     // The owner keeps the saved address and stores an offer for the panel.
     owner.canvasDetected.mockResolvedValueOnce('other');

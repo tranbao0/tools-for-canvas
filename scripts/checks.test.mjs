@@ -10,6 +10,7 @@ import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { CHECK_MARKERS, findCheckTraces } from './check-file-check.mjs';
+import { findDeferredInjections } from './check-inject.mjs';
 import { checkManifest } from './check-manifest.mjs';
 import { manifestVersion } from './lib/build-mode.mjs';
 import {
@@ -108,7 +109,7 @@ const CHROME_MANIFEST = {
   minimum_chrome_version: '147',
   background: { service_worker: 'background.js' },
   side_panel: { default_path: 'sidepanel.html' },
-  content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_idle' }],
+  content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_start' }],
 };
 
 const FIREFOX_MANIFEST = {
@@ -130,7 +131,7 @@ const FIREFOX_MANIFEST = {
   },
   background: { scripts: ['background.js'] },
   sidebar_action: { default_panel: 'sidepanel.html', open_at_install: false },
-  content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_idle' }],
+  content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_start' }],
 };
 
 const BUILT_FILES = new Set([
@@ -362,6 +363,24 @@ describe('check-urls', () => {
   });
 });
 
+describe('check-inject', () => {
+  test('requires true on each script injection', () => {
+    const source = [
+      '// scripting.executeScript({})',
+      'browser.scripting.executeScript({ injectImmediately: true });',
+      'browser.scripting.executeScript({ target: {}, func: () => ({ injectImmediately: true }) });',
+      'browser.scripting["executeScript"]({ injectImmediately: false });',
+      'browser.scripting.executeScript({ injectImmediately: true, ...options });',
+    ].join('\n');
+    const problem = (line) => `page.ts:${line}: executeScript requires injectImmediately: true`;
+    assert.deepEqual(findDeferredInjections('page.ts', source), [
+      problem(3),
+      problem(4),
+      problem(5),
+    ]);
+  });
+});
+
 describe('check-manifest', () => {
   test('accepts manifests that follow the design', () => {
     assert.deepEqual(checkManifest('chrome', CHROME_MANIFEST, exists), []);
@@ -399,9 +418,14 @@ describe('check-manifest', () => {
       /top frame of a page only/,
     ],
     [
-      'a detector that runs at document start',
-      (m) => (m.content_scripts[0].run_at = 'document_start'),
-      /run_at is "document_start"/,
+      'a detector that runs at document idle',
+      (m) => (m.content_scripts[0].run_at = 'document_idle'),
+      /run_at is "document_idle", expected "document_start"/,
+    ],
+    [
+      'a detector that runs at document end',
+      (m) => (m.content_scripts[0].run_at = 'document_end'),
+      /run_at is "document_end", expected "document_start"/,
     ],
     ['no content script', (m) => delete m.content_scripts, /content_scripts has 0 entries/],
     [

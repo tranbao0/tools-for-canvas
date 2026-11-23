@@ -4215,9 +4215,12 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
 
     canvasDetected(origin) {
       return changingAddress(async (): Promise<Detection> => {
-        await ready();
         const saved = await savedOrigin();
-        if (origin === saved) return 'saved';
+        if (origin === saved) {
+          void ready().catch((error: unknown) => deps.log('cache load', error));
+          return 'saved';
+        }
+        await ready();
         if (!isUsableOrigin(origin)) return 'other';
         if (saved === null) {
           if (!canAutoSaveOrigin(origin, saved)) {

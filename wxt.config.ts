@@ -169,7 +169,7 @@ export default defineConfig({
     host_permissions: ['https://*/*'],
     // The detector is the one static content script. It is an unlisted script that WXT builds as
     // `detector.js` without the content script wrapper, which posts a message to every page.
-    content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_idle' }],
+    content_scripts: [{ matches: ['https://*/*'], js: ['detector.js'], run_at: 'document_start' }],
     // The probe page of the file access check, for the iframe that the check adds to the saved
     // Canvas. The match pattern cannot name the saved Canvas, so the background injects the
     // iframe into that origin only. Chromium gives the page a session address with

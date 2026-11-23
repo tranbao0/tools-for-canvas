@@ -38,6 +38,7 @@ describe('the File viewer switch in the background', () => {
     expect(scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 1, frameIds: [0] },
       files: ['/viewer.js'],
+      injectImmediately: true,
     });
   });
 
