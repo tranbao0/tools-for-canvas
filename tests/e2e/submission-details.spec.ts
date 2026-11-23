@@ -2951,7 +2951,7 @@ test('the Submission Details page reads again after 2 seconds when the first rea
   expect(gap).toBeLessThan(RETRY_GAP_MS.max);
 });
 
-test('the Submission Details page stops after two failed reads', async ({
+test('the Submission Details page stops after three failed reads', async ({
   context,
   page,
   background,
@@ -2963,18 +2963,18 @@ test('the Submission Details page stops after two failed reads', async ({
     99,
   );
   let failures = 0;
-  const secondFailure = new Promise<void>((resolve) => {
+  const thirdFailure = new Promise<void>((resolve) => {
     page.on('console', (message) => {
-      if (message.text().includes('[weekrow] submission details failed') && ++failures === 2)
+      if (message.text().includes('[weekrow] submission details failed') && ++failures === 3)
         resolve();
     });
   });
   await open(context, page, background, { extra: [route] });
-  await expect.poll(() => times.length).toBe(2);
-  await secondFailure;
-  await productTimerElapsed(page, 2100);
+  await expect.poll(() => times.length).toBe(3);
+  await thirdFailure;
+  await productTimerElapsed(page, 2600);
   await requestsQuiet(page, times, background);
-  expect(times).toHaveLength(2);
+  expect(times).toHaveLength(3);
   await expect(host(page)).toHaveCount(0);
 });
 
@@ -2998,7 +2998,7 @@ test('the Submission box reads again after 2 seconds when the first read fails',
   expect(gap).toBeLessThan(RETRY_GAP_MS.max);
 });
 
-test('the Submission box stops after two failed reads', async ({ context, page, background }) => {
+test('the Submission box stops after three failed reads', async ({ context, page, background }) => {
   const records = rawRecords(details());
   records.submission.user_id = '42';
   const { route, times } = failingRoute(
@@ -3007,18 +3007,18 @@ test('the Submission box stops after two failed reads', async ({ context, page, 
     99,
   );
   let failures = 0;
-  const secondFailure = new Promise<void>((resolve) => {
+  const thirdFailure = new Promise<void>((resolve) => {
     page.on('console', (message) => {
-      if (message.text().includes('[weekrow] submission sidebar failed') && ++failures === 2)
+      if (message.text().includes('[weekrow] submission sidebar failed') && ++failures === 3)
         resolve();
     });
   });
   await openSidebar(context, page, background, { extra: [route] });
-  await expect.poll(() => times.length).toBe(2);
-  await secondFailure;
-  await productTimerElapsed(page, 2100);
+  await expect.poll(() => times.length).toBe(3);
+  await thirdFailure;
+  await productTimerElapsed(page, 2600);
   await requestsQuiet(page, times, background);
-  expect(times).toHaveLength(2);
+  expect(times).toHaveLength(3);
   await expect(
     page.locator('#sidebar_content a[href*="download="] > [data-av-original]'),
   ).toHaveCount(0);

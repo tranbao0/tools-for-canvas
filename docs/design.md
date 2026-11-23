@@ -796,6 +796,8 @@ The extension links to Canvas by itself and works right after install, with no s
   - `page-context` returns the list settings and the tool switches.
     The background reads both in parallel, and concurrent reads in a page channel share one pending request.
     A new change message or write starts a new read cycle.
+    Each attempt waits up to four seconds for a reply.
+    Three retries give a restarting worker time to answer before the page drops the saved address.
   - `save-settings` and `mark-note-seen` change only the fields the in-page list can change, with size limits.
   - The background sends `changed` to the Canvas tab when the data or the settings change.
   - The page channel numbers its reads and keeps only the newest answer, so an older reply never overwrites a newer value.
@@ -1498,6 +1500,9 @@ If the live gate test (decision 13) fails on a browser, that browser uses these 
   The frame never goes away during a load: the header, the arrows, the span control and the settings stay on screen and work.
   Once the session data is in, a span change, a switch to Month and the first minute after midnight never replace the list with a loading state.
   Only the first load, before the session data arrives, shows the header with a spinner.
+  A visible list that is still loading asks for its state up to five more times, with longer waits between attempts.
+  If the owner gives a retry time, the list waits until that time.
+  Either a weekly state read or a checked dashboard data read can start the first round.
 - The days of the shown span load nearest to today first, in chunks of 7, 7 and then 14 days, at the highest priority.
   A span after today loads from its first day on, and a span before today from its last day back.
   For the span that starts today, the days up to the end of the range, which the look-ahead of a one-day span shows, load with it.
@@ -2092,6 +2097,9 @@ The dashboard uses the origin that the router checks and shares the session fing
 The extension reads both session cookies there to compare their salted fingerprints.
 It never stores or sends their values.
 The cache writes of the weekly list follow the cookie rule of decision 11, and the dashboard reads only what that rule let into the cache.
+While the visible dashboard waits for its first student, it retries the data read up to five times.
+The first reply that names the student also retries failed pages of the Announcements and People widgets.
+Each request for a page times out after 30 seconds and follows the normal failure path.
 
 | Switch | Fix |
 |---|---|
@@ -4005,9 +4013,9 @@ So a student switches pages to read the instructions next to the feedback on a f
     An entry keeps the asset key, the kind (`turnitin`, `originality_report` or `vericite`), the score, the state, the status, the error message, and whether every field has a type that the view can show.
     The report addresses of Canvas (`view_report_url`) and the other fields of the entries stay in the background.
   - The reply holds the details and the time zone of the Canvas profile.
-  - The Submission Details page and the Submission box of the assignment page try a failed read once more after 2 seconds.
+  - The Submission Details page and the Submission box of the assignment page try a failed read again after 2 seconds, and once more 2.5 seconds after that.
     A failed read is a message that the messaging rejects, or a reply of `null` or `undefined`, because the data router answers every error of the owner with `undefined`, which Chrome delivers as `null` and Firefox as `undefined`.
-    A refusal (`no_submission_access`) is no failed read and gets no second try.
+    A refusal (`no_submission_access`) is no failed read and gets no other try.
   - The Submission Details page uses the same message and reply, and so does the refresh of the pane, which compares `submitted_at`, `workflow_state` and `attempt`.
 - **Rows.**
   - A row counts when it is `div.ig-row` with the id `assignment_<assignment id>`, a layout `.ig-row__layout`, and a title link `a.ig-title` to the same course and assignment on the saved Canvas.

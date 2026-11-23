@@ -136,6 +136,7 @@ export function createPagedLists<Row, Filter>(options: PagedListsOptions<Row, Fi
   let epoch = 0;
   /** The lists that asked for a page while a hold was on. */
   const waiting = new Set<PagedList<Row, Filter>>();
+  const cancelReads = new Map<PagedList<Row, Filter>, () => void>();
 
   const changed = (): void => {
     if (!disposed) options.changed();
@@ -169,15 +170,32 @@ export function createPagedLists<Row, Filter>(options: PagedListsOptions<Row, Fi
     else void request(state);
   }
 
+  async function loadPage(state: PagedList<Row, Filter>, offset: number) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await new Promise<PageResult<Row> | undefined>((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('Page read timed out')), 30_000);
+        cancelReads.set(state, () => {
+          clearTimeout(timer);
+          resolve(undefined);
+        });
+        options.load(state.filter, offset).then(resolve, reject);
+      });
+    } finally {
+      clearTimeout(timer);
+      cancelReads.delete(state);
+    }
+  }
+
   async function request(state: PagedList<Row, Filter>): Promise<void> {
     const first = !state.started;
     const seen = epoch;
     state.status = 'loading';
     changed();
     try {
-      const page = await options.load(state.filter, first ? 0 : offsetOf(state));
+      const page = await loadPage(state, first ? 0 : offsetOf(state));
       // A list that was forgotten has no say any more.
-      if (lists.get(state.key) !== state) return;
+      if (page === undefined || lists.get(state.key) !== state) return;
       if (seen !== epoch) {
         // A hold began or ended while the page was on its way, so the offset of the request may
         // not fit the set of the server. The page is asked for again.
@@ -244,6 +262,7 @@ export function createPagedLists<Row, Filter>(options: PagedListsOptions<Row, Fi
     forget(state: PagedList<Row, Filter>): void {
       lists.delete(state.key);
       waiting.delete(state);
+      cancelReads.get(state)?.();
     },
     /** Whether the memory still holds this list. */
     has(state: PagedList<Row, Filter>): boolean {
@@ -278,6 +297,7 @@ export function createPagedLists<Row, Filter>(options: PagedListsOptions<Row, Fi
       disposed = true;
       lists = new Map();
       waiting.clear();
+      for (const cancel of cancelReads.values()) cancel();
     },
   };
 }

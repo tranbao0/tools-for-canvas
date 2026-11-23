@@ -226,10 +226,10 @@ describe('the Submission box of the assignment page', () => {
       expect(document.querySelector('[data-av-original]')).not.toBeNull();
     });
 
-    it('asks only once more when that read fails too', async () => {
+    it('limits rejected reads to three attempts', async () => {
       failing().setActive(true);
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(send).toHaveBeenCalledTimes(2);
+      await vi.runAllTimersAsync();
+      expect(send).toHaveBeenCalledTimes(3);
     });
 
     it('asks no more when the switch went off before the second read', async () => {
@@ -240,7 +240,7 @@ describe('the Submission box of the assignment page', () => {
       expect(send).toHaveBeenCalledTimes(1);
     });
 
-    it('asks once more after 2 seconds for the reply of a router whose owner failed, and then gives up', async () => {
+    it('retries after 2 seconds for a routed failure and stops after three reads', async () => {
       const router = sendToFailingRouter(ORIGIN);
       failing();
       send.mockImplementation(async (message) => router.send(message));
@@ -249,8 +249,8 @@ describe('the Submission box of the assignment page', () => {
       expect(send).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(1);
       expect(send).toHaveBeenCalledTimes(2);
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(send).toHaveBeenCalledTimes(2);
+      await vi.runAllTimersAsync();
+      expect(send).toHaveBeenCalledTimes(3);
       router.stop();
     });
 
@@ -419,4 +419,21 @@ describe('the similarity score beside a file', () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(sidebar().querySelectorAll('a[data-state]')).toHaveLength(1);
   });
+});
+
+it('treats the sidebar when the third read succeeds', async () => {
+  vi.useFakeTimers();
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    start();
+    send.mockRejectedValueOnce(new Error('Worker stopped')).mockResolvedValueOnce(undefined);
+    engine.setActive(true);
+    await vi.runAllTimersAsync();
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(document.querySelector('[data-av-original]')).not.toBeNull();
+  } finally {
+    engine.stop();
+    warn.mockRestore();
+    vi.useRealTimers();
+  }
 });

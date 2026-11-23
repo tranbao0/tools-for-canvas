@@ -196,6 +196,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   let stopped = false;
   /** Names the start that may draw, so an older answer cannot draw after a newer start. */
   let generation = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let feedbackClick = 0;
   /** The style element of the view. It stays through a change of the mode. */
   let style: HTMLStyleElement | null = null;
@@ -262,6 +263,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   function clear(): void {
     ++generation;
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
     opened.clear();
     stopFrame?.();
     stopFrame = null;
@@ -668,7 +671,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     if (readFrame(anchors.frame, origin, pathname).state === 'ready') watchReports();
   }
 
-  async function start(retry = true, confirmUntil = Date.now() + 60000): Promise<void> {
+  async function start(attempt = 0, confirmUntil = Date.now() + 60000): Promise<void> {
+    retryTimer = undefined;
     const token = ++generation;
     if (!findAnchors(doc)) return;
     let reply: unknown;
@@ -679,10 +683,10 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
         if (token !== generation || stopped || !active || Date.now() >= confirmUntil) return;
         if (identity.verdict !== 'yes') {
           if (identity.verdict === 'unknown') {
-            setTimeout(
+            retryTimer = setTimeout(
               () => {
                 if (token === generation && !stopped && active && Date.now() < confirmUntil)
-                  void start(retry, confirmUntil);
+                  void start(attempt, confirmUntil);
               },
               Math.min(RETRY_MS, confirmUntil - Date.now()),
             );
@@ -701,12 +705,11 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
       if (reply == null) throw new Error('The background gave no reply');
     } catch (error) {
       logFailure('submission details', error);
-      // A read that failed gets one more try. A switch-off, a new start or a change of student
-      // in the meantime changes the generation and ends it.
-      if (retry) {
-        setTimeout(() => {
-          if (token === generation && !stopped && active) void start(false);
-        }, RETRY_MS);
+      // A read that failed gets up to two more tries. A switch-off, a new start or a change of
+      // student in the meantime changes the generation and ends them.
+      const delay = [RETRY_MS, 2_500][attempt];
+      if (delay !== undefined && token === generation && !stopped && active) {
+        retryTimer = setTimeout(() => void start(attempt + 1), delay);
       }
       return;
     }

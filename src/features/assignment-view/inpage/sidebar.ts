@@ -57,8 +57,8 @@ const SCORE_COLORS: Readonly<Record<string, readonly [string, string]>> = {
 
 /** How long a batch of changes of the box waits for the next one. */
 const BATCH_MS = 50;
-/** How long the view waits before it asks again after a read that failed. It asks once. */
-const RETRY_MS = 2000;
+/** How long the view waits before it asks again after a read that failed. It asks at most two more times. */
+const RETRY_MS = [2_000, 2_500];
 
 export interface SidebarOptions {
   doc: Document;
@@ -144,6 +144,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   let stopped = false;
   /** Names the start that may draw, so an older answer cannot draw after a newer start. */
   let generation = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
   /** The user of the `submissions/self` record, or `null` until the background has answered. */
   let student: string | null = null;
   /** The reply with the report data of that record. */
@@ -311,6 +312,8 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
 
   function clear(): void {
     ++generation;
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
     stopWatching();
     stopSize();
     student = null;
@@ -318,7 +321,8 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     undo();
   }
 
-  async function start(retry = true): Promise<void> {
+  async function start(attempt = 0): Promise<void> {
+    retryTimer = undefined;
     const token = ++generation;
     if (doc.querySelector(BOX) === null) return;
     let reply: unknown;
@@ -333,12 +337,11 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
       if (reply == null) throw new Error('The background gave no reply');
     } catch (error) {
       logFailure('submission sidebar', error);
-      // A read that failed gets one more try. A switch-off, a new start or a change of student
-      // in the meantime changes the generation and ends it.
-      if (retry) {
-        setTimeout(() => {
-          if (token === generation && !stopped && active) void start(false);
-        }, RETRY_MS);
+      // A read that failed gets up to two more tries. A switch-off, a new start or a change of
+      // student in the meantime changes the generation and ends them.
+      const delay = RETRY_MS[attempt];
+      if (delay !== undefined && token === generation && !stopped && active) {
+        retryTimer = setTimeout(() => void start(attempt + 1), delay);
       }
       return;
     }

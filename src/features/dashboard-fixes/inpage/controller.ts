@@ -81,6 +81,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let style: HTMLStyleElement | null = null;
   let loadSeq = 0;
+  let sessionTimer: ReturnType<typeof setTimeout> | undefined;
+  let sessionAttempt = 0;
   /** What the server confirmed for the confirmed student, or `null` while nothing is confirmed. */
   let visibility: DashboardData['gradeVisibilities'] = null;
   let showGrades: DashboardData['showGrades'];
@@ -327,6 +329,8 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   }
 
   function onVisibilityChange(): void {
+    if (doc.visibilityState === 'visible') watchSession();
+    else clearSessionTimer();
     if (
       stopped ||
       doc.visibilityState !== 'visible' ||
@@ -356,12 +360,45 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
     }
   }
 
-  function load(): void {
+  function clearSessionTimer(): void {
+    clearTimeout(sessionTimer);
+    sessionTimer = undefined;
+  }
+
+  function resetSessionRetry(): void {
+    clearSessionTimer();
+    sessionAttempt = 0;
+  }
+
+  function watchSession(): void {
+    const delay = [2_000, 4_000, 8_000, 15_000, 30_000][sessionAttempt];
+    if (
+      delay === undefined ||
+      sessionTimer !== undefined ||
+      stopped ||
+      !anyEnabled() ||
+      doc.visibilityState !== 'visible' ||
+      gradeStore.userId !== undefined ||
+      sessionCleared
+    )
+      return;
+    sessionTimer = setTimeout(() => {
+      sessionTimer = undefined;
+      sessionAttempt += 1;
+      load();
+    }, delay);
+  }
+
+  function reloadLists(): void {
     for (const key of applied) {
-      if (key !== 'allCourseGrades') fixes[key].reload?.();
+      if (key !== 'allCourseGrades' && enabled(key)) fixes[key].reload?.();
     }
+  }
+
+  function load(): void {
     const seq = (loadSeq += 1);
-    if (!anyEnabled()) return;
+    if (stopped || !anyEnabled()) return;
+    watchSession();
     options
       .send({ type: 'weekrow:dashboard-data' })
       .then((reply) => {
@@ -370,6 +407,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         if (typeof next?.origin !== 'string' || !Array.isArray(next.courses)) return;
         if (next.sessionCleared) {
           sessionCleared = true;
+          resetSessionRetry();
           clearStudent();
           data = null;
           schedule(0);
@@ -381,8 +419,10 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
           (data !== null || sessionCleared)
         )
           return;
+        const hadUser = gradeStore.userId !== undefined;
+        if (next.userId !== undefined) resetSessionRetry();
         if (next.userId !== undefined && next.userId !== gradeStore.userId) {
-          if (gradeStore.userId !== undefined) clearStudent();
+          if (hadUser) clearStudent();
           else markBlind();
           gradeStore.userId = next.userId;
           sessionCleared = false;
@@ -402,6 +442,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         // A read that ended with no result runs again when the data changes.
         if (visibility === null && !reading) wantRead = true;
         data = { ...next, gradeVisibilities: visibility, showGrades };
+        if (!hadUser && next.userId !== undefined) reloadLists();
         schedule(0);
       })
       .catch((error: unknown) => logFailure('dashboard data', error));
@@ -410,11 +451,13 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
   return {
     setActive(next) {
       if (stopped || active === next) return;
+      resetSessionRetry();
       changing(() => {
         active = next;
       });
       update();
       if (active) load();
+      else loadSeq += 1;
     },
     setSettings(next) {
       if (stopped) return;
@@ -423,9 +466,12 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
         settings = { ...next };
       });
       update();
-      if (!before && anyEnabled()) load();
+      if (!anyEnabled()) resetSessionRetry();
+      else if (!before) load();
     },
     reload() {
+      resetSessionRetry();
+      reloadLists();
       load();
     },
     stop() {
@@ -433,6 +479,7 @@ export function createFixesEngine(options: FixesEngineOptions): FixesEngine {
       doc.removeEventListener('visibilitychange', onVisibilityChange);
       doc.defaultView?.removeEventListener('focus', onVisibilityChange);
       resetRetry();
+      resetSessionRetry();
       active = false;
       loadSeq += 1;
       if (timer !== null) clearTimeout(timer);

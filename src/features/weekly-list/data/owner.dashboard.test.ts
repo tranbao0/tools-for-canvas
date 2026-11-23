@@ -976,3 +976,17 @@ describe('grade visibility writes', () => {
     expect(write).toHaveBeenCalledOnce();
   });
 });
+
+it('loads one cold session for simultaneous dashboard reads', async () => {
+  const h = await createHarness();
+  const release = h.canvas.hold('getProfile');
+  try {
+    await Promise.all([h.owner.dashboardData(ORIGIN), h.owner.dashboardData(ORIGIN)]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.canvas.callsOf('getProfile')).toHaveLength(1);
+  } finally {
+    release();
+  }
+  await h.owner.settled();
+  expect(await h.owner.dashboardData(ORIGIN)).toMatchObject({ userId: IDS.user });
+});

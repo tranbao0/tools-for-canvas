@@ -241,6 +241,10 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   let stopped = false;
   let refreshTimer: unknown = null;
   let retryTimer: unknown = null;
+  let loadingTimer: unknown = null;
+  let loadingAttempt = 0;
+  let feedTimer: unknown = null;
+  let feedAttempt = 0;
   let midnightTimer: unknown = null;
   let midnightAt: string | null = null;
   const listeners = new Set<(state: SurfaceState) => void>();
@@ -361,16 +365,19 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
 
   async function requestState(): Promise<void> {
     if (stopped) return;
+    watchLoading();
     requestSeq += 1;
     const seq = requestSeq;
     const sent = request();
     const reply = (await host.send({ type: 'weekrow:get-state', request: sent })) as
       StateReply | undefined;
     // Replies can arrive out of order. Only a newer answer than the last shown one counts.
-    if (stopped || seq <= appliedSeq || reply === undefined) return;
+    if (stopped || seq <= appliedSeq || reply == null) return;
     appliedSeq = seq;
-    if (reply.kind === 'loading' && reply.retryAt !== undefined)
+    if (reply.kind === 'loading' && reply.retryAt !== undefined) {
+      loadingTimer = clearTimer(loadingTimer);
       scheduleRetry(reply.retryAt, () => requestState().catch(report('deferred state')));
+    }
     // The data owner drops a course filter that no longer applies, for example after the rings
     // are turned off or the course left the list. The surface then forgets it too.
     if (
@@ -445,6 +452,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       }
     }
     base = reply;
+    if (base.kind !== 'loading') resetLoading();
+    else watchLoading();
     followCourses(reply);
     scheduleMidnight();
     emit();
@@ -472,13 +481,21 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
         },
       })
       .then((reply) => {
-        if (stopped || seq <= feedApplied || reply === undefined) return;
+        if (stopped || seq <= feedApplied) return;
+        if (reply == null) {
+          retryFeed();
+          return;
+        }
         feedApplied = seq;
+        resetFeedRetry();
         feed = reply as AnnouncementFeed;
         if (seq >= tabChosenAt) listTab = feed.tab;
         emit();
       })
-      .catch(report('announcement feed'));
+      .catch((error: unknown) => {
+        report('announcement feed')(error);
+        if (seq > feedApplied) retryFeed();
+      });
   }
 
   function reload(): void {
@@ -488,6 +505,52 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   function clearTimer(handle: unknown): null {
     if (handle !== null) host.timers.clearTimeout(handle);
     return null;
+  }
+
+  function resetLoading(): void {
+    loadingTimer = clearTimer(loadingTimer);
+    loadingAttempt = 0;
+  }
+
+  function watchLoading(): void {
+    const delay = [2_000, 4_000, 8_000, 15_000, 30_000][loadingAttempt];
+    if (
+      delay === undefined ||
+      !started ||
+      !host.visibility.isVisible() ||
+      base.kind !== 'loading' ||
+      loadingTimer !== null ||
+      (retryTimer !== null && 'retryAt' in base)
+    )
+      return;
+    loadingTimer = host.timers.setTimeout(() => {
+      loadingTimer = null;
+      loadingAttempt += 1;
+      reload();
+    }, delay);
+  }
+
+  function resetFeedRetry(): void {
+    feedTimer = clearTimer(feedTimer);
+    feedAttempt = 0;
+  }
+
+  function retryFeed(): void {
+    const delay = [2_000, 4_000][feedAttempt];
+    if (
+      delay === undefined ||
+      !started ||
+      !host.visibility.isVisible() ||
+      listTab !== 'announcements' ||
+      feed !== null ||
+      feedTimer !== null
+    )
+      return;
+    feedTimer = host.timers.setTimeout(() => {
+      feedTimer = null;
+      feedAttempt += 1;
+      requestFeed(false, 'announcements');
+    }, delay);
   }
 
   function sendRefresh(reason: RefreshReason): Promise<void> {
@@ -677,6 +740,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   }
 
   function stopTimers(): void {
+    resetLoading();
+    resetFeedRetry();
     refreshTimer = clearTimer(refreshTimer);
     retryTimer = clearTimer(retryTimer);
     midnightTimer = clearTimer(midnightTimer);
@@ -684,6 +749,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
   }
 
   function becameVisible(): void {
+    resetLoading();
     sendRefresh('visible').catch(report('visible refresh'));
     reload();
     startTimers();
@@ -697,7 +763,10 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
 
   function onChange(): void {
     // A hidden surface catches up when it is shown again.
-    if (started && host.visibility.isVisible()) reload();
+    if (started && host.visibility.isVisible()) {
+      resetLoading();
+      reload();
+    }
   }
 
   function originAction(run: (origin: string) => void): void {
@@ -827,6 +896,8 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       originAction((origin) => host.openCanvas(origin));
     },
     retry() {
+      resetLoading();
+      watchLoading();
       sendRefresh('retry')
         .then(() => requestState())
         .catch(report('retry'));
@@ -857,6 +928,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
     },
     setListTab(next: ListTab) {
       if (!tabsShown()) return;
+      if (next !== 'announcements') resetFeedRetry();
       listTab = next;
       emit();
       requestFeed(false, next);
@@ -881,6 +953,7 @@ export function createSurfaceRuntime(host: SurfaceHost, options: SurfaceOptions)
       );
     },
     retryAnnouncements() {
+      resetFeedRetry();
       requestFeed(true);
     },
   };

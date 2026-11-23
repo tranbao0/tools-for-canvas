@@ -690,3 +690,43 @@ describe.each(ADAPTERS)('the shell of the $name list', (adapter) => {
     expect(document.querySelector(adapter.widget)?.hasAttribute('data-wr-people')).toBe(false);
   });
 });
+
+it('times out a stalled page and ignores it after a successful retry', async () => {
+  vi.useFakeTimers();
+  const stalled = Promise.withResolvers<PageResult<Item>>();
+  const load = vi
+    .fn<() => Promise<PageResult<Item>>>()
+    .mockReturnValueOnce(stalled.promise)
+    .mockResolvedValue({ items: [item(2)], total: 1, count: 1, hasNext: false });
+  const store = createPagedLists<Item, Filter>({
+    keyOfFilter: (filter) => filter.name,
+    keyOfRow: (row) => row.id,
+    load,
+    changed: vi.fn(),
+    log: vi.fn(),
+    step: 'page',
+  });
+  try {
+    const state = store.ensure(ALL);
+    await vi.runAllTimersAsync();
+    expect(state.status).toBe('error');
+    expect(store.broken).toBe(true);
+    expect(load).toHaveBeenCalledTimes(1);
+
+    store.reload();
+    await vi.runAllTimersAsync();
+    stalled.resolve({ items: [item(1)], total: 1, count: 1, hasNext: false });
+    await tick();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(state.items).toEqual([item(2)]);
+    expect(store.broken).toBe(false);
+
+    load.mockReturnValue(new Promise(() => {}));
+    store.ensure(ONE);
+    store.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    store.dispose();
+    vi.useRealTimers();
+  }
+});

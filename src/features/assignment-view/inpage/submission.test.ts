@@ -743,7 +743,7 @@ describe('every page that is not the own submission', () => {
     await untouched();
   });
 
-  it('asks once more after 2 seconds when the read is rejected, and then gives up', async () => {
+  it('recovers at the first retry after 2 seconds and limits rejected reads to three', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     send.mockRejectedValueOnce(new Error('down'));
     start();
@@ -757,11 +757,11 @@ describe('every page that is not the own submission', () => {
     send.mockReset();
     send.mockRejectedValue(new Error('down'));
     start();
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(send).toHaveBeenCalledTimes(2);
+    await vi.runAllTimersAsync();
+    expect(send).toHaveBeenCalledTimes(3);
   });
 
-  it('asks once more after 2 seconds for the reply of a router whose owner failed, and then gives up', async () => {
+  it('retries after 2 seconds for a routed failure and stops after three reads', async () => {
     const router = sendToFailingRouter(ORIGIN);
     send.mockImplementation(async (message) => router.send(message));
     start();
@@ -769,8 +769,8 @@ describe('every page that is not the own submission', () => {
     expect(send).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(send).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(send).toHaveBeenCalledTimes(2);
+    await vi.runAllTimersAsync();
+    expect(send).toHaveBeenCalledTimes(3);
     expect(host()).toBeNull();
     router.stop();
   });
@@ -2277,4 +2277,13 @@ it('stops asking for confirmation when the view is switched off', async () => {
   await vi.advanceTimersByTimeAsync(60000);
   expect(identity).toHaveBeenCalledTimes(before);
   expect(send).not.toHaveBeenCalled();
+});
+
+it('shows the submission when the third read succeeds', async () => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  send.mockRejectedValueOnce(new Error('Worker stopped')).mockResolvedValueOnce(undefined);
+  start();
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(send).toHaveBeenCalledTimes(3);
+  expect(host()).not.toBeNull();
 });

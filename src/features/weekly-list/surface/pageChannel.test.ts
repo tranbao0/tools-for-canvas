@@ -235,8 +235,7 @@ describe('what the background pushes', () => {
     answer('refuse');
     push({ type: 'weekrow:changed' });
     await settle();
-    await new Promise((resolve) => setTimeout(resolve, 1_200));
-    expect(onOrigin).toHaveBeenCalledWith(null);
+    await vi.waitFor(() => expect(onOrigin).toHaveBeenCalledWith(null), { timeout: 5_000 });
   });
 
   describe('a read that fails while the page was the saved Canvas', () => {
@@ -275,9 +274,9 @@ describe('what the background pushes', () => {
       expect(onOrigin).not.toHaveBeenCalled();
     });
 
-    it('gives no origin when the read after it fails too, as for another Canvas', async () => {
+    it('gives no origin after three failed retries, as for another Canvas', async () => {
       vi.useFakeTimers();
-      const { channel, push, answer } = setup();
+      const { channel, push, answer, sent } = setup();
       await channel.choices.origin.getValue();
       const onOrigin = vi.fn();
       channel.choices.origin.watch(onOrigin);
@@ -285,6 +284,9 @@ describe('what the background pushes', () => {
       answer('down');
       push({ type: 'weekrow:changed' });
       await vi.advanceTimersByTimeAsync(3_000);
+      expect(onOrigin).not.toHaveBeenCalled();
+      await vi.runAllTimersAsync();
+      expect(sent).toHaveLength(5);
       expect(onOrigin).toHaveBeenCalledTimes(1);
       expect(onOrigin).toHaveBeenCalledWith(null);
     });
@@ -499,4 +501,61 @@ describe('the writes of the page', () => {
       { type: 'weekrow:mark-note-seen', note: 'firstDone' },
     ]);
   });
+});
+
+it('bounds retries even when every page context read stalls', async () => {
+  vi.useFakeTimers();
+  const send = vi.fn(() => new Promise(() => {}));
+  const channel = createPageChannel({ pageOrigin: SCHOOL, send, listen: () => () => {} });
+  try {
+    const origin = channel.choices.origin.getValue();
+    await vi.runAllTimersAsync();
+    expect(send).toHaveBeenCalledTimes(4);
+    await expect(origin).resolves.toBeNull();
+  } finally {
+    channel.stop();
+    vi.useRealTimers();
+  }
+});
+
+it('ignores a late reply after a timed-out read and a successful retry', async () => {
+  vi.useFakeTimers();
+  const old = Promise.withResolvers<unknown>();
+  const send = vi
+    .fn<() => Promise<unknown>>()
+    .mockReturnValueOnce(old.promise)
+    .mockResolvedValue({ settings: DARK });
+  const channel = createPageChannel({ pageOrigin: SCHOOL, send, listen: () => () => {} });
+  try {
+    const first = channel.choices.origin.getValue();
+    const onSettings = vi.fn();
+    channel.settings.watch(onSettings);
+    await vi.runAllTimersAsync();
+    await expect(first).resolves.toBeNull();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(onSettings).toHaveBeenCalledExactlyOnceWith(DARK);
+
+    old.resolve({ settings: DEFAULT_SETTINGS });
+    await vi.runAllTimersAsync();
+    expect(onSettings).toHaveBeenCalledTimes(1);
+  } finally {
+    channel.stop();
+    vi.useRealTimers();
+  }
+});
+
+it('ends a stalled page context read when the channel stops', async () => {
+  vi.useFakeTimers();
+  try {
+    const send = vi.fn(() => new Promise(() => {}));
+    const channel = createPageChannel({ pageOrigin: SCHOOL, send, listen: () => () => {} });
+    const origin = channel.choices.origin.getValue();
+    channel.stop();
+    expect(vi.getTimerCount()).toBe(0);
+    await expect(origin).resolves.toBeNull();
+    await vi.runAllTimersAsync();
+    expect(send).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -183,9 +183,12 @@ describe.each(CALLERS)('the start of $name', (caller) => {
       page.change(on(false));
       const controller = await page.started;
       await page.finish(1);
-      // A refused read keeps the address until the read after it is refused too.
-      await vi.advanceTimersByTimeAsync(1_000);
-      await page.finish(2);
+      // A refused read keeps the address until all three retries are refused.
+      for (const [index, delay] of [500, 1_000, 2_000].entries()) {
+        expect(caller.shown()).toBe(true);
+        await vi.advanceTimersByTimeAsync(delay);
+        await page.finish(index + 2);
+      }
       expect(caller.shown()).toBe(false);
       controller.stop();
     });
@@ -236,15 +239,19 @@ describe('the assignment view after its start', () => {
 
   it('hears a withdrawn address while a read never ends, after the bound of 2 s', async () => {
     const page = await started('atFinish');
-    // The width read stays pending while the change read and its retry are refused.
-    void page.channel.tools.getValue();
     page.change({ ...on(), saved: false });
+    await page.finish(1);
+    await vi.advanceTimersByTimeAsync(500);
     await page.finish(2);
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(view.shown()).toBe(true);
     await page.finish(3);
+    // The width read stays pending while the last retry is refused.
+    await vi.advanceTimersByTimeAsync(2_000);
+    void page.channel.tools.getValue();
     expect(view.shown()).toBe(true);
-    await vi.advanceTimersByTimeAsync(900);
+    await page.finish(4);
+    expect(view.shown()).toBe(true);
+    await vi.advanceTimersByTimeAsync(1_900);
     expect(view.shown()).toBe(false);
     (await page.controller).stop();
   });

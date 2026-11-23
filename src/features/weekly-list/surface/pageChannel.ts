@@ -74,42 +74,49 @@ function defaultSettings(): Settings {
   return structuredClone(DEFAULT_SETTINGS);
 }
 
+const RETRY_MS = [500, 1_000, 2_000];
+const READ_TIMEOUT_MS = 4_000;
+
 export function createPageChannel(deps: PageChannelDeps): PageChannel {
   const changeListeners = new Set<() => void>();
   const originListeners = new Set<(origin: string | null) => void>();
   const settingsListeners = new Set<(settings: Settings) => void>();
   const toolsListeners = new Set<(tools: ToolsSettings) => void>();
   let last: PageContext | null = null;
+  let stopped = false;
   let retry: ReturnType<typeof setTimeout> | null = null;
-  let pending: { number: number; result: Promise<PageContext> } | undefined;
+  const cancelReads = new Set<() => void>();
+  let pending: { number: number; result: Promise<PageContext | undefined> } | undefined;
 
-  /**
-   * Asks the background. A refusal means that the page is not the saved Canvas, but a background
-   * that is down looks the same, such as one that restarts. So a failed read keeps the last origin
-   * and schedules one more read, and only a failed `final` read gives no origin.
-   */
-  async function read(final: boolean): Promise<PageContext> {
+  /*
+  Asks the background and waits at most READ_TIMEOUT_MS.
+  A refusal means that the page is not the saved Canvas, but a background that is down looks the
+  same, such as one that restarts.
+  So a failed read gives no answer, and refresh keeps the last origin until its last retry fails.
+  */
+  async function read(): Promise<PageContext | undefined> {
+    if (stopped) return;
+    let cancel!: () => void;
+    const timeout = new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, READ_TIMEOUT_MS);
+      cancel = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+    cancelReads.add(cancel);
     let reply: unknown;
     try {
-      reply = await deps.send({ type: 'weekrow:page-context' });
+      reply = await Promise.race([deps.send({ type: 'weekrow:page-context' }), timeout]);
     } catch {
-      reply = undefined;
+      return;
+    } finally {
+      cancel();
+      cancelReads.delete(cancel);
     }
     const fields = reply as Partial<PageContextReply> | undefined;
     const { settings, tools } = fields ?? {};
-    if (!isSettings(settings)) {
-      if (!final) {
-        retry ??= setTimeout(() => {
-          retry = null;
-          refresh(undefined, true).catch(() => undefined);
-        }, RETRY_MS);
-      }
-      return {
-        origin: final ? null : (last?.origin ?? null),
-        settings: last?.settings ?? defaultSettings(),
-        tools: last?.tools ?? structuredClone(DEFAULT_TOOLS_SETTINGS),
-      };
-    }
+    if (!isSettings(settings)) return;
     return {
       origin: deps.pageOrigin,
       settings,
@@ -139,8 +146,6 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
   let announcing: ReturnType<typeof setTimeout> | null = null;
   let forced: ReturnType<typeof setTimeout> | null = null;
 
-  /** How long a failed read waits before the one more read. */
-  const RETRY_MS = 1_000;
   /** How long a caller that waits for a read may hold back the watchers. */
   const HOLD_MS = 2_000;
 
@@ -194,15 +199,31 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
    * newer answer that differs from it, after the caller has applied it, so a change during the
    * first read is not lost.
    */
-  async function refresh(wanted?: keyof PageContext, final = false): Promise<PageContext> {
+  async function refresh(wanted?: keyof PageContext, attempt = 0): Promise<PageContext> {
     if (wanted !== undefined) waiting += 1;
-    const current = (!final && pending) || { number: ++started, result: read(final) };
-    if (!final) pending = current;
+    const current = (attempt === 0 && pending) || { number: ++started, result: read() };
+    if (attempt === 0) pending = current;
     const { number, result } = current;
-    const next = await result;
+    const reply = await result;
+    const delay = RETRY_MS[attempt];
+    // A refusal and a stopped worker can look the same. Keep the last origin during retries.
+    const next = reply ?? {
+      origin: delay === undefined ? null : (last?.origin ?? null),
+      settings: last?.settings ?? defaultSettings(),
+      tools: last?.tools ?? structuredClone(DEFAULT_TOOLS_SETTINGS),
+    };
     if (pending === current) pending = undefined;
+    if (stopped) return next;
     if (number > kept) {
       kept = number;
+      if (retry !== null) clearTimeout(retry);
+      retry =
+        reply === undefined && delay !== undefined
+          ? setTimeout(() => {
+              retry = null;
+              refresh(undefined, attempt + 1).catch(() => undefined);
+            }, delay)
+          : null;
       if (last !== null) {
         if (heard.origin === undefined) heard.origin = last.origin;
         if (heard.settings === undefined) heard.settings = last.settings;
@@ -267,7 +288,10 @@ export function createPageChannel(deps: PageChannelDeps): PageChannel {
       await deps.send({ type: 'weekrow:mark-note-seen', note });
     },
     stop() {
+      stopped = true;
       stopListening();
+      for (const cancel of cancelReads) cancel();
+      cancelReads.clear();
       if (announcing !== null) clearTimeout(announcing);
       if (forced !== null) clearTimeout(forced);
       if (retry !== null) clearTimeout(retry);

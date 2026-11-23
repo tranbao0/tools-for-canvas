@@ -3020,6 +3020,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     ) {
       base.sessionCleared = true;
     }
+    if (!base.sessionCleared && identityHolds(stamp)) ensureSessionLoading();
     return base;
   }
 
@@ -4004,6 +4005,22 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
   // State
   // ---------------------------------------------------------------------------------------------
 
+  function ensureSessionLoading(): void {
+    if (
+      cache === null ||
+      cache.session !== null ||
+      blocksLoads(cache.failure) ||
+      running ||
+      anyPending()
+    )
+      return;
+    const decision = decideRound('full', cache.limits, clock.now());
+    if (decision.kind === 'run') scheduleForcedFull();
+    else if (decision.kind === 'defer') deferFull(decision.at);
+    else if (cache.limits.lastRoundAt !== null)
+      deferFull(cache.limits.lastRoundAt + REFRESH_LIMIT_MS);
+  }
+
   async function getState(
     request: SurfaceRequest,
     tabId: number | undefined,
@@ -4054,14 +4071,7 @@ export function createDataOwner(deps: DataOwnerDeps): DataOwner {
     const session = cache.session;
     if (session === null) {
       if (blocksLoads(failure)) return { kind: 'cant_load', origin, offline, offer };
-      // The first round loads the session. Every state request waits for it.
-      if (!running && !anyPending()) {
-        const decision = decideRound('full', cache.limits, clock.now());
-        if (decision.kind === 'run') scheduleForcedFull();
-        else if (decision.kind === 'defer') deferFull(decision.at);
-        else if (cache.limits.lastRoundAt !== null)
-          deferFull(cache.limits.lastRoundAt + REFRESH_LIMIT_MS);
-      }
+      ensureSessionLoading();
       if (running || anyPending() || cache.limits.lastRoundAt === null) return { kind: 'loading' };
       return {
         kind: 'loading',

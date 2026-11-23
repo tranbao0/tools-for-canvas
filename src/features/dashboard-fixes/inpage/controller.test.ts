@@ -712,3 +712,43 @@ describe('removeStaleFixes', () => {
     expect(document.querySelector('[data-wr-own]')).toBeNull();
   });
 });
+
+it.each(['empty', 'missing', 'rejected', 'pending'] as const)(
+  'bounds recovery for a %s initial dashboard read',
+  async (failure) => {
+    const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    send.mockImplementation(async () => {
+      if (failure === 'pending') return new Promise(() => {});
+      if (failure === 'rejected') throw new Error('Worker stopped');
+      return failure === 'empty' ? { origin: ORIGIN, courses: [] } : undefined;
+    });
+    try {
+      engine.setSettings({ ...OFF, allCourseGrades: true });
+      engine.setActive(true);
+      await vi.runAllTimersAsync();
+      expect(dataRequests()).toHaveLength(6);
+    } finally {
+      visible.mockRestore();
+    }
+  },
+);
+
+it('retries a failed announcement page when the first student arrives', async () => {
+  const first = Promise.withResolvers<unknown>();
+  const announcementPage = vi.fn<() => unknown>().mockReturnValue(undefined);
+  send.mockImplementation(async (message) => {
+    if (message.type === 'weekrow:dashboard-data') {
+      return message.includeGradeVisibility ? DATA : first.promise;
+    }
+    if (message.type === 'weekrow:announcement-page') return announcementPage();
+    return undefined;
+  });
+  engine.setSettings(ON);
+  engine.setActive(true);
+  await settle();
+  expect(announcementPage).toHaveBeenCalledTimes(1);
+
+  first.resolve(DATA);
+  await settle();
+  expect(announcementPage).toHaveBeenCalledTimes(2);
+});

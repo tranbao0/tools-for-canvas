@@ -2760,3 +2760,43 @@ it('drops a visible failure on an identity change even after its outcome expires
   expect(runtime.state().undo).toBeNull();
   runtime.stop();
 });
+
+it.each(['loading', 'missing', 'rejected', 'pending'] as const)(
+  'bounds recovery for a %s initial state read',
+  async (failure) => {
+    const fake = fakeHost();
+    const reply = fake.reply;
+    fake.reply = (message) => {
+      if (message.type !== 'weekrow:get-state') return reply(message);
+      if (failure === 'pending') return new Promise(() => {});
+      if (failure === 'rejected') throw new Error('Worker stopped');
+      return failure === 'loading' ? { kind: 'loading' } : undefined;
+    };
+    const runtime = createSurfaceRuntime(fake.host, { surface: 'panel', scopeCourseId: null });
+    await runtime.start();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(types(fake.sent).filter((type) => type === 'weekrow:get-state')).toHaveLength(6);
+    runtime.stop();
+  },
+);
+
+it('bounds recovery for an unavailable announcements feed', async () => {
+  const fake = fakeHost();
+  const reply = fake.reply;
+  fake.reply = (message) => {
+    if (message.type !== 'weekrow:announcement-feed') return reply(message);
+    if (message.request.tab === 'announcements') throw new Error('Worker stopped');
+    return undefined;
+  };
+  const runtime = createSurfaceRuntime(fake.host, {
+    surface: 'panel',
+    scopeCourseId: null,
+    announcementTabs: true,
+  });
+  await runtime.start();
+  await settle();
+  runtime.actions.setListTab('announcements');
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(types(fake.sent).filter((type) => type === 'weekrow:announcement-feed')).toHaveLength(4);
+  runtime.stop();
+});
