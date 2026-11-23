@@ -7,24 +7,25 @@ It works with your own Canvas sign-in and keeps your data in your browser and on
 
 ## Status
 
-Last update: 2026-11-10.
+Last update: 2026-11-22.
 
-**Released:** test build 0.1.0.34 for Firefox, signed by Mozilla, for a small group of testers.
-Tools for Canvas is not in the browser stores yet.
+**Released:**
 
-What this build adds:
+- Version 0.1.0 on the [Chrome Web Store](https://chromewebstore.google.com/detail/tools-for-canvas/mhodhmpaldoljpdkpbfopcpchhdlmapo) for Chrome, Edge and other Chromium desktop browsers.
+- Version 0.1.2 for Firefox is in review on Firefox Add-ons.
 
-- A new course shows up in the list within an hour, or right away when you click Retry.
-- On the new dashboard in a wide window, a minimized list leaves the page where it is when the window changes size.
-- In the file pane, Close on "Couldn't open this file" keeps your saved file tabs.
-- A click on a file inside a frame always opens it.
-- A file tab change that fails to save stays as you left it.
-- The extension needs Chrome or Edge 147, or Firefox 144, so the PDF viewer works in every browser that can install it.
+What the latest release adds:
+
+- A PDF or text file keeps its scroll position when the file pane shows again.
+- On the new dashboard, the weekly card fits inside a short window while you scroll.
+- Signing out or switching Canvas accounts clears dashboard data, weekly list notices and unconfirmed grades.
+- On Firefox, private browsing keeps trusted session data off disk.
+- File panes verify the signed-in student and peer handshake before showing files.
 
 **Working on now:**
 
-- A listing in the Chrome Web Store and on Firefox Add-ons.
-- More bug fixes.
+- Review of version 0.1.2 on Firefox Add-ons.
+- Faster startup and more bug fixes.
 - The next tools on the [roadmap](docs/roadmap.md).
 
 ## What you get
@@ -98,8 +99,17 @@ The [roadmap](docs/roadmap.md) lists the tools that come next.
 
 ## Install
 
-Tools for Canvas is not in the browser stores yet.
-For now, you build it yourself and load it into your browser.
+- **Chrome and Edge:** install from the [Chrome Web Store](https://chromewebstore.google.com/detail/tools-for-canvas/mhodhmpaldoljpdkpbfopcpchhdlmapo).
+  Edge and other Chromium desktop browsers install directly from the Chrome Web Store.
+- **Firefox:** version 0.1.2 is in review on Firefox Add-ons.
+  Until then, build it from source as shown below.
+
+### First use
+
+Open your school's Canvas in a browser tab.
+Tools for Canvas finds it by itself.
+On a Canvas with its own address, click "Use it" when the welcome page or the side panel asks "Use canvas.example.edu as your Canvas?".
+Then open your Canvas dashboard to see your list.
 
 ### Build from source
 
@@ -121,13 +131,6 @@ To load a build:
 2. In Edge, open `edge://extensions`, turn on Developer mode, click "Load unpacked" and select `.output/edge-mv3`.
 3. In Firefox, open `about:debugging#/runtime/this-firefox`, click "Load Temporary Add-on" and select `.output/firefox-mv3/manifest.json`.
    Firefox removes a temporary add-on when it closes.
-
-### First use
-
-Open your school's Canvas in a browser tab.
-Tools for Canvas finds it by itself.
-On a Canvas with its own address, click "Use it" when the welcome page or the side panel asks "Use canvas.example.edu as your Canvas?".
-Then open your Canvas dashboard to see your list.
 
 ## Browsers
 
