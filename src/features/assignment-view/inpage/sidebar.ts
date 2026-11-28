@@ -23,6 +23,7 @@
  */
 import { normalizeCanvasId } from '../../../shared/canvas/ids';
 import { logFailure } from '../../../shared/platform/log';
+import { waitForPageAnchors } from '../../../shared/platform/pageAnchors';
 import { isOwnerReply, type AssignmentOwnerMessage, type AssignmentOwnerReply } from '../protocol';
 import { fileReport, type FileReport } from './files';
 import { ORIGINAL, OWN } from './own';
@@ -145,6 +146,8 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   /** Names the start that may draw, so an older answer cannot draw after a newer start. */
   let generation = 0;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let cancelAnchorWait: (() => void) | undefined;
+  const hasAnchors = () => doc.querySelector(BOX) !== null;
   /** The user of the `submissions/self` record, or `null` until the background has answered. */
   let student: string | null = null;
   /** The reply with the report data of that record. */
@@ -312,6 +315,8 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
 
   function clear(): void {
     ++generation;
+    cancelAnchorWait?.();
+    cancelAnchorWait = undefined;
     clearTimeout(retryTimer);
     retryTimer = undefined;
     stopWatching();
@@ -324,7 +329,7 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
   async function start(attempt = 0): Promise<void> {
     retryTimer = undefined;
     const token = ++generation;
-    if (doc.querySelector(BOX) === null) return;
+    if (!hasAnchors()) return;
     let reply: unknown;
     try {
       reply = await options.send({
@@ -357,8 +362,12 @@ export function createSidebarEngine(options: SidebarOptions): SidebarEngine {
     setActive(next) {
       if (stopped || next === active) return;
       active = next;
-      if (next) void start();
-      else clear();
+      if (next) {
+        cancelAnchorWait = waitForPageAnchors(doc, hasAnchors, (found) => {
+          cancelAnchorWait = undefined;
+          if (found) void start();
+        });
+      } else clear();
     },
     refreshTheme() {},
     resetStudent() {

@@ -47,6 +47,39 @@ beforeEach(() => {
 });
 afterEach(() => engine?.stop());
 
+it('changes the file link once when the page adds the Submission box during parsing', async () => {
+  const readyState = vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+  const html = document.body.innerHTML;
+  document.body.replaceChildren();
+  start().setActive(true);
+  expect(send).not.toHaveBeenCalled();
+
+  document.body.innerHTML = html;
+  await vi.waitFor(() => expect(document.querySelector('[data-av-original]')).not.toBeNull());
+
+  readyState.mockReturnValue('interactive');
+  document.dispatchEvent(new Event('DOMContentLoaded'));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(document.querySelectorAll('[data-av-original]')).toHaveLength(1);
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it.each(['deactivate', 'stop'])('leaves a late box alone after %s', async (end) => {
+  const readyState = vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+  const html = document.body.innerHTML;
+  document.body.replaceChildren();
+  start().setActive(true);
+  if (end === 'deactivate') engine.setActive(false);
+  else engine.stop();
+
+  document.body.innerHTML = html;
+  readyState.mockReturnValue('interactive');
+  document.dispatchEvent(new Event('DOMContentLoaded'));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(send).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-av-original]')).toBeNull();
+});
+
 describe('the Submission box of the assignment page', () => {
   it('reads "View NAME" with an icon, and adds no Download link', async () => {
     start().setActive(true);

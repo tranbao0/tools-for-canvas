@@ -3774,7 +3774,9 @@ So a student switches pages to read the instructions next to the feedback on a f
    - The page is the own submission when the user in the path is the user of the record that the background reads with `submissions/self`.
      The two ids are compared as decimal global ids with BigInt, like `normalizeCanvasId`: `s~l` becomes `s * 10^13 + l`.
    - A teacher, an observer, another student, a refused read, a failed read and a record of another assignment all leave the page as Canvas drew it.
-   - The page also stays as it is when an anchor is missing: the two columns of the container, the files frame, or the right column `#right-side`.
+   - Submission Details and the assignment sidebar wait for their anchors while the page parses.
+     They start when the anchors appear and leave the page as it is if the anchors are still missing when parsing ends.
+     Submission Details needs the two columns of the container, the files frame and the right column `#right-side`.
      The right column is `#right-side` in `#right-side-wrapper`, and it counts only outside `#content`.
      A comment in `#content` can hold elements with the same ids, and the real column comes after the content area.
    - The view replaces Canvas's files frame for every submission type that it shows.

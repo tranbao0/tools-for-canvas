@@ -138,6 +138,41 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it('shows Submission Details once when the page adds its anchors during parsing', async () => {
+  const readyState = vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+  document.body.replaceChildren();
+  start();
+  expect(send).not.toHaveBeenCalled();
+
+  load();
+  showInFrame(FILE_ROW);
+  await settle();
+  expect(host()).not.toBeNull();
+
+  readyState.mockReturnValue('interactive');
+  document.dispatchEvent(new Event('DOMContentLoaded'));
+  await settle();
+  expect(document.querySelectorAll('#av-submission-details')).toHaveLength(1);
+  expect(document.querySelectorAll('#av-submission-box')).toHaveLength(1);
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+it('reads once when the student changes before the anchors arrive', async () => {
+  const readyState = vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading');
+  document.body.replaceChildren();
+  start();
+  view.resetStudent();
+  view.setActive(true);
+
+  load();
+  showInFrame(FILE_ROW);
+  readyState.mockReturnValue('interactive');
+  document.dispatchEvent(new Event('DOMContentLoaded'));
+  await settle();
+  expect(host()).not.toBeNull();
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
 describe('the own submission', () => {
   it('hides the files frame, shows the instructions in the content area and the box in the right column', async () => {
     start();

@@ -60,6 +60,7 @@ import { DEFAULT_TOOLS_SETTINGS } from '../../../shared/settings/tools';
 import { sanitizeHtml } from '../../../shared/ui/sanitize';
 import type { PageTheme } from '../../../shared/ui/pageTheme';
 import { logFailure } from '../../../shared/platform/log';
+import { waitForPageAnchors } from '../../../shared/platform/pageAnchors';
 import {
   isDetailsReply,
   type AssignmentDetailsMessage,
@@ -197,6 +198,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   /** Names the start that may draw, so an older answer cannot draw after a newer start. */
   let generation = 0;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let cancelAnchorWait: (() => void) | undefined;
+  const hasAnchors = () => findAnchors(doc) !== null;
   let feedbackClick = 0;
   /** The style element of the view. It stays through a change of the mode. */
   let style: HTMLStyleElement | null = null;
@@ -263,6 +266,8 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
 
   function clear(): void {
     ++generation;
+    cancelAnchorWait?.();
+    cancelAnchorWait = undefined;
     clearTimeout(retryTimer);
     retryTimer = undefined;
     opened.clear();
@@ -674,7 +679,7 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
   async function start(attempt = 0, confirmUntil = Date.now() + 60000): Promise<void> {
     retryTimer = undefined;
     const token = ++generation;
-    if (!findAnchors(doc)) return;
+    if (!hasAnchors()) return;
     let reply: unknown;
     let identityToken: string | undefined;
     try {
@@ -735,8 +740,12 @@ export function createSubmissionView(options: SubmissionViewOptions): Submission
     setActive(next) {
       if (stopped || next === active) return;
       active = next;
-      if (next) void start();
-      else clear();
+      if (next) {
+        cancelAnchorWait = waitForPageAnchors(doc, hasAnchors, (found) => {
+          cancelAnchorWait = undefined;
+          if (found) void start();
+        });
+      } else clear();
     },
     setFileViewer(on) {
       fileViewer = on;
